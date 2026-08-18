@@ -7,7 +7,6 @@
 #pragma once
 
 #include <array>
-
 #include <vector>
 
 struct plm_buffer_t;
@@ -256,7 +255,6 @@ private:
 	bool m_mpeg_ram_enabled = false;
 	uint32_t m_mpeg_ram_gated_reads = 0;
 	uint32_t m_mpeg_ram_gated_writes = 0;
-
 };
 
 DECLARE_DEVICE_TYPE(CDI_DVC, cdi_dvc_device)

@@ -5,11 +5,16 @@
     Philips CD-i Digital Video Cartridge
     -------------------------------------
 
-    VMPEG register-level implementation.
+    VMPEG/DVC emulation for CD-i Mono-I systems.
 
-    This stage adds the FMA/FMV timer interrupt source and interrupt-vector
-    acknowledge behavior. MPEG decoding and DMA transfers are not implemented
-    yet.
+    The current model includes VMPEG register access, interrupt generation and
+    acknowledge behavior, SCC68070 DMA ingress, MPEG-1 program-stream parsing,
+    PL_MPEG-backed audio/video decoding, audio output, and video presentation.
+
+    Known limitations remain: DMA transfers are serviced synchronously, A/V
+    presentation scheduling is incomplete, decoder/presentation state is not
+    fully save-state serializable, and MPEG-RAM startup visibility currently
+    uses a provisional compatibility gate.
 
 ***************************************************************************/
 
@@ -23,8 +28,15 @@
 #define LOG_REGISTERS    (1U << 1)
 #define LOG_DMA          (1U << 2)
 #define LOG_IRQ          (1U << 3)
+#define LOG_MPEG         (1U << 4)
+#define LOG_AUDIO        (1U << 5)
+#define LOG_VIDEO        (1U << 6)
+#define LOG_RAM_GATE     (1U << 7)
+#define LOG_RAM_ACCESS   (1U << 8)
 
-#define VERBOSE          (LOG_REGISTERS | LOG_DMA | LOG_IRQ)
+// Keep the low-volume gate transition visible for the 12G14 regression.
+// All high-volume diagnostics are opt-in.
+#define VERBOSE          (LOG_RAM_GATE)
 #include "logmacro.h"
 
 DEFINE_DEVICE_TYPE(CDI_DVC, cdi_dvc_device, "cdidvc", "Philips CD-i Digital Video Cartridge")
@@ -376,7 +388,7 @@ void cdi_dvc_device::audio_output_reset()
 		: 0;
 	if (dropped || m_audio_wait_samples)
 	{
-		LOGMASKED(LOG_DMA,
+		LOGMASKED(LOG_AUDIO,
 				"%s: DVC AUDIO output reset dropped=%u wait=%llu emitted=%u fnv=%08x\n",
 				machine().describe_context(), dropped,
 				(unsigned long long)m_audio_wait_samples,
@@ -405,7 +417,7 @@ void cdi_dvc_device::audio_output_set_rate(uint32_t rate)
 		m_audio_stream->set_sample_rate(rate);
 	}
 	m_audio_output_rate = rate;
-	LOGMASKED(LOG_DMA, "%s: DVC AUDIO output rate=%u\n",
+	LOGMASKED(LOG_AUDIO, "%s: DVC AUDIO output rate=%u\n",
 			machine().describe_context(), m_audio_output_rate);
 }
 
@@ -428,7 +440,7 @@ void cdi_dvc_device::sound_stream_update(sound_stream &stream)
 			{
 				m_audio_output_started = true;
 				uint32_t const pending = uint32_t((m_audio_pcm_queue.size() - m_audio_pcm_read) / 2);
-				LOGMASKED(LOG_DMA,
+				LOGMASKED(LOG_AUDIO,
 						"%s: DVC AUDIO output start rate=%u silence=%llu pending=%u\n",
 						machine().describe_context(), m_audio_output_rate,
 						(unsigned long long)m_audio_silence_frames, pending);
@@ -458,7 +470,7 @@ void cdi_dvc_device::sound_stream_update(sound_stream &stream)
 
 		if (have_pcm && m_audio_pcm_read >= m_audio_pcm_queue.size())
 		{
-			LOGMASKED(LOG_DMA,
+			LOGMASKED(LOG_AUDIO,
 					"%s: DVC AUDIO output drain frames=%u nonzero=%u silence=%llu fnv=%08x events=%u\n",
 					machine().describe_context(), m_audio_output_frames,
 					m_audio_output_nonzero, (unsigned long long)m_audio_silence_frames,
@@ -531,7 +543,7 @@ void cdi_dvc_device::audio_decoder_feed(uint8_t data)
 			m_audio_channel_mode = channel_mode;
 			m_audio_backend_status |= 0x01;
 			++m_audio_header_events;
-			LOGMASKED(LOG_DMA, "%s: DVC AUDIO ES header bitrate=%u rate=%u mode=%u status=%02x event=%u\n",
+			LOGMASKED(LOG_AUDIO, "%s: DVC AUDIO ES header bitrate=%u rate=%u mode=%u status=%02x event=%u\n",
 				machine().describe_context(), m_audio_bitrate_kbps, m_audio_samplerate,
 				m_audio_channel_mode, m_audio_backend_status, m_audio_header_events);
 		}
@@ -551,7 +563,7 @@ void cdi_dvc_device::audio_decoder_feed(uint8_t data)
 			m_audio_samplerate = backend_rate;
 		m_audio_backend_status |= 0x02;
 		++m_audio_header_events;
-		LOGMASKED(LOG_DMA, "%s: DVC AUDIO backend header rate=%u status=%02x event=%u\n",
+		LOGMASKED(LOG_AUDIO, "%s: DVC AUDIO backend header rate=%u status=%02x event=%u\n",
 				machine().describe_context(), backend_rate,
 				m_audio_backend_status, m_audio_header_events);
 	}
@@ -606,7 +618,7 @@ void cdi_dvc_device::audio_decoder_pump()
 		m_audio_decoded_samples += samples->count;
 		++m_audio_decode_events;
 		m_audio_backend_status |= 0x04;
-		LOGMASKED(LOG_DMA, "%s: DVC AUDIO decoded frames=%u frame_samples=%u total_samples=%u event=%u status=%02x fnv=%08x\n",
+		LOGMASKED(LOG_AUDIO, "%s: DVC AUDIO decoded frames=%u frame_samples=%u total_samples=%u event=%u status=%02x fnv=%08x\n",
 				machine().describe_context(), m_audio_decoded_frames, samples->count,
 				m_audio_decoded_samples, m_audio_decode_events,
 				m_audio_backend_status, hash);
@@ -628,7 +640,7 @@ void cdi_dvc_device::audio_decoder_pump()
 
 	++m_audio_queue_events;
 	uint32_t const pending = uint32_t((m_audio_pcm_queue.size() - m_audio_pcm_read) / 2);
-	LOGMASKED(LOG_DMA,
+	LOGMASKED(LOG_AUDIO,
 			"%s: DVC AUDIO queue event=%u added=%u pending=%u rate=%u play45=%d wait=%llu\n",
 			machine().describe_context(), m_audio_queue_events, added_frames, pending,
 			m_audio_output_rate,
@@ -692,7 +704,7 @@ void cdi_dvc_device::video_latch_geometry(bool at_vblank)
 	pending = false;
 	video_overlay_reset();
 
-	LOGMASKED(LOG_DMA, "%s: DVC VIDEO geometry %s crop=%u,%u window=%ux%u screen=%u,%u\n",
+	LOGMASKED(LOG_VIDEO, "%s: DVC VIDEO geometry %s crop=%u,%u window=%ux%u screen=%u,%u\n",
 			machine().describe_context(), at_vblank ? "vblank" : "frame",
 			m_video_crop_x, m_video_crop_y, m_video_window_w, m_video_window_h,
 			m_video_screen_x, m_video_screen_y);
@@ -760,7 +772,7 @@ void cdi_dvc_device::video_overlay_scanline(uint32_t *pixels, unsigned pixel_cou
 	if (!m_video_overlay_complete && physical_y == dst_y + int(window_h * 2) - 1 && m_video_overlay_pixels)
 	{
 		m_video_overlay_complete = true;
-		LOGMASKED(LOG_DMA, "%s: DVC VIDEO overlay complete frame=%u crop=%u,%u window=%ux%u dst=%d,%d pixels=%u fnv=%08x\n",
+		LOGMASKED(LOG_VIDEO, "%s: DVC VIDEO overlay complete frame=%u crop=%u,%u window=%ux%u dst=%d,%d pixels=%u fnv=%08x\n",
 				machine().describe_context(), m_video_present_generation,
 				m_video_crop_x, m_video_crop_y, window_w, window_h,
 				dst_x, dst_y, m_video_overlay_pixels, m_video_overlay_hash);
@@ -807,13 +819,13 @@ void cdi_dvc_device::video_decoder_feed(uint8_t data)
 	if (m_video_es_prefix == 0x000001b3U)
 	{
 		++m_video_sequence_headers;
-		LOGMASKED(LOG_DMA, "%s: DVC VIDEO ES sequence headers=%u\n",
+		LOGMASKED(LOG_VIDEO, "%s: DVC VIDEO ES sequence headers=%u\n",
 				machine().describe_context(), m_video_sequence_headers);
 	}
 	else if (m_video_es_prefix == 0x00000100U)
 	{
 		++m_video_picture_headers;
-		LOGMASKED(LOG_DMA, "%s: DVC VIDEO ES picture headers=%u\n",
+		LOGMASKED(LOG_VIDEO, "%s: DVC VIDEO ES picture headers=%u\n",
 				machine().describe_context(), m_video_picture_headers);
 	}
 
@@ -829,7 +841,7 @@ void cdi_dvc_device::video_decoder_feed(uint8_t data)
 		m_video_height = uint16_t(plm_video_get_height(m_video_decoder));
 		m_video_framerate_millihz = uint32_t(plm_video_get_framerate(m_video_decoder) * 1000.0 + 0.5);
 
-		LOGMASKED(LOG_DMA, "%s: DVC VIDEO backend sequence=%ux%u fps_milli=%u\n",
+		LOGMASKED(LOG_VIDEO, "%s: DVC VIDEO backend sequence=%ux%u fps_milli=%u\n",
 				machine().describe_context(),
 				m_video_width, m_video_height, m_video_framerate_millihz);
 	}
@@ -862,7 +874,7 @@ void cdi_dvc_device::video_decoder_pump()
 		hash_plane(frame->cr);
 		hash_plane(frame->cb);
 
-		LOGMASKED(LOG_DMA, "%s: DVC VIDEO decoded frames=%u size=%ux%u time=%f fnv=%08x\n",
+		LOGMASKED(LOG_VIDEO, "%s: DVC VIDEO decoded frames=%u size=%ux%u time=%f fnv=%08x\n",
 				machine().describe_context(),
 				m_video_decoded_frames, frame->width, frame->height, frame->time, frame_hash);
 
@@ -872,7 +884,7 @@ void cdi_dvc_device::video_decoder_pump()
 			m_video_visible = true;
 			m_video_show_on_next = false;
 			video_overlay_reset();
-			LOGMASKED(LOG_DMA, "%s: DVC VIDEO show-next frame=%u\n",
+			LOGMASKED(LOG_VIDEO, "%s: DVC VIDEO show-next frame=%u\n",
 					machine().describe_context(), m_video_decoded_frames);
 		}
 
@@ -892,7 +904,7 @@ void cdi_dvc_device::video_decoder_pump()
 		m_video_present_generation = m_video_decoded_frames;
 		m_video_present_valid = true;
 		video_overlay_reset();
-		LOGMASKED(LOG_DMA, "%s: DVC VIDEO retained frame=%u size=%ux%u rgb_bytes=%u\n",
+		LOGMASKED(LOG_VIDEO, "%s: DVC VIDEO retained frame=%u size=%ux%u rgb_bytes=%u\n",
 				machine().describe_context(), m_video_present_generation,
 				m_video_present_width, m_video_present_height,
 				unsigned(m_video_rgb24.size()));
@@ -990,7 +1002,7 @@ void cdi_dvc_device::mpeg_scr_byte(unsigned target, uint8_t data)
 		++m_mpeg_scr_events[target];
 		m_mpeg_clock90 = m_mpeg_last_scr[target];
 		m_mpeg_clock_valid = true;
-		LOGMASKED(LOG_DMA, "%s: DVC MPEG SCR %s scr=%llu event=%u clock=%llu\n",
+		LOGMASKED(LOG_MPEG, "%s: DVC MPEG SCR %s scr=%llu event=%u clock=%llu\n",
 				machine().describe_context(), target == MPEG_FMA ? "FMA" : "FMV",
 				(unsigned long long)m_mpeg_last_scr[target], m_mpeg_scr_events[target],
 				(unsigned long long)m_mpeg_clock90);
@@ -1055,7 +1067,7 @@ void cdi_dvc_device::mpeg_timestamp_commit(unsigned target)
 	if (explicit_dts)
 		++m_mpeg_dts_events[target];
 
-	LOGMASKED(LOG_DMA, "%s: DVC MPEG TS %s pts=%llu dts=%llu explicit_dts=%u pts_event=%u dts_event=%u\n",
+	LOGMASKED(LOG_MPEG, "%s: DVC MPEG TS %s pts=%llu dts=%llu explicit_dts=%u pts_event=%u dts_event=%u\n",
 			machine().describe_context(), target == MPEG_FMA ? "FMA" : "FMV",
 			(unsigned long long)m_mpeg_packet_pts[target],
 			(unsigned long long)m_mpeg_packet_dts[target], explicit_dts ? 1U : 0U,
@@ -1086,7 +1098,7 @@ void cdi_dvc_device::mpeg_schedule_packet(unsigned target)
 	m_mpeg_schedule_valid[target] = true;
 	++m_mpeg_schedule_events[target];
 
-	LOGMASKED(LOG_DMA,
+	LOGMASKED(LOG_MPEG,
 			"%s: DVC MPEG SCHED %s scr=%llu pts=%llu dts=%llu explicit_dts=%u play90=%lld decode90=%lld play45=%d decode45=%d event=%u\n",
 			machine().describe_context(), target == MPEG_FMA ? "FMA" : "FMV",
 			(unsigned long long)m_mpeg_clock90,
@@ -1212,7 +1224,7 @@ void cdi_dvc_device::mpeg_byte_w(unsigned target, uint8_t data)
 		if (m_mpeg_packet_remaining[target] == 0)
 		{
 			// MPEG-1 CD-i streams normally use bounded PES packets.
-			// A zero-length packet cannot be bounded by this Stage 7 parser,
+			// A zero-length packet cannot be bounded by the current parser,
 			// so return to start-code scanning rather than consuming forever.
 			mpeg_packet_done(target);
 		}
@@ -1399,7 +1411,7 @@ void cdi_dvc_device::dma_done()
 		m_fma_command &= ~0x8000;
 
 	const unsigned mpeg_target = m_dma_for_fma ? MPEG_FMA : MPEG_FMV;
-	LOGMASKED(LOG_DMA, "%s: DVC MPEG %s packets=%u payload=%u first=%02x last=%02x\n",
+	LOGMASKED(LOG_MPEG, "%s: DVC MPEG %s packets=%u payload=%u first=%02x last=%02x\n",
 			machine().describe_context(),
 			mpeg_target == MPEG_FMA ? "FMA" : "FMV",
 			m_mpeg_selected_packets[mpeg_target],
@@ -1418,7 +1430,7 @@ uint16_t cdi_dvc_device::mpeg_ram_r(offs_t offset, uint16_t mem_mask)
 	{
 		if (!machine().side_effects_disabled())
 			++m_mpeg_ram_gated_reads;
-		LOGMASKED(LOG_DMA, "%s: DVC MPEG RAM gated read %08x & %04x\n",
+		LOGMASKED(LOG_RAM_ACCESS, "%s: DVC MPEG RAM gated read %08x & %04x\n",
 				machine().describe_context(), 0xe80000 + uint32_t(offset << 1), mem_mask);
 		return 0;
 	}
@@ -1431,7 +1443,7 @@ void cdi_dvc_device::mpeg_ram_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 	if (!m_mpeg_ram_enabled)
 	{
 		++m_mpeg_ram_gated_writes;
-		LOGMASKED(LOG_DMA, "%s: DVC MPEG RAM gated write %08x <- %04x & %04x\n",
+		LOGMASKED(LOG_RAM_ACCESS, "%s: DVC MPEG RAM gated write %08x <- %04x & %04x\n",
 				machine().describe_context(), 0xe80000 + uint32_t(offset << 1), data, mem_mask);
 		return;
 	}
@@ -1479,7 +1491,7 @@ void cdi_dvc_device::write(offs_t offset, uint16_t data, uint16_t mem_mask)
 		if (m_mpeg_ram_gate_writes == MPEG_RAM_GATE_WRITES)
 		{
 			m_mpeg_ram_enabled = true;
-			LOGMASKED(LOG_DMA, "%s: DVC MPEG RAM gate enabled after %u VMPEG writes\n",
+			LOGMASKED(LOG_RAM_GATE, "%s: DVC MPEG RAM gate enabled after %u VMPEG writes\n",
 					machine().describe_context(), unsigned(m_mpeg_ram_gate_writes));
 		}
 	}
@@ -1499,22 +1511,22 @@ void cdi_dvc_device::write(offs_t offset, uint16_t data, uint16_t mem_mask)
 	switch (address)
 	{
 	case 0xe03000:
-		// Stage 5 FMA command semantics:
+		// Current FMA command model:
 		// 0001 = stop/reset, 0002 = start, bit 15 = DMA request.
 		COMBINE_DATA(&m_fma_command);
 
 		if (m_fma_command & 0x0001)
 		{
-			
-			mpeg_parser_reset(MPEG_FMA);m_fma_status = 0;
+			mpeg_parser_reset(MPEG_FMA);
+			m_fma_status = 0;
 			m_fma_interrupt_status = 0;
 			update_interrupt_state();
 		}
 
 		if (m_fma_command & 0x8000)
 		{
-			// The real device asserts its DMA request here.  The SCC68070
-			// transfer side is intentionally deferred to the DMA stage.
+			// Assert the external DMA request.  The SCC68070 channel-1 callback
+			// services the current synchronous transfer model.
 			m_fma_status &= ~0x0008;
 			m_dma_active = true;
 			m_dma_for_fma = true;
@@ -1619,19 +1631,19 @@ void cdi_dvc_device::write(offs_t offset, uint16_t data, uint16_t mem_mask)
 		{
 			m_video_visible = false;
 			m_video_show_on_next = false;
-			LOGMASKED(LOG_DMA, "%s: DVC VIDEO hide\n", machine().describe_context());
+			LOGMASKED(LOG_VIDEO, "%s: DVC VIDEO hide\n", machine().describe_context());
 		}
 		if (m_fmv_video_command & 0x0200)
 		{
 			m_video_visible = true;
 			m_video_show_on_next = false;
 			video_overlay_reset();
-			LOGMASKED(LOG_DMA, "%s: DVC VIDEO show immediate\n", machine().describe_context());
+			LOGMASKED(LOG_VIDEO, "%s: DVC VIDEO show immediate\n", machine().describe_context());
 		}
 		if (m_fmv_video_command & 0x0400)
 		{
 			m_video_show_on_next = true;
-			LOGMASKED(LOG_DMA, "%s: DVC VIDEO show armed for next frame\n", machine().describe_context());
+			LOGMASKED(LOG_VIDEO, "%s: DVC VIDEO show armed for next frame\n", machine().describe_context());
 		}
 		break;
 	case 0xe040c4:
