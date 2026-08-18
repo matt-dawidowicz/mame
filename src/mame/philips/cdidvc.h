@@ -76,16 +76,22 @@ private:
 	void audio_decoder_destroy();
 	void audio_decoder_feed(uint8_t data);
 	void audio_decoder_pump();
+	void audio_decoder_flush();
 
 	// MPEG video decode and MAME video presentation.
 	void video_presentation_reset();
 	void video_frame_clear();
+	void video_latch_frame();
 	void video_latch_geometry(bool at_vblank);
 	void video_overlay_reset();
 	void video_decoder_reset();
 	void video_decoder_destroy();
 	void video_decoder_feed(uint8_t data);
 	void video_decoder_pump();
+	void video_decoder_flush();
+	void video_picture_event(uint8_t picture_type);
+	void video_picture_events_flush();
+	uint16_t video_picture_events_pop();
 
 	// Provisional MPEG-RAM compatibility mechanism.
 	void mpeg_ram_compat_reset();
@@ -228,6 +234,13 @@ private:
 
 	// MPEG video decode and MAME video presentation.
 	std::vector<uint8_t> m_video_rgb24;
+	std::vector<uint32_t> m_video_decode_frame;
+	uint16_t m_video_decode_width = 0;
+	uint16_t m_video_decode_height = 0;
+	uint32_t m_video_decode_generation = 0;
+	bool m_video_decode_valid = false;
+	uint16_t m_video_decode_interrupts = 0;
+
 	std::vector<uint32_t> m_video_present_frame;
 	uint16_t m_video_present_width = 0;
 	uint16_t m_video_present_height = 0;
@@ -249,6 +262,7 @@ private:
 	bool m_video_geometry_frame_pending = false;
 	bool m_video_geometry_vblank_pending = false;
 	bool m_video_visible = false;
+	bool m_video_output_enabled = false;
 	bool m_video_show_on_next = false;
 
 	uint32_t m_video_overlay_hash = 2166136261U;
@@ -259,12 +273,23 @@ private:
 	plm_video_t *m_video_decoder = nullptr;
 	uint32_t m_video_es_prefix = 0;
 	uint32_t m_video_sequence_headers = 0;
+	uint32_t m_video_gop_headers = 0;
 	uint32_t m_video_picture_headers = 0;
+	uint8_t m_video_picture_header_bytes = 0;
+	uint16_t m_video_picture_marker_interrupts = 0;
+	uint16_t m_video_reference_interrupts = 0;
+	bool m_video_reference_valid = false;
+	std::vector<uint16_t> m_video_picture_event_queue;
+	size_t m_video_picture_event_read = 0;
 	uint32_t m_video_decoded_frames = 0;
 	uint16_t m_video_width = 0;
 	uint16_t m_video_height = 0;
 	uint32_t m_video_framerate_millihz = 0;
 	bool m_video_have_sequence = false;
+	bool m_video_sequence_end_pending = false;
+	uint32_t m_video_sequence_end_events = 0;
+	uint32_t m_video_last_picture_generation = 0;
+	bool m_video_last_picture_pending = false;
 
 	// 512 KiB MPEG/DVC RAM at E80000-EFFFFF.
 	//

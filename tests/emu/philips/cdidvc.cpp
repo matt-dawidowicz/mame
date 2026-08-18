@@ -78,3 +78,159 @@ TEST_CASE("CD-i DVC MPEG stream selection covers every stream ID and selector", 
 		}
 	}
 }
+
+TEST_CASE("CD-i DVC video commands decode the VMPEG VIDCMD bit field", "[emu][philips][dvc]")
+{
+	auto require_effects = [](uint16_t command, uint8_t video_buffer, bool scroll, bool register_update,
+			bool swap_buffer, bool video_on, bool video_off, bool hide, bool show_immediate, bool show_on_next)
+	{
+		cdi_dvc::video_command_effects const effects = cdi_dvc::decode_video_command(command);
+		INFO("command=" << command);
+		REQUIRE(effects.video_buffer == video_buffer);
+		REQUIRE(effects.scroll == scroll);
+		REQUIRE(effects.register_update == register_update);
+		REQUIRE(effects.swap_buffer == swap_buffer);
+		REQUIRE(effects.video_on == video_on);
+		REQUIRE(effects.video_off == video_off);
+		REQUIRE(effects.hide == hide);
+		REQUIRE(effects.show_immediate == show_immediate);
+		REQUIRE(effects.show_on_next == show_on_next);
+	};
+
+	require_effects(0x0000, 0, false, false, false, false, false, false, false, false);
+	require_effects(0x0003, 3, false, false, false, false, false, false, false, false);
+	require_effects(0x0008, 0, false, true, false, false, false, false, false, false);
+	require_effects(0x000c, 0, true, true, false, false, false, false, false, false);
+	require_effects(0x0010, 0, false, false, true, false, false, false, false, false);
+	require_effects(0x0020, 0, false, false, false, true, false, false, false, false);
+	require_effects(0x0040, 0, false, false, false, false, true, false, false, false);
+	require_effects(0x0120, 0, false, false, false, true, false, true, false, false);
+	require_effects(0x0220, 0, false, false, false, true, false, false, true, false);
+	require_effects(0x0420, 0, false, false, false, true, false, false, false, true);
+	require_effects(0x077f, 3, true, true, true, true, true, true, true, true);
+}
+
+TEST_CASE("CD-i DVC video command decoding covers every 16-bit command", "[emu][philips][dvc]")
+{
+	for (unsigned command = 0; command <= 0xffff; ++command)
+	{
+		cdi_dvc::video_command_effects const effects = cdi_dvc::decode_video_command(uint16_t(command));
+		INFO("command=" << command);
+		REQUIRE(effects.video_buffer == (command & 0x0003));
+		REQUIRE(effects.scroll == bool(command & 0x0004));
+		REQUIRE(effects.register_update == bool(command & 0x0008));
+		REQUIRE(effects.swap_buffer == bool(command & 0x0010));
+		REQUIRE(effects.video_on == bool(command & 0x0020));
+		REQUIRE(effects.video_off == bool(command & 0x0040));
+		REQUIRE(effects.hide == bool(command & 0x0100));
+		REQUIRE(effects.show_immediate == bool(command & 0x0200));
+		REQUIRE(effects.show_on_next == bool(command & 0x0400));
+	}
+}
+
+TEST_CASE("CD-i DVC FMA interrupt masks match VMPEG status bits", "[emu][philips][dvc]")
+{
+	REQUIRE(cdi_dvc::FMA_IRQ_END_ISO == 0x0001);
+	REQUIRE(cdi_dvc::FMA_IRQ_STREAM_CHANGE == 0x0002);
+	REQUIRE(cdi_dvc::FMA_IRQ_FRAME_DECODED == 0x0004);
+	REQUIRE(cdi_dvc::FMA_IRQ_UNDERFLOW == 0x0008);
+	REQUIRE(cdi_dvc::FMA_IRQ_DECODING_STARTED == 0x0010);
+	REQUIRE(cdi_dvc::FMA_IRQ_TIMER == 0x0100);
+}
+
+TEST_CASE("CD-i DVC FMV interrupt masks match VMPEG status bits", "[emu][philips][dvc]")
+{
+	REQUIRE(cdi_dvc::FMV_IRQ_SEQUENCE == 0x0001);
+	REQUIRE(cdi_dvc::FMV_IRQ_GOP == 0x0002);
+	REQUIRE(cdi_dvc::FMV_IRQ_PICTURE == 0x0004);
+	REQUIRE(cdi_dvc::FMV_IRQ_END_OF_DATA == 0x0008);
+	REQUIRE(cdi_dvc::FMV_IRQ_DCL == 0x0080);
+	REQUIRE(cdi_dvc::FMV_IRQ_TIMER == 0x0100);
+	REQUIRE(cdi_dvc::FMV_IRQ_END_SEQUENCE == 0x0200);
+	REQUIRE(cdi_dvc::FMV_IRQ_END_ISO == 0x0400);
+	REQUIRE(cdi_dvc::FMV_IRQ_VSYNC == 0x0800);
+	REQUIRE(cdi_dvc::FMV_IRQ_CLIP_UPDATE == 0x2000);
+	REQUIRE(cdi_dvc::FMV_IRQ_GEOMETRY_LATCH == 0x2080);
+}
+
+TEST_CASE("CD-i DVC picture events follow MPEG reference-frame reordering", "[emu][philips][dvc]")
+{
+	using state = cdi_dvc::picture_event_reorder_state;
+	using result = cdi_dvc::picture_event_reorder_result;
+
+	state current { 0, false };
+	result step = cdi_dvc::reorder_picture_events(current, 1,
+			cdi_dvc::FMV_IRQ_SEQUENCE | cdi_dvc::FMV_IRQ_GOP);
+	REQUIRE_FALSE(step.output_valid);
+	REQUIRE(step.state.reference_valid);
+	REQUIRE(step.state.reference_interrupts ==
+			(cdi_dvc::FMV_IRQ_SEQUENCE | cdi_dvc::FMV_IRQ_GOP));
+	current = step.state;
+
+	step = cdi_dvc::reorder_picture_events(current, 2, 0);
+	REQUIRE(step.output_valid);
+	REQUIRE(step.output_interrupts ==
+			(cdi_dvc::FMV_IRQ_SEQUENCE | cdi_dvc::FMV_IRQ_GOP));
+	REQUIRE(step.state.reference_valid);
+	REQUIRE(step.state.reference_interrupts == 0);
+	current = step.state;
+
+	step = cdi_dvc::reorder_picture_events(current, 3, 0);
+	REQUIRE(step.output_valid);
+	REQUIRE(step.output_interrupts == 0);
+	REQUIRE(step.state.reference_valid);
+	REQUIRE(step.state.reference_interrupts == 0);
+
+	step = cdi_dvc::flush_picture_events(step.state);
+	REQUIRE(step.output_valid);
+	REQUIRE(step.output_interrupts == 0);
+	REQUIRE_FALSE(step.state.reference_valid);
+	REQUIRE(step.state.reference_interrupts == 0);
+}
+
+TEST_CASE("CD-i DVC picture-event reordering covers every picture type and marker combination", "[emu][philips][dvc]")
+{
+	for (unsigned reference_valid = 0; reference_valid <= 1; ++reference_valid)
+	{
+		for (unsigned reference_interrupts = 0; reference_interrupts <= 3; ++reference_interrupts)
+		{
+			for (unsigned picture_type = 0; picture_type <= 7; ++picture_type)
+			{
+				for (unsigned picture_interrupts = 0; picture_interrupts <= 3; ++picture_interrupts)
+				{
+					cdi_dvc::picture_event_reorder_state const initial {
+						uint16_t(reference_interrupts), bool(reference_valid)
+					};
+					cdi_dvc::picture_event_reorder_result const actual = cdi_dvc::reorder_picture_events(
+							initial, uint8_t(picture_type), uint16_t(picture_interrupts));
+					INFO("reference_valid=" << reference_valid
+							<< " reference_interrupts=" << reference_interrupts
+							<< " picture_type=" << picture_type
+							<< " picture_interrupts=" << picture_interrupts);
+
+					if (picture_type == 1 || picture_type == 2)
+					{
+						REQUIRE(actual.output_valid == bool(reference_valid));
+						REQUIRE(actual.output_interrupts == reference_interrupts);
+						REQUIRE(actual.state.reference_valid);
+						REQUIRE(actual.state.reference_interrupts == picture_interrupts);
+					}
+					else if (picture_type == 3)
+					{
+						REQUIRE(actual.output_valid);
+						REQUIRE(actual.output_interrupts == picture_interrupts);
+						REQUIRE(actual.state.reference_valid == bool(reference_valid));
+						REQUIRE(actual.state.reference_interrupts == reference_interrupts);
+					}
+					else
+					{
+						REQUIRE_FALSE(actual.output_valid);
+						REQUIRE(actual.output_interrupts == 0);
+						REQUIRE(actual.state.reference_valid == bool(reference_valid));
+						REQUIRE(actual.state.reference_interrupts == reference_interrupts);
+					}
+				}
+			}
+		}
+	}
+}
