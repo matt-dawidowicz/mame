@@ -128,6 +128,7 @@ void cdi_dvc_device::device_start()
 	save_item(NAME(m_mpeg_dts_events));
 	save_item(NAME(m_mpeg_clock90));
 	save_item(NAME(m_mpeg_clock_valid));
+	save_item(NAME(m_mpeg_scr_dclk_anchor));
 	save_item(NAME(m_mpeg_schedule_play_delta90));
 	save_item(NAME(m_mpeg_schedule_decode_delta90));
 	save_item(NAME(m_mpeg_schedule_play_delta45));
@@ -138,6 +139,20 @@ void cdi_dvc_device::device_start()
 
 void cdi_dvc_device::device_stop()
 {
+	logerror("DVC_PRESENTATION_QUEUE_TELEMETRY decoded=%llu presented=%llu due_superseded=%llu flush_dropped=%llu waits=%llu fallback=%llu clocked=%llu total_late90=%llu max_late90=%llu compat_events=%llu max_depth=%llu vblanks=%llu queued=%u\n",
+			(unsigned long long)m_scheduler_decoded_frames,
+			(unsigned long long)m_scheduler_presented_frames,
+			(unsigned long long)m_scheduler_due_superseded,
+			(unsigned long long)m_scheduler_flush_dropped,
+			(unsigned long long)m_scheduler_wait_vblanks,
+			(unsigned long long)m_scheduler_fallback_presented,
+			(unsigned long long)m_scheduler_clocked_presented,
+			(unsigned long long)m_scheduler_total_late90,
+			(unsigned long long)m_scheduler_max_late90,
+			(unsigned long long)m_scheduler_compat_frame_events,
+			(unsigned long long)m_scheduler_max_queue_depth,
+			(unsigned long long)m_scheduler_vblanks,
+			unsigned(m_video_queue.size()));
 	audio_decoder_destroy();
 	video_decoder_destroy();
 }
@@ -147,6 +162,18 @@ void cdi_dvc_device::device_reset()
 	mpeg_ram_compat_reset();
 
 	video_presentation_reset();
+	m_scheduler_decoded_frames = 0;
+	m_scheduler_presented_frames = 0;
+	m_scheduler_due_superseded = 0;
+	m_scheduler_flush_dropped = 0;
+	m_scheduler_wait_vblanks = 0;
+	m_scheduler_fallback_presented = 0;
+	m_scheduler_clocked_presented = 0;
+	m_scheduler_total_late90 = 0;
+	m_scheduler_max_late90 = 0;
+	m_scheduler_compat_frame_events = 0;
+	m_scheduler_max_queue_depth = 0;
+	m_scheduler_vblanks = 0;
 	m_dclk_epoch_ticks = machine().time().as_ticks(45'000);
 	m_fmv_dclk_offset = 0;
 	m_fma_dclk_latch = 0;
@@ -196,6 +223,18 @@ uint32_t cdi_dvc_device::current_fma_dclk()
 uint32_t cdi_dvc_device::current_fmv_dclk()
 {
 	return current_fma_dclk() + m_fmv_dclk_offset;
+}
+
+uint64_t cdi_dvc_device::current_mpeg_clock90(unsigned target)
+{
+	if (target > MPEG_FMV || !m_mpeg_have_scr[target])
+		return m_mpeg_clock90;
+
+	uint32_t const current45 = target == MPEG_FMA
+			? current_fma_dclk()
+			: current_fmv_dclk();
+	return cdi_dvc::mpeg_clock_from_dclk(
+		m_mpeg_last_scr[target], m_mpeg_scr_dclk_anchor[target], current45);
 }
 
 void cdi_dvc_device::set_fmv_syscr(uint16_t data, uint16_t mem_mask)
@@ -671,12 +710,14 @@ void cdi_dvc_device::video_overlay_reset()
 void cdi_dvc_device::video_frame_clear()
 {
 	m_video_rgb24.clear();
-	m_video_decode_frame.clear();
-	m_video_decode_width = 0;
-	m_video_decode_height = 0;
-	m_video_decode_generation = 0;
-	m_video_decode_valid = false;
-	m_video_decode_interrupts = 0;
+	m_scheduler_flush_dropped += m_video_queue.size();
+	m_video_queue.clear();
+	m_video_pts_anchor90 = 0;
+	m_video_backend_anchor90 = 0;
+	m_video_pts_anchor_valid = false;
+	m_video_compat_interrupts = 0;
+	m_video_compat_generation = 0;
+	m_video_compat_frame_pending = false;
 	m_video_present_frame.clear();
 	m_video_present_width = 0;
 	m_video_present_height = 0;
@@ -709,44 +750,120 @@ void cdi_dvc_device::video_presentation_reset()
 
 void cdi_dvc_device::video_latch_frame()
 {
-	if (!m_video_decode_valid)
+	if (m_video_queue.empty())
 		return;
 
-	m_video_present_frame.swap(m_video_decode_frame);
-	m_video_present_width = m_video_decode_width;
-	m_video_present_height = m_video_decode_height;
-	m_video_present_generation = m_video_decode_generation;
-	m_video_present_valid = true;
-	m_video_decode_valid = false;
+	std::size_t selected_index = 0;
+	std::size_t consume_count = 1;
+	bool timestamp_driven = false;
+	uint64_t clock90 = 0;
 
-	// A non-scrolling register update takes effect when a new picture starts
-	// display.  Keeping this with the frame swap also prevents mid-frame
-	// geometry changes and presentation-buffer tearing.
+	if (m_video_queue.front().timestamp_valid && m_mpeg_have_scr[MPEG_FMV])
+	{
+		std::vector<uint64_t> timestamps90;
+		timestamps90.reserve(m_video_queue.size());
+		for (queued_video_frame const &queued : m_video_queue)
+		{
+			if (!queued.timestamp_valid)
+				break;
+			timestamps90.push_back(queued.timestamp90);
+		}
+
+		clock90 = current_mpeg_clock90(MPEG_FMV);
+		cdi_dvc::presentation_selection const selection =
+			cdi_dvc::select_latest_due_presentation(
+				timestamps90.data(), timestamps90.size(), clock90);
+		if (!selection.valid)
+		{
+			++m_scheduler_wait_vblanks;
+			return;
+		}
+
+		selected_index = selection.selected_index;
+		consume_count = selection.consume_count;
+		timestamp_driven = true;
+	}
+	else
+	{
+		// Compatibility fallback for streams that have not established both a
+		// frame timestamp and an FMV SCR clock.  Preserve queued order and do not
+		// reintroduce the old single-slot overwrite behavior.
+		++m_scheduler_fallback_presented;
+	}
+
+	queued_video_frame selected = std::move(m_video_queue[selected_index]);
+	for (std::size_t index = 0; index < consume_count; ++index)
+		m_video_queue.pop_front();
+
+	if (timestamp_driven && selected_index)
+		m_scheduler_due_superseded += selected_index;
+	if (timestamp_driven)
+	{
+		++m_scheduler_clocked_presented;
+		int64_t const delta90 = cdi_dvc::mpeg_timestamp_delta(selected.timestamp90, clock90);
+		uint64_t const late90 = delta90 < 0 ? uint64_t(-delta90) : 0;
+		m_scheduler_total_late90 += late90;
+		if (late90 > m_scheduler_max_late90)
+			m_scheduler_max_late90 = late90;
+	}
+
+	++m_scheduler_presented_frames;
+	m_video_present_frame = std::move(selected.pixels);
+	m_video_present_width = selected.width;
+	m_video_present_height = selected.height;
+	m_video_present_generation = selected.generation;
+	m_video_present_valid = true;
+
+	video_overlay_reset();
+
+	LOGMASKED(LOG_VIDEO,
+			"%s: DVC VIDEO presented frame=%u size=%ux%u pts_valid=%u pts=%llu clock=%llu queue=%u superseded=%u\n",
+			machine().describe_context(), m_video_present_generation,
+			m_video_present_width, m_video_present_height,
+			selected.timestamp_valid ? 1U : 0U,
+			(unsigned long long)selected.timestamp90,
+			(unsigned long long)clock90,
+			unsigned(m_video_queue.size()), unsigned(selected_index));
+}
+
+void cdi_dvc_device::video_compat_frame_event()
+{
+	if (!m_video_compat_frame_pending)
+		return;
+
+	++m_scheduler_compat_frame_events;
+
+	// Preserve the previously validated guest-visible event boundary while
+	// frame pixels themselves are selected independently by the PTS queue.
 	video_latch_geometry(false);
 	if (m_video_show_on_next)
 	{
 		m_video_visible = true;
 		m_video_show_on_next = false;
-		LOGMASKED(LOG_VIDEO, "%s: DVC VIDEO show-next frame=%u\n",
-				machine().describe_context(), m_video_present_generation);
+		LOGMASKED(LOG_VIDEO, "%s: DVC VIDEO compat show-next frame=%u\n",
+				machine().describe_context(), m_video_compat_generation);
 	}
 
 	video_overlay_reset();
-	uint16_t interrupts = cdi_dvc::FMV_IRQ_PICTURE | m_video_decode_interrupts;
-	m_video_decode_interrupts = 0;
-	if (m_video_last_picture_pending && m_video_present_generation == m_video_last_picture_generation)
+	uint16_t interrupts = cdi_dvc::FMV_IRQ_PICTURE | m_video_compat_interrupts;
+	if (m_video_last_picture_pending && m_video_compat_generation == m_video_last_picture_generation)
 	{
 		interrupts |= cdi_dvc::FMV_IRQ_END_OF_DATA;
 		m_video_last_picture_pending = false;
-		LOGMASKED(LOG_VIDEO, "%s: DVC VIDEO last picture frame=%u\n",
-				machine().describe_context(), m_video_present_generation);
+		LOGMASKED(LOG_VIDEO, "%s: DVC VIDEO compat last picture frame=%u\n",
+				machine().describe_context(), m_video_compat_generation);
 	}
 	m_fmv_interrupt_status |= interrupts;
 	update_interrupt_state();
 
-	LOGMASKED(LOG_VIDEO, "%s: DVC VIDEO presented frame=%u size=%ux%u\n",
-			machine().describe_context(), m_video_present_generation,
-			m_video_present_width, m_video_present_height);
+	LOGMASKED(LOG_VIDEO,
+			"%s: DVC VIDEO compat frame-event generation=%u interrupts=%04x queue=%u\n",
+			machine().describe_context(), m_video_compat_generation,
+			interrupts, unsigned(m_video_queue.size()));
+
+	m_video_compat_interrupts = 0;
+	m_video_compat_generation = 0;
+	m_video_compat_frame_pending = false;
 }
 
 void cdi_dvc_device::video_latch_geometry(bool at_vblank)
@@ -775,9 +892,11 @@ void cdi_dvc_device::video_latch_geometry(bool at_vblank)
 
 void cdi_dvc_device::video_vblank()
 {
+	++m_scheduler_vblanks;
 	m_fmv_interrupt_status |= cdi_dvc::FMV_IRQ_VSYNC;
 	update_interrupt_state();
 	video_latch_geometry(true);
+	video_compat_frame_event();
 	video_latch_frame();
 }
 
@@ -1012,6 +1131,7 @@ void cdi_dvc_device::video_decoder_pump()
 		if (!frame)
 			break;
 
+		++m_scheduler_decoded_frames;
 		++m_video_decoded_frames;
 
 		uint32_t frame_hash = 2166136261U;
@@ -1032,27 +1152,66 @@ void cdi_dvc_device::video_decoder_pump()
 				machine().describe_context(),
 				m_video_decoded_frames, frame->width, frame->height, frame->time, frame_hash);
 
+		queued_video_frame queued;
+		queued.width = uint16_t(frame->width);
+		queued.height = uint16_t(frame->height);
+		queued.generation = m_video_decoded_frames;
+		queued.interrupts = video_picture_events_pop();
+		m_video_compat_interrupts |= queued.interrupts;
+		m_video_compat_generation = queued.generation;
+		m_video_compat_frame_pending = true;
+
+		// PL_MPEG advances its raw-video decoder clock by one coded-frame
+		// duration per returned frame.  Use only that *relative* cadence here,
+		// anchored once to the first video PES PTS seen after decoder reset.
+		// This is an emulator presentation model, not a VMPEG FIFO claim.
+		uint64_t const backend_time90 = uint64_t(
+			frame->time * double(cdi_dvc::MPEG_SYSTEM_CLOCK_HZ) + 0.5);
+		if (!m_video_pts_anchor_valid && m_mpeg_packet_have_pts[MPEG_FMV])
+		{
+			m_video_pts_anchor90 = m_mpeg_packet_pts[MPEG_FMV];
+			m_video_backend_anchor90 = backend_time90;
+			m_video_pts_anchor_valid = true;
+			LOGMASKED(LOG_VIDEO,
+					"%s: DVC VIDEO PTS anchor pts=%llu backend90=%llu frame=%u\n",
+					machine().describe_context(),
+					(unsigned long long)m_video_pts_anchor90,
+					(unsigned long long)m_video_backend_anchor90,
+					queued.generation);
+		}
+		if (m_video_pts_anchor_valid)
+		{
+			int64_t const relative90 =
+				int64_t(backend_time90) - int64_t(m_video_backend_anchor90);
+			queued.timestamp90 = cdi_dvc::mpeg_timestamp_normalize(
+				m_video_pts_anchor90 + uint64_t(relative90));
+			queued.timestamp_valid = true;
+		}
+
 		m_video_rgb24.resize(size_t(frame->width) * size_t(frame->height) * 3);
-		m_video_decode_interrupts |= video_picture_events_pop();
 		plm_frame_to_rgb(frame, m_video_rgb24.data(), frame->width * 3);
-		m_video_decode_frame.resize(size_t(frame->width) * size_t(frame->height));
-		for (size_t i = 0; i < m_video_decode_frame.size(); ++i)
+		queued.pixels.resize(size_t(frame->width) * size_t(frame->height));
+		for (size_t i = 0; i < queued.pixels.size(); ++i)
 		{
 			size_t const off = i * 3;
-			m_video_decode_frame[i] = 0xff000000U
+			queued.pixels[i] = 0xff000000U
 					| (uint32_t(m_video_rgb24[off + 0]) << 16)
 					| (uint32_t(m_video_rgb24[off + 1]) << 8)
 					| uint32_t(m_video_rgb24[off + 2]);
 		}
-		m_video_decode_width = frame->width;
-		m_video_decode_height = frame->height;
-		m_video_decode_generation = m_video_decoded_frames;
-		m_video_decode_valid = true;
-		LOGMASKED(LOG_VIDEO, "%s: DVC VIDEO queued frame=%u size=%ux%u rgb_bytes=%u\n",
-				machine().describe_context(), m_video_decode_generation,
-				m_video_decode_width, m_video_decode_height,
-				unsigned(m_video_rgb24.size()));
 
+		uint32_t const generation = queued.generation;
+		uint64_t const timestamp90 = queued.timestamp90;
+		bool const timestamp_valid = queued.timestamp_valid;
+		m_video_queue.push_back(std::move(queued));
+		if (m_video_queue.size() > m_scheduler_max_queue_depth)
+			m_scheduler_max_queue_depth = m_video_queue.size();
+
+		LOGMASKED(LOG_VIDEO,
+				"%s: DVC VIDEO queued frame=%u size=%ux%u pts_valid=%u pts=%llu depth=%u\n",
+				machine().describe_context(), generation, frame->width, frame->height,
+				timestamp_valid ? 1U : 0U, (unsigned long long)timestamp90,
+				unsigned(m_video_queue.size()));
 	}
 }
 
@@ -1065,8 +1224,8 @@ void cdi_dvc_device::video_decoder_flush()
 	plm_buffer_signal_end(m_video_buffer);
 	video_decoder_pump();
 
-	uint32_t const last_generation = m_video_decode_valid
-			? m_video_decode_generation
+	uint32_t const last_generation = !m_video_queue.empty()
+			? m_video_queue.back().generation
 			: (m_video_present_valid ? m_video_present_generation : 0);
 	if (last_generation)
 	{
@@ -1097,6 +1256,7 @@ void cdi_dvc_device::mpeg_parser_reset(unsigned target)
 	m_mpeg_scr_temp[target] = 0;
 	m_mpeg_last_scr[target] = 0;
 	m_mpeg_have_scr[target] = false;
+	m_mpeg_scr_dclk_anchor[target] = 0;
 	m_mpeg_scr_events[target] = 0;
 	m_mpeg_ts_mode[target] = 0;
 	m_mpeg_ts_index[target] = 0;
@@ -1146,6 +1306,9 @@ void cdi_dvc_device::mpeg_scr_byte(unsigned target, uint8_t data)
 		m_mpeg_scr_temp[target] |= uint64_t(data >> 1);
 		m_mpeg_last_scr[target] = m_mpeg_scr_temp[target] & ((uint64_t(1) << 33) - 1);
 		m_mpeg_have_scr[target] = true;
+		m_mpeg_scr_dclk_anchor[target] = target == MPEG_FMA
+				? current_fma_dclk()
+				: current_fmv_dclk();
 		++m_mpeg_scr_events[target];
 		m_mpeg_clock90 = m_mpeg_last_scr[target];
 		m_mpeg_clock_valid = true;

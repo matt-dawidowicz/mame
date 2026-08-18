@@ -58,6 +58,7 @@ project("mametests")
 	files {
 		MAME_DIR .. "tests/main.cpp",
 		MAME_DIR .. "tests/emu/philips/cdidvc.cpp",
+		MAME_DIR .. "tests/emu/philips/cdidvc_timing.cpp",
 		MAME_DIR .. "tests/lib/util/corestr.cpp",
 		MAME_DIR .. "tests/lib/util/options.cpp",
 		MAME_DIR .. "tests/emu/attotime.cpp",

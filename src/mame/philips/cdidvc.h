@@ -7,6 +7,7 @@
 #pragma once
 
 #include <array>
+#include <deque>
 #include <vector>
 
 struct plm_buffer_t;
@@ -51,6 +52,7 @@ private:
 	void update_timer();
 	uint32_t current_fma_dclk();
 	uint32_t current_fmv_dclk();
+	uint64_t current_mpeg_clock90(unsigned target);
 	void set_fmv_syscr(uint16_t data, uint16_t mem_mask);
 
 	// DMA ingress for the current synchronous transfer model.
@@ -82,6 +84,7 @@ private:
 	void video_presentation_reset();
 	void video_frame_clear();
 	void video_latch_frame();
+	void video_compat_frame_event();
 	void video_latch_geometry(bool at_vblank);
 	void video_overlay_reset();
 	void video_decoder_reset();
@@ -192,6 +195,7 @@ private:
 
 	uint64_t m_mpeg_clock90 = 0;
 	bool m_mpeg_clock_valid = false;
+	uint32_t m_mpeg_scr_dclk_anchor[2] = { 0, 0 };
 	int64_t m_mpeg_schedule_play_delta90[2] = { 0, 0 };
 	int64_t m_mpeg_schedule_decode_delta90[2] = { 0, 0 };
 	int32_t m_mpeg_schedule_play_delta45[2] = { 0, 0 };
@@ -234,18 +238,51 @@ private:
 
 	// MPEG video decode and MAME video presentation.
 	std::vector<uint8_t> m_video_rgb24;
-	std::vector<uint32_t> m_video_decode_frame;
-	uint16_t m_video_decode_width = 0;
-	uint16_t m_video_decode_height = 0;
-	uint32_t m_video_decode_generation = 0;
-	bool m_video_decode_valid = false;
-	uint16_t m_video_decode_interrupts = 0;
+
+	// CURRENT IMPLEMENTATION MODEL, NOT HARDWARE SPECIFICATION:
+	// retain decoded pictures until their presentation time is examined.
+	struct queued_video_frame
+	{
+		std::vector<uint32_t> pixels;
+		uint16_t width = 0;
+		uint16_t height = 0;
+		uint32_t generation = 0;
+		uint16_t interrupts = 0;
+		uint64_t timestamp90 = 0;
+		bool timestamp_valid = false;
+	};
+	std::deque<queued_video_frame> m_video_queue;
+	uint64_t m_video_pts_anchor90 = 0;
+	uint64_t m_video_backend_anchor90 = 0;
+	bool m_video_pts_anchor_valid = false;
 
 	std::vector<uint32_t> m_video_present_frame;
 	uint16_t m_video_present_width = 0;
 	uint16_t m_video_present_height = 0;
 	uint32_t m_video_present_generation = 0;
 	bool m_video_present_valid = false;
+
+	// PROVISIONAL COMPATIBILITY MECHANISM, NOT HARDWARE SPECIFICATION:
+	// preserve the previously validated guest-visible frame-event cadence
+	// while queued pixel presentation is evaluated independently by PTS.
+	uint16_t m_video_compat_interrupts = 0;
+	uint32_t m_video_compat_generation = 0;
+	bool m_video_compat_frame_pending = false;
+
+	// Runtime evidence counters for the queue implementation.  These are
+	// diagnostic only and do not participate in guest-visible behavior.
+	uint64_t m_scheduler_decoded_frames = 0;
+	uint64_t m_scheduler_presented_frames = 0;
+	uint64_t m_scheduler_due_superseded = 0;
+	uint64_t m_scheduler_flush_dropped = 0;
+	uint64_t m_scheduler_wait_vblanks = 0;
+	uint64_t m_scheduler_fallback_presented = 0;
+	uint64_t m_scheduler_clocked_presented = 0;
+	uint64_t m_scheduler_total_late90 = 0;
+	uint64_t m_scheduler_max_late90 = 0;
+	uint64_t m_scheduler_compat_frame_events = 0;
+	uint64_t m_scheduler_max_queue_depth = 0;
+	uint64_t m_scheduler_vblanks = 0;
 
 	uint16_t m_video_screen_y_shadow = 0;
 	uint16_t m_video_screen_x_shadow = 0;

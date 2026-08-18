@@ -329,7 +329,7 @@ void cdislave_hle_device::slave_w(offs_t offset, uint16_t data)
 						break;
 					case 0xf6: // Request NTSC/PAL Status
 						LOGMASKED(LOG_COMMANDS | LOG_WRITES, "slave_w: Channel %d: Request NTSC/PAL Status (0xf6)\n", offset);
-						prepare_readback(attotime::never, 2, 2, 0xf6, 2, 0, 0, 0xf6);
+						prepare_readback(attotime::never, 2, 2, 0xf6, uint8_t(m_video_region), 0, 0, 0xf6);
 						m_in_index = 0;
 						break;
 					case 0xf7: // Enable Input Polling

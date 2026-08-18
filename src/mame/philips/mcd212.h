@@ -26,6 +26,8 @@ TODO:
 
 #pragma once
 
+#include "cdi_video_timing.h"
+
 
 //**************************************************************************
 //  TYPE DEFINITIONS
@@ -46,6 +48,7 @@ public:
 	mcd212_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock);
 
 	auto int_callback() { return m_int_callback.bind(); }
+	void set_video_standard(cdi_video::standard video_standard) { m_video_standard = video_standard; }
 
 	uint32_t screen_update(screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &cliprect);
 	bool const *external_video_line() const { return m_external_video_line; }
@@ -240,6 +243,7 @@ protected:
 	bool m_external_video_line[768]{};
 	int m_ica_height = 0;
 	int m_total_height = 0;
+	cdi_video::standard m_video_standard = cdi_video::standard::pal_tv;
 	emu_timer *m_ica_timer = nullptr;
 	emu_timer *m_dca_timer = nullptr;
 

@@ -797,7 +797,13 @@ uint8_t mcd212_device::csr1_r()
 void mcd212_device::csr1_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 {
 	LOGMASKED(LOG_MAIN_REG_WRITES, "%s: Control/Status Register 1 Write: %04x & %08x\n", machine().describe_context(), data, mem_mask);
+	uint16_t const old_csrw = m_csrw[0];
 	COMBINE_DATA(&m_csrw[0]);
+	if (BIT(old_csrw, CSR1W_ST_BIT) != BIT(m_csrw[0], CSR1W_ST_BIT))
+	{
+		logerror("MCD212_TIMING_CONTROL time=%f source=CSR1W old=%04x new=%04x ST=%u\n",
+			machine().time().as_double(), old_csrw, m_csrw[0], BIT(m_csrw[0], CSR1W_ST_BIT));
+	}
 }
 
 uint16_t mcd212_device::dcr1_r(offs_t offset, uint16_t mem_mask)
@@ -809,7 +815,15 @@ uint16_t mcd212_device::dcr1_r(offs_t offset, uint16_t mem_mask)
 void mcd212_device::dcr1_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 {
 	LOGMASKED(LOG_MAIN_REG_WRITES, "%s: Display Command Register 1 Write: %04x & %08x\n", machine().describe_context(), data, mem_mask);
+	uint16_t const old_dcr = m_dcr[0];
 	COMBINE_DATA(&m_dcr[0]);
+	uint16_t const timing_mask = (1U << DCR_CF_BIT) | (1U << DCR_FD_BIT);
+	if ((old_dcr ^ m_dcr[0]) & timing_mask)
+	{
+		logerror("MCD212_TIMING_CONTROL time=%f source=DCR1 old=%04x new=%04x CF=%u FD=%u\n",
+			machine().time().as_double(), old_dcr, m_dcr[0],
+			BIT(m_dcr[0], DCR_CF_BIT), BIT(m_dcr[0], DCR_FD_BIT));
+	}
 }
 
 uint16_t mcd212_device::vsr1_r(offs_t offset, uint16_t mem_mask)
@@ -1139,8 +1153,9 @@ void mcd212_device::device_reset()
 	std::fill_n(m_matte_flag[0], std::size(m_matte_flag[0]), false);
 	std::fill_n(m_matte_flag[1], std::size(m_matte_flag[1]), false);
 
-	m_ica_height = 32;
-	m_total_height = 312;
+	cdi_video::timing_profile const video_timing = cdi_video::profile(m_video_standard);
+	m_total_height = video_timing.noninterlace_total_lines;
+	m_ica_height = m_total_height - video_timing.normal_height;
 	m_blink_time = 0;
 	for (int i = 0; i < m_total_height; i++)
 	{

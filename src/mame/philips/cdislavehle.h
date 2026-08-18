@@ -40,6 +40,10 @@ public:
 	auto read_mousebtn() { return m_read_mousebtn.bind(); }
 	auto atten_callback() { return m_atten_w.bind(); }
 
+	// Real SLAVE F6 region responses: NTSC=0x01, PAL=0x02.
+	enum class video_region : uint8_t { ntsc = 0x01, pal = 0x02 };
+	void set_video_region(video_region region) { m_video_region = region; }
+
 	uint8_t* get_lcd_state() { return m_lcd_state; }
 
 	uint16_t slave_r(offs_t offset);
@@ -86,6 +90,8 @@ private:
 	uint8_t m_polling_active;
 
 	uint8_t m_xbus_interrupt_enable;
+
+	video_region m_video_region = video_region::pal;
 
 	uint8_t m_lcd_state[16];
 
