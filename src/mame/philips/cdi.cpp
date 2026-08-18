@@ -98,10 +98,17 @@ void cdi_state::cdimono1_mem(address_map &map)
 	map(0x400000, 0x47ffff).r(FUNC(cdi_state::main_rom_r));
 	map(0x4fffe0, 0x4fffff).m(m_mcd212, FUNC(mcd212_device::map));
 	map(0x500000, 0x57ffff).ram();
+}
+
+// Mono-I with the optional Digital Video Cartridge installed.
+void cdi_state::cdimono1dvc_mem(address_map &map)
+{
+	cdimono1_mem(map);
+
 	map(0xd00000, 0xdfffff).ram(); // DVC RAM block 1
 	map(0xe00000, 0xe3ffff).rw(m_dvc, FUNC(cdi_dvc_device::read), FUNC(cdi_dvc_device::write)); // VMPEG registers
 	map(0xe40000, 0xe7ffff).rw(m_dvc, FUNC(cdi_dvc_device::rom_r), FUNC(cdi_dvc_device::rom_w)); // DVC OS-9 driver ROM window
-	map(0xe80000, 0xefffff).rw(m_dvc, FUNC(cdi_dvc_device::mpeg_ram_r), FUNC(cdi_dvc_device::mpeg_ram_w)); // DVC MPEG RAM; hidden from ordinary RAM crawler at reset
+	map(0xe80000, 0xefffff).rw(m_dvc, FUNC(cdi_dvc_device::mpeg_ram_r), FUNC(cdi_dvc_device::mpeg_ram_w)); // DVC MPEG RAM; startup visibility remains provisional
 }
 
 void cdi_state::cdimono2_mem(address_map &map)
@@ -573,14 +580,6 @@ void cdi_state::cdimono1_base(machine_config &config)
 	m_slave_hle->int_callback().set(m_maincpu, FUNC(scc68070_device::in2_w));
 	m_slave_hle->atten_callback().set(m_cdic, FUNC(cdicdic_device::atten_w));
 
-	CDI_DVC(config, m_dvc, 0);
-
-	m_dvc->add_route(0, "speaker", 1.0, 0);
-
-	m_dvc->add_route(1, "speaker", 1.0, 1);
-	m_dvc->intreq_callback().set(FUNC(cdi_state::dvc_irq_w));
-	m_dvc->dma_req_callback().set(FUNC(cdi_state::dvc_dma_req_w));
-
 	CDROM(config, m_cdrom);
 	m_cdrom->set_interface("cdrom");
 
@@ -695,6 +694,26 @@ void cdi_state::cdimono1(machine_config &config)
 	m_slave_hle->read_mousebtn().set_ioport("MOUSEBTN");
 
 	SOFTWARE_LIST(config, "cd_list").set_original("cdi").set_filter("!DVC");
+	SOFTWARE_LIST(config, "photocd_list").set_compatible("photo_cd");
+}
+
+// CD-i Mono-I with the optional Digital Video Cartridge.
+void cdi_state::cdimono1dvc(machine_config &config)
+{
+	cdimono1_base(config);
+	m_maincpu->set_addrmap(AS_PROGRAM, &cdi_state::cdimono1dvc_mem);
+
+	CDI_DVC(config, m_dvc, 0);
+	m_dvc->add_route(0, "speaker", 1.0, 0);
+	m_dvc->add_route(1, "speaker", 1.0, 1);
+	m_dvc->intreq_callback().set(FUNC(cdi_state::dvc_irq_w));
+	m_dvc->dma_req_callback().set(FUNC(cdi_state::dvc_dma_req_w));
+
+	m_slave_hle->read_mousex().set_ioport("MOUSEX");
+	m_slave_hle->read_mousey().set_ioport("MOUSEY");
+	m_slave_hle->read_mousebtn().set_ioport("MOUSEBTN");
+
+	SOFTWARE_LIST(config, "cd_list").set_original("cdi");
 	SOFTWARE_LIST(config, "photocd_list").set_compatible("photo_cd");
 }
 
@@ -1049,7 +1068,7 @@ ROM_END
 /*    YEAR  NAME      PARENT  COMPAT  MACHINE   INPUT     CLASS      INIT        COMPANY       FULLNAME */
 // BIOS / System
 CONS( 1991, cdimono1, 0,      0,      cdimono1, cdi,      cdi_state, empty_init, "Philips",    "CD-i (Mono-I) (PAL)",   MACHINE_IMPERFECT_GRAPHICS | MACHINE_IMPERFECT_SOUND | MACHINE_SUPPORTS_SAVE )
-CONS( 1991, cdimono1dvc, cdimono1, 0, cdimono1, cdi, cdi_state, empty_init, "Philips", "CD-i (Mono-I) (PAL) with Digital Video Cartridge", MACHINE_NOT_WORKING | MACHINE_IMPERFECT_GRAPHICS | MACHINE_IMPERFECT_SOUND | MACHINE_SUPPORTS_SAVE )
+CONS( 1991, cdimono1dvc, cdimono1, 0, cdimono1dvc, cdi, cdi_state, empty_init, "Philips", "CD-i (Mono-I) (PAL) with Digital Video Cartridge", MACHINE_NOT_WORKING | MACHINE_IMPERFECT_GRAPHICS | MACHINE_IMPERFECT_SOUND )
 CONS( 1991, cdimono2, 0,      0,      cdimono2, cdimono2, cdi_state, empty_init, "Philips",    "CD-i (Mono-II) (NTSC)",   MACHINE_NOT_WORKING )
 CONS( 1991, cdi910,   0,      0,      cdi910,   cdimono2, cdi_state, empty_init, "Philips",    "CD-i 910-17P Mini-MMC (PAL)",   MACHINE_NOT_WORKING )
 CONS( 1991, cdi490a,  0,      0,      cdimono1, cdi,      cdi_state, empty_init, "Philips",    "CD-i 490",   MACHINE_NOT_WORKING )
