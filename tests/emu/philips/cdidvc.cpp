@@ -1,9 +1,15 @@
 // license:BSD-3-Clause
 // copyright-holders:Matt Jordan
 
+#include <vector>
+
 #include "catch.hpp"
 
 #include "cdidvc_utils.h"
+
+#define PLM_NO_STDIO
+#define PL_MPEG_IMPLEMENTATION
+#include "../../../3rdparty/pl_mpeg/pl_mpeg.h"
 
 TEST_CASE("CD-i DVC MPEG timestamp deltas wrap at 33 bits", "[emu][philips][dvc]")
 {
@@ -233,4 +239,42 @@ TEST_CASE("CD-i DVC picture-event reordering covers every picture type and marke
 			}
 		}
 	}
+}
+
+TEST_CASE("CD-i DVC MPEG audio accepts legal per-frame channel-mode changes", "[emu][philips][dvc]")
+{
+	// Two synthetic 192 kbit/s, 44.1 kHz MPEG-1 Layer II frames.  The first
+	// uses stereo and the second joint stereo, matching the transition observed
+	// at the beginning of The 7th Guest stream without retaining game data.
+	constexpr size_t frame_size = 627;
+	std::vector<uint8_t> stream(frame_size * 2, 0);
+	auto write_header = [&stream](size_t offset, uint8_t mode)
+	{
+		stream[offset + 0] = 0xff;
+		stream[offset + 1] = 0xfd;
+		stream[offset + 2] = 0xa2;
+		stream[offset + 3] = mode;
+	};
+	write_header(0, 0x00);
+	write_header(frame_size, 0x60);
+
+	plm_buffer_t *const buffer = plm_buffer_create_with_capacity(stream.size());
+	REQUIRE(buffer != nullptr);
+	REQUIRE(plm_buffer_write(buffer, stream.data(), stream.size()) == stream.size());
+	plm_audio_t *const decoder = plm_audio_create_with_buffer(buffer, 1);
+	REQUIRE(decoder != nullptr);
+	REQUIRE(plm_audio_has_header(decoder));
+	REQUIRE(decoder->mode == PLM_AUDIO_MODE_STEREO);
+
+	plm_samples_t *const first = plm_audio_decode(decoder);
+	REQUIRE(first != nullptr);
+	REQUIRE(first->count == PLM_AUDIO_SAMPLES_PER_FRAME);
+	REQUIRE(decoder->mode == PLM_AUDIO_MODE_STEREO);
+
+	plm_samples_t *const second = plm_audio_decode(decoder);
+	REQUIRE(second != nullptr);
+	REQUIRE(second->count == PLM_AUDIO_SAMPLES_PER_FRAME);
+	REQUIRE(decoder->mode == PLM_AUDIO_MODE_JOINT_STEREO);
+
+	plm_audio_destroy(decoder);
 }

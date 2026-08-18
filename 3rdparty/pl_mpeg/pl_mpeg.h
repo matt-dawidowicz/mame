@@ -4039,13 +4039,13 @@ int plm_audio_decode_header(plm_audio_t *self) {
 	plm_buffer_skip(self->buffer, 1); // f_private
 	int mode = plm_buffer_read(self->buffer, 2);
 
-	// If we already have a header, make sure the samplerate, bitrate and mode
-	// are still the same, otherwise we might have missed sync.
+	// If we already have a header, make sure the samplerate and bitrate are
+	// still the same, otherwise we might have missed sync. Channel mode may
+	// legitimately change between MPEG audio frames.
 	if (
 		self->has_header && (
 			self->bitrate_index != bitrate_index ||
-			self->samplerate_index != samplerate_index ||
-			self->mode != mode
+			self->samplerate_index != samplerate_index
 		)
 	) {
 		return 0;
