@@ -14,7 +14,9 @@
     Known limitations remain: DMA transfers are serviced synchronously, A/V
     presentation scheduling is incomplete, decoder/presentation state is not
     fully save-state serializable, and MPEG-RAM startup visibility currently
-    uses a provisional compatibility gate.
+    uses a provisional MAME-only compatibility trigger. Several fixed register
+    values and video-presentation scale factors also await independent hardware
+    attribution.
 
 ***************************************************************************/
 
@@ -54,8 +56,8 @@ void cdi_dvc_device::device_start()
 {
 	m_mpeg_ram.fill(0);
 	save_item(NAME(m_mpeg_ram));
-	save_item(NAME(m_mpeg_ram_gate_writes));
-	save_item(NAME(m_mpeg_ram_enabled));
+	save_item(NAME(m_mpeg_ram_compat_write_count));
+	save_item(NAME(m_mpeg_ram_compat_visible));
 	save_item(NAME(m_mpeg_ram_gated_reads));
 	save_item(NAME(m_mpeg_ram_gated_writes));
 
@@ -140,10 +142,7 @@ void cdi_dvc_device::device_stop()
 
 void cdi_dvc_device::device_reset()
 {
-	m_mpeg_ram_gate_writes = 0;
-	m_mpeg_ram_enabled = false;
-	m_mpeg_ram_gated_reads = 0;
-	m_mpeg_ram_gated_writes = 0;
+	mpeg_ram_compat_reset();
 
 	video_presentation_reset();
 	m_dclk_epoch_ticks = machine().time().as_ticks(45'000);
@@ -736,6 +735,8 @@ void cdi_dvc_device::video_overlay_scanline(uint32_t *pixels, unsigned pixel_cou
 	if (!window_w || !window_h)
 		return;
 
+	// Current MAME presentation mapping; hardware provenance for these scale
+	// factors is still pending.
 	int const dst_x = int(m_video_screen_x) * 4;
 	int const dst_y = visible_top + int(m_video_screen_y) * 2;
 	int const rel_y = physical_y - dst_y;
@@ -1424,9 +1425,37 @@ void cdi_dvc_device::dma_done()
 	m_dma_req_callback(CLEAR_LINE);
 }
 
+void cdi_dvc_device::mpeg_ram_compat_reset()
+{
+	m_mpeg_ram_compat_write_count = 0;
+	m_mpeg_ram_compat_visible = false;
+	m_mpeg_ram_gated_reads = 0;
+	m_mpeg_ram_gated_writes = 0;
+}
+
+void cdi_dvc_device::mpeg_ram_compat_note_vmpeg_write()
+{
+	// MAME compatibility mechanism only.  The validated behavior is that DVC
+	// MPEG RAM must not participate in the ordinary CD-RTOS boot-time RAM crawl
+	// and must become usable by the DVC firmware later.  The real ownership/
+	// enable mechanism is still unknown; do not port this threshold as hardware.
+	if (m_mpeg_ram_compat_visible)
+		return;
+
+	if (m_mpeg_ram_compat_write_count < MPEG_RAM_COMPAT_ACTIVATION_WRITES)
+		++m_mpeg_ram_compat_write_count;
+
+	if (m_mpeg_ram_compat_write_count == MPEG_RAM_COMPAT_ACTIVATION_WRITES)
+	{
+		m_mpeg_ram_compat_visible = true;
+		LOGMASKED(LOG_RAM_GATE, "%s: DVC MPEG RAM gate enabled after %u VMPEG writes\n",
+				machine().describe_context(), unsigned(m_mpeg_ram_compat_write_count));
+	}
+}
+
 uint16_t cdi_dvc_device::mpeg_ram_r(offs_t offset, uint16_t mem_mask)
 {
-	if (!m_mpeg_ram_enabled)
+	if (!m_mpeg_ram_compat_visible)
 	{
 		if (!machine().side_effects_disabled())
 			++m_mpeg_ram_gated_reads;
@@ -1440,7 +1469,7 @@ uint16_t cdi_dvc_device::mpeg_ram_r(offs_t offset, uint16_t mem_mask)
 
 void cdi_dvc_device::mpeg_ram_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 {
-	if (!m_mpeg_ram_enabled)
+	if (!m_mpeg_ram_compat_visible)
 	{
 		++m_mpeg_ram_gated_writes;
 		LOGMASKED(LOG_RAM_ACCESS, "%s: DVC MPEG RAM gated write %08x <- %04x & %04x\n",
@@ -1483,18 +1512,7 @@ void cdi_dvc_device::rom_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 
 void cdi_dvc_device::write(offs_t offset, uint16_t data, uint16_t mem_mask)
 {
-	if (!m_mpeg_ram_enabled)
-	{
-		if (m_mpeg_ram_gate_writes < MPEG_RAM_GATE_WRITES)
-			++m_mpeg_ram_gate_writes;
-
-		if (m_mpeg_ram_gate_writes == MPEG_RAM_GATE_WRITES)
-		{
-			m_mpeg_ram_enabled = true;
-			LOGMASKED(LOG_RAM_GATE, "%s: DVC MPEG RAM gate enabled after %u VMPEG writes\n",
-					machine().describe_context(), unsigned(m_mpeg_ram_gate_writes));
-		}
-	}
+	mpeg_ram_compat_note_vmpeg_write();
 
 	const uint32_t address = 0xe00000U + (uint32_t(offset) << 1);
 

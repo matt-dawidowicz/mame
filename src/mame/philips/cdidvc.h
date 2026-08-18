@@ -83,6 +83,8 @@ private:
 	uint32_t current_fma_dclk();
 	uint32_t current_fmv_dclk();
 	void set_fmv_syscr(uint16_t data, uint16_t mem_mask);
+	void mpeg_ram_compat_reset();
+	void mpeg_ram_compat_note_vmpeg_write();
 
 	devcb_write_line m_intreq_callback;
 	devcb_write_line m_dma_req_callback;
@@ -115,6 +117,7 @@ private:
 	uint32_t m_fmv_transfer_words = 0;
 
 
+	// MPEG-1 program-stream parser and timestamp scheduling.
 	static constexpr unsigned MPEG_FMA = 0;
 	static constexpr unsigned MPEG_FMV = 1;
 
@@ -173,6 +176,7 @@ private:
 	uint8_t m_mpeg_last_payload[2] = { 0, 0 };
 	bool m_mpeg_have_payload[2] = { false, false };
 
+	// MPEG audio decode and MAME sound output.
 	sound_stream *m_audio_stream = nullptr;
 	std::vector<int16_t> m_audio_pcm_queue;
 	size_t m_audio_pcm_read = 0;
@@ -199,6 +203,7 @@ private:
 	bool m_audio_have_es_header = false;
 	bool m_audio_have_header = false;
 
+	// MPEG video decode and MAME video presentation.
 	std::vector<uint8_t> m_video_rgb24;
 	std::vector<uint32_t> m_video_present_frame;
 	uint16_t m_video_present_width = 0;
@@ -238,6 +243,7 @@ private:
 	uint32_t m_video_framerate_millihz = 0;
 	bool m_video_have_sequence = false;
 
+	// DMA ingress bookkeeping for the current synchronous transfer model.
 	bool m_dma_active = false;
 	bool m_dma_for_fma = false;
 	uint32_t m_dma_transfer_words = 0;
@@ -245,14 +251,19 @@ private:
 	uint16_t m_dma_last_word = 0;
 	// 512 KiB MPEG/DVC RAM at E80000-EFFFFF.
 	//
-	// Behavioral boot gate: the MPEG RAM must not be discoverable by the
-	// CD-RTOS ordinary RAM crawler at reset.  Independent implementations
-	// exhibit this behavior.  The 64-write threshold is an isolated
-	// compatibility model and is not assigned to an unknown hardware bit.
-	static constexpr uint8_t MPEG_RAM_GATE_WRITES = 64;
+	// VALIDATED BEHAVIORAL CONSTRAINT:
+	//   MPEG RAM must not participate in the ordinary CD-RTOS boot-time RAM
+	//   crawl, then must become usable by genuine DVC firmware later.
+	//
+	// MAME-ONLY COMPATIBILITY MECHANISM:
+	//   64 VMPEG writes currently make the RAM visible.  This threshold is not
+	//   known to represent a hardware register, bit, counter, or timing rule.
+	//   Keep it isolated here until the real ownership/enable mechanism is
+	//   identified.
+	static constexpr uint8_t MPEG_RAM_COMPAT_ACTIVATION_WRITES = 64;
 	std::array<uint16_t, 0x40000> m_mpeg_ram{};
-	uint8_t m_mpeg_ram_gate_writes = 0;
-	bool m_mpeg_ram_enabled = false;
+	uint8_t m_mpeg_ram_compat_write_count = 0;
+	bool m_mpeg_ram_compat_visible = false;
 	uint32_t m_mpeg_ram_gated_reads = 0;
 	uint32_t m_mpeg_ram_gated_writes = 0;
 };
