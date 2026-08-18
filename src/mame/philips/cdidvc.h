@@ -38,8 +38,26 @@ public:
 	void video_vblank();
 	void video_overlay_scanline(uint32_t *pixels, unsigned pixel_count, int physical_y, int visible_top, int clip_min_x, int clip_max_x, bool const *external_video, unsigned external_count);
 
-	void mpeg_parser_reset(unsigned target);
+protected:
+	virtual void device_start() override ATTR_COLD;
+	void device_stop() override;
+	virtual void device_reset() override ATTR_COLD;
+	virtual void sound_stream_update(sound_stream &stream) override;
+
+private:
+	// Interrupt and clock handling.
+	TIMER_CALLBACK_MEMBER(timer_tick);
+	void update_interrupt_state();
+	void update_timer();
+	uint32_t current_fma_dclk();
+	uint32_t current_fmv_dclk();
+	void set_fmv_syscr(uint16_t data, uint16_t mem_mask);
+
+	// DMA ingress for the current synchronous transfer model.
 	void mpeg_word_w(bool for_fma, uint16_t data, uint16_t mem_mask = 0xffff);
+
+	// MPEG-1 program-stream parsing and timestamp scheduling.
+	void mpeg_parser_reset(unsigned target);
 	void mpeg_byte_w(unsigned target, uint8_t data);
 	void mpeg_begin_payload(unsigned target);
 	void mpeg_payload_byte(unsigned target, uint8_t data);
@@ -49,9 +67,9 @@ public:
 	void mpeg_timestamp_byte(unsigned target, uint8_t data);
 	void mpeg_timestamp_commit(unsigned target);
 	void mpeg_schedule_packet(unsigned target);
-	static int64_t mpeg_timestamp_delta(uint64_t lhs, uint64_t rhs);
-	static int32_t mpeg_dclk_delta(uint64_t timestamp, uint64_t scr);
+	bool mpeg_stream_selected(unsigned target, uint8_t stream_id) const;
 
+	// MPEG audio decode and MAME sound output.
 	void audio_output_reset();
 	void audio_output_set_rate(uint32_t rate);
 	void audio_decoder_reset();
@@ -59,6 +77,7 @@ public:
 	void audio_decoder_feed(uint8_t data);
 	void audio_decoder_pump();
 
+	// MPEG video decode and MAME video presentation.
 	void video_presentation_reset();
 	void video_frame_clear();
 	void video_latch_geometry(bool at_vblank);
@@ -67,25 +86,23 @@ public:
 	void video_decoder_destroy();
 	void video_decoder_feed(uint8_t data);
 	void video_decoder_pump();
-	bool mpeg_stream_selected(unsigned target, uint8_t stream_id) const;
 
-protected:
-	virtual void device_start() override ATTR_COLD;
-	void device_stop() override;
-	virtual void device_reset() override ATTR_COLD;
-	virtual void sound_stream_update(sound_stream &stream) override;
-
-private:
-	TIMER_CALLBACK_MEMBER(timer_tick);
-
-	void update_interrupt_state();
-	void update_timer();
-	uint32_t current_fma_dclk();
-	uint32_t current_fmv_dclk();
-	void set_fmv_syscr(uint16_t data, uint16_t mem_mask);
+	// Provisional MPEG-RAM compatibility mechanism.
 	void mpeg_ram_compat_reset();
 	void mpeg_ram_compat_note_vmpeg_write();
 
+	// Current MAME compatibility values. Their hardware attribution is pending;
+	// keep them out of emulator-independent specifications until proven.
+	static constexpr uint16_t FMA_STATUS_COMPAT_FIXED_BITS = 0x0200;
+	static constexpr uint16_t FMA_E03004_COMPAT_READ_VALUE = 0x0007;
+	static constexpr uint16_t FMA_E03006_COMPAT_READ_VALUE = 0x0900;
+	static constexpr uint16_t FMA_E0300E_COMPAT_READ_VALUE = 0x0042;
+	static constexpr uint16_t FMA_E03024_COMPAT_READ_VALUE = 0x0004;
+	static constexpr uint16_t FMV_STATUS_COMPAT_INPUT_READY = 0x2000;
+	static constexpr uint16_t FMV_TIMER_COMPARE_RESET_COMPAT_VALUE = 55;
+	static constexpr uint8_t IDLE_IACK_COMPAT_VECTOR = 0x3c;
+
+	// Device wiring and external resources.
 	devcb_write_line m_intreq_callback;
 	devcb_write_line m_dma_req_callback;
 	optional_region_ptr<uint8_t> m_driver_rom;
@@ -107,7 +124,7 @@ private:
 
 	uint16_t m_fmv_interrupt_enable = 0;
 	uint16_t m_fmv_interrupt_status = 0;
-	uint16_t m_fmv_timer_compare = 55;
+	uint16_t m_fmv_timer_compare = FMV_TIMER_COMPARE_RESET_COMPAT_VALUE;
 	uint16_t m_fmv_system_command = 0;
 	uint16_t m_fmv_video_command = 0;
 	uint16_t m_fmv_stream = 0;
@@ -116,6 +133,12 @@ private:
 	uint16_t m_fmv_transfer_word = 0;
 	uint32_t m_fmv_transfer_words = 0;
 
+	// DMA ingress bookkeeping shared by the FMA and FMV paths.
+	bool m_dma_active = false;
+	bool m_dma_for_fma = false;
+	uint32_t m_dma_transfer_words = 0;
+	uint16_t m_dma_first_word = 0;
+	uint16_t m_dma_last_word = 0;
 
 	// MPEG-1 program-stream parser and timestamp scheduling.
 	static constexpr unsigned MPEG_FMA = 0;
@@ -243,12 +266,6 @@ private:
 	uint32_t m_video_framerate_millihz = 0;
 	bool m_video_have_sequence = false;
 
-	// DMA ingress bookkeeping for the current synchronous transfer model.
-	bool m_dma_active = false;
-	bool m_dma_for_fma = false;
-	uint32_t m_dma_transfer_words = 0;
-	uint16_t m_dma_first_word = 0;
-	uint16_t m_dma_last_word = 0;
 	// 512 KiB MPEG/DVC RAM at E80000-EFFFFF.
 	//
 	// VALIDATED BEHAVIORAL CONSTRAINT:

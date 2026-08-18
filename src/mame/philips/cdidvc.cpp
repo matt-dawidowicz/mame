@@ -22,6 +22,7 @@
 
 #include "emu.h"
 #include "cdidvc.h"
+#include "cdidvc_utils.h"
 
 #define PLM_NO_STDIO
 #define PL_MPEG_IMPLEMENTATION
@@ -160,7 +161,7 @@ void cdi_dvc_device::device_reset()
 
 	m_fmv_interrupt_enable = 0;
 	m_fmv_interrupt_status = 0;
-	m_fmv_timer_compare = 55;
+	m_fmv_timer_compare = FMV_TIMER_COMPARE_RESET_COMPAT_VALUE;
 	m_fmv_system_command = 0;
 	m_fmv_video_command = 0;
 	m_fmv_stream = 0;
@@ -250,7 +251,7 @@ uint8_t cdi_dvc_device::intack_r()
 		return vector;
 	}
 
-	return 0x3c;
+	return IDLE_IACK_COMPAT_VECTOR;
 }
 
 uint16_t cdi_dvc_device::read(offs_t offset, uint16_t mem_mask)
@@ -264,13 +265,13 @@ uint16_t cdi_dvc_device::read(offs_t offset, uint16_t mem_mask)
 		result = m_fma_command;
 		break;
 	case 0xe03002:
-		result = 0x0200 | (m_fma_status & 0x00ff);
+		result = FMA_STATUS_COMPAT_FIXED_BITS | (m_fma_status & 0x00ff);
 		break;
 	case 0xe03004:
-		result = 0x0007;
+		result = FMA_E03004_COMPAT_READ_VALUE;
 		break;
 	case 0xe03006:
-		result = 0x0900;
+		result = FMA_E03006_COMPAT_READ_VALUE;
 		break;
 	case 0xe03008:
 	case 0xe0300a:
@@ -280,7 +281,7 @@ uint16_t cdi_dvc_device::read(offs_t offset, uint16_t mem_mask)
 		result = m_fma_interrupt_vector;
 		break;
 	case 0xe0300e:
-		result = 0x0042;
+		result = FMA_E0300E_COMPAT_READ_VALUE;
 		break;
 	case 0xe03010:
 	{
@@ -309,11 +310,11 @@ uint16_t cdi_dvc_device::read(offs_t offset, uint16_t mem_mask)
 		result = m_fma_interrupt_enable;
 		break;
 	case 0xe03024:
-		result = 0x0004;
+		result = FMA_E03024_COMPAT_READ_VALUE;
 		break;
 
 	case 0xe0405e:
-		result = 0x2000;
+		result = FMV_STATUS_COMPAT_INPUT_READY;
 		break;
 	case 0xe04060:
 		result = m_fmv_interrupt_enable;
@@ -961,22 +962,6 @@ void cdi_dvc_device::mpeg_parser_reset(unsigned target)
 	m_mpeg_have_payload[target] = false;
 }
 
-int64_t cdi_dvc_device::mpeg_timestamp_delta(uint64_t lhs, uint64_t rhs)
-{
-	static constexpr uint64_t mask = (uint64_t(1) << 33) - 1;
-	uint64_t const raw = (lhs - rhs) & mask;
-	return (raw & (uint64_t(1) << 32))
-		? int64_t(raw) - int64_t(uint64_t(1) << 33)
-		: int64_t(raw);
-}
-
-int32_t cdi_dvc_device::mpeg_dclk_delta(uint64_t timestamp, uint64_t scr)
-{
-	uint32_t const target45 = uint32_t((timestamp >> 1) & 0xffffffffU);
-	uint32_t const scr45 = uint32_t((scr >> 1) & 0xffffffffU);
-	return int32_t(target45 - scr45);
-}
-
 void cdi_dvc_device::mpeg_scr_byte(unsigned target, uint8_t data)
 {
 	if (target > MPEG_FMV)
@@ -1092,10 +1077,10 @@ void cdi_dvc_device::mpeg_schedule_packet(unsigned target)
 		? m_mpeg_packet_decode_ts[target]
 		: m_mpeg_packet_pts[target];
 
-	m_mpeg_schedule_play_delta90[target] = mpeg_timestamp_delta(play_ts, m_mpeg_clock90);
-	m_mpeg_schedule_decode_delta90[target] = mpeg_timestamp_delta(decode_ts, m_mpeg_clock90);
-	m_mpeg_schedule_play_delta45[target] = mpeg_dclk_delta(play_ts, m_mpeg_clock90);
-	m_mpeg_schedule_decode_delta45[target] = mpeg_dclk_delta(decode_ts, m_mpeg_clock90);
+	m_mpeg_schedule_play_delta90[target] = cdi_dvc::mpeg_timestamp_delta(play_ts, m_mpeg_clock90);
+	m_mpeg_schedule_decode_delta90[target] = cdi_dvc::mpeg_timestamp_delta(decode_ts, m_mpeg_clock90);
+	m_mpeg_schedule_play_delta45[target] = cdi_dvc::mpeg_dclk_delta(play_ts, m_mpeg_clock90);
+	m_mpeg_schedule_decode_delta45[target] = cdi_dvc::mpeg_dclk_delta(decode_ts, m_mpeg_clock90);
 	m_mpeg_schedule_valid[target] = true;
 	++m_mpeg_schedule_events[target];
 
@@ -1115,12 +1100,9 @@ void cdi_dvc_device::mpeg_schedule_packet(unsigned target)
 
 bool cdi_dvc_device::mpeg_stream_selected(unsigned target, uint8_t stream_id) const
 {
-	if (target == MPEG_FMA)
-		return stream_id >= 0xc0 && stream_id <= 0xdf
-			&& (stream_id & 0x0f) == (m_fma_stream & 0x0f);
-
-	return stream_id >= 0xe0 && stream_id <= 0xef
-		&& (stream_id & 0x0f) == (m_fmv_stream & 0x0f);
+	bool const for_fma = target == MPEG_FMA;
+	uint16_t const selected_stream = for_fma ? m_fma_stream : m_fmv_stream;
+	return cdi_dvc::mpeg_stream_selected(for_fma, stream_id, selected_stream);
 }
 
 void cdi_dvc_device::mpeg_begin_payload(unsigned target)

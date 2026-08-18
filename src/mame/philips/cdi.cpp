@@ -76,6 +76,12 @@ TODO:
 #define VERBOSE         (0)
 #include "logmacro.h"
 
+namespace {
+
+constexpr uint8_t IRQ4_IDLE_COMPAT_VECTOR = 0x3c;
+
+} // anonymous namespace
+
 #define ENABLE_UART_PRINTING (0)
 
 /*************************
@@ -469,13 +475,13 @@ uint8_t cdi_state::irq4_ack_r()
 	switch (m_irq4_owner)
 	{
 	case IRQ4_CDIC:
-		return m_cdic ? m_cdic->intack_r() : 0x3c;
+		return m_cdic ? m_cdic->intack_r() : IRQ4_IDLE_COMPAT_VECTOR;
 
 	case IRQ4_DVC:
-		return m_dvc ? m_dvc->intack_r() : 0x3c;
+		return m_dvc ? m_dvc->intack_r() : IRQ4_IDLE_COMPAT_VECTOR;
 
 	default:
-		return 0x3c;
+		return IRQ4_IDLE_COMPAT_VECTOR;
 	}
 }
 

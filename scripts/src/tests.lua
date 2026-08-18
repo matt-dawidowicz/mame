@@ -50,19 +50,14 @@ project("mametests")
 		MAME_DIR .. "src/osd",
 		MAME_DIR .. "src/emu",
 		MAME_DIR .. "src/lib/util",
+		MAME_DIR .. "src/mame/philips",
 		ext_includedir("expat"),
 		ext_includedir("zlib"),
 	}
 
 	files {
-		MAME_DIR .. "src/emu/video/rgbsse.cpp",
-		MAME_DIR .. "src/emu/video/rgbsse.h",
-		MAME_DIR .. "src/emu/video/rgbvmx.cpp",
-		MAME_DIR .. "src/emu/video/rgbvmx.h",
-	}
-
-	files {
 		MAME_DIR .. "tests/main.cpp",
+		MAME_DIR .. "tests/emu/philips/cdidvc.cpp",
 		MAME_DIR .. "tests/lib/util/corestr.cpp",
 		MAME_DIR .. "tests/lib/util/options.cpp",
 		MAME_DIR .. "tests/emu/attotime.cpp",
