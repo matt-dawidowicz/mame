@@ -7,6 +7,7 @@
 #include "machine/scc68070.h"
 #include "cdislavehle.h"
 #include "cdicdic.h"
+#include "cdidvc.h"
 #include "sound/dmadac.h"
 #include "mcd212.h"
 #include "cpu/mcs51/i8051.h"
@@ -29,6 +30,7 @@ public:
 		, m_servo(*this, "servo")
 		, m_slave(*this, "slave")
 		, m_cdic(*this, "cdic")
+		, m_dvc(*this, "dvc")
 		, m_cdrom(*this, "cdrom")
 		, m_mcd212(*this, "mcd212")
 		, m_dmadac(*this, "dac%u", 1U)
@@ -55,12 +57,26 @@ protected:
 	optional_device<m68hc05c8_device> m_servo;
 	optional_device<m68hc05c8_device> m_slave;
 	optional_device<cdicdic_device> m_cdic;
+	optional_device<cdi_dvc_device> m_dvc;
 	required_device<cdrom_image_device> m_cdrom;
 	required_device<mcd212_device> m_mcd212;
 
 	required_device_array<dmadac_sound_device, 2> m_dmadac;
 
+	enum : uint8_t
+	{
+		IRQ4_NONE = 0,
+		IRQ4_CDIC,
+		IRQ4_DVC
+	};
+
+	bool m_cdic_irq_state = false;
+	bool m_dvc_irq_state = false;
+	uint8_t m_irq4_owner = IRQ4_NONE;
+
 	uint32_t screen_update_cdimono1_lcd(screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &cliprect);
+	uint32_t screen_update_cdimono1(screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &cliprect);
+	virtual void machine_start() override ATTR_COLD;
 	virtual void machine_reset() override ATTR_COLD;
 
 	void cdimono1_mem(address_map &map) ATTR_COLD;
@@ -74,8 +90,11 @@ protected:
 
 	uint16_t main_rom_r(offs_t offset);
 
-	uint16_t dvc_r(offs_t offset, uint16_t mem_mask = ~0);
-	void dvc_w(offs_t offset, uint16_t data, uint16_t mem_mask = ~0);
+	void cdic_irq_w(int state);
+	void dvc_irq_w(int state);
+	void dvc_dma_req_w(int state);
+	void update_irq4();
+	uint8_t irq4_ack_r();
 
 	uint16_t bus_error_r(offs_t offset);
 	void bus_error_w(offs_t offset, uint16_t data);

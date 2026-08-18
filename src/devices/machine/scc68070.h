@@ -188,6 +188,8 @@ public:
 	};
 
 	dma_regs_t& dma() { return m_dma; }
+	void dma_external_start(unsigned channel);
+	void dma_external_complete(unsigned channel);
 
 protected:
 	// device_t implementation

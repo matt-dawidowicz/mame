@@ -48,6 +48,7 @@ public:
 	auto int_callback() { return m_int_callback.bind(); }
 
 	uint32_t screen_update(screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &cliprect);
+	bool const *external_video_line() const { return m_external_video_line; }
 
 	void map(address_map &map) ATTR_COLD;
 
@@ -236,6 +237,7 @@ protected:
 
 	// internal state
 	bool m_matte_flag[2][768]{};
+	bool m_external_video_line[768]{};
 	int m_ica_height = 0;
 	int m_total_height = 0;
 	emu_timer *m_ica_timer = nullptr;

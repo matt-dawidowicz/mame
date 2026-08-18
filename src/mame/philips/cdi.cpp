@@ -99,8 +99,9 @@ void cdi_state::cdimono1_mem(address_map &map)
 	map(0x4fffe0, 0x4fffff).m(m_mcd212, FUNC(mcd212_device::map));
 	map(0x500000, 0x57ffff).ram();
 	map(0xd00000, 0xdfffff).ram(); // DVC RAM block 1
-	map(0xe00000, 0xe7ffff).rw(FUNC(cdi_state::dvc_r), FUNC(cdi_state::dvc_w));
-	map(0xe80000, 0xefffff).ram(); // DVC RAM block 2
+	map(0xe00000, 0xe3ffff).rw(m_dvc, FUNC(cdi_dvc_device::read), FUNC(cdi_dvc_device::write)); // VMPEG registers
+	map(0xe40000, 0xe7ffff).rw(m_dvc, FUNC(cdi_dvc_device::rom_r), FUNC(cdi_dvc_device::rom_w)); // DVC OS-9 driver ROM window
+	map(0xe80000, 0xefffff).rw(m_dvc, FUNC(cdi_dvc_device::mpeg_ram_r), FUNC(cdi_dvc_device::mpeg_ram_w)); // DVC MPEG RAM; hidden from ordinary RAM crawler at reset
 }
 
 void cdi_state::cdimono2_mem(address_map &map)
@@ -186,8 +187,43 @@ INPUT_PORTS_END
 *  Machine Initialization  *
 ***************************/
 
+void cdi_state::machine_start()
+{
+	save_item(NAME(m_cdic_irq_state));
+	save_item(NAME(m_dvc_irq_state));
+	save_item(NAME(m_irq4_owner));
+}
+
+uint32_t cdi_state::screen_update_cdimono1(screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &cliprect)
+{
+	if (screen.vpos() == screen.visible_area().min_y && m_dvc)
+		m_dvc->video_vblank();
+
+	uint32_t const result = m_mcd212->screen_update(screen, bitmap, cliprect);
+	if (m_dvc && !(screen.vpos() & 1))
+	{
+		bool const *const external_video = m_mcd212->external_video_line();
+		int const visible_top = screen.visible_area().min_y;
+		for (int row = 0; row < 2; ++row)
+		{
+			int const y = screen.vpos() + row;
+			if (y >= 0 && y < bitmap.height())
+			{
+				m_dvc->video_overlay_scanline(&bitmap.pix(y), bitmap.width(), y, visible_top,
+						cliprect.min_x, cliprect.max_x, external_video, 768);
+			}
+		}
+	}
+	return result;
+}
+
 void cdi_state::machine_reset()
 {
+	m_cdic_irq_state = false;
+	m_dvc_irq_state = false;
+	m_irq4_owner = IRQ4_NONE;
+	m_maincpu->in4_w(CLEAR_LINE);
+
 	uint16_t *src = &m_main_rom[0];
 	uint16_t *dst = &m_plane_ram[0][0];
 	memcpy(dst, src, 0x8);
@@ -195,6 +231,8 @@ void cdi_state::machine_reset()
 
 void quizard_state::machine_start()
 {
+	cdi_state::machine_start();
+
 	save_item(NAME(m_boot_press));
 
 	m_boot_timer = timer_alloc(FUNC(quizard_state::boot_press_tick), this);
@@ -343,19 +381,95 @@ void quizard_state::mcu_p3_w(uint8_t data)
 	m_maincpu->uart_ctsn(BIT(data, 6));
 }
 
-/*************************
-*     DVC cartridge      *
-*************************/
+/************************
+*  Shared IRQ4 handling *
+************************/
 
-uint16_t cdi_state::dvc_r(offs_t offset, uint16_t mem_mask)
+void cdi_state::update_irq4()
 {
-	LOGMASKED(LOG_DVC, "%s: dvc_r: %08x = 0000 & %04x\n", machine().describe_context(), 0xe80000 + (offset << 1), mem_mask);
-	return 0;
+	if ((m_irq4_owner == IRQ4_CDIC && !m_cdic_irq_state) ||
+		(m_irq4_owner == IRQ4_DVC && !m_dvc_irq_state))
+	{
+		m_irq4_owner = IRQ4_NONE;
+	}
+
+	if (m_irq4_owner == IRQ4_NONE)
+	{
+		// The Mono-I board uses an SR latch for shared IN4 ownership.
+		// If both requests become active while idle, VMPEG wins.
+		if (m_cdic_irq_state)
+			m_irq4_owner = IRQ4_CDIC;
+		if (m_dvc_irq_state)
+			m_irq4_owner = IRQ4_DVC;
+	}
+
+	m_maincpu->in4_w(m_irq4_owner != IRQ4_NONE ? ASSERT_LINE : CLEAR_LINE);
 }
 
-void cdi_state::dvc_w(offs_t offset, uint16_t data, uint16_t mem_mask)
+void cdi_state::cdic_irq_w(int state)
 {
-	LOGMASKED(LOG_DVC, "%s: dvc_w: %08x = %04x & %04x\n", machine().describe_context(), 0xe80000 + (offset << 1), data, mem_mask);
+	m_cdic_irq_state = state != CLEAR_LINE;
+	update_irq4();
+}
+
+void cdi_state::dvc_irq_w(int state)
+{
+	m_dvc_irq_state = state != CLEAR_LINE;
+	update_irq4();
+}
+
+void cdi_state::dvc_dma_req_w(int state)
+{
+	if (!state)
+		return;
+
+	auto &dma = m_maincpu->dma().channel[1];
+
+	if ((dma.operation_control & SCC68070_OCR_D) != SCC68070_OCR_D_M2D)
+		return;
+
+	if ((dma.operation_control & SCC68070_OCR_OS) != SCC68070_OCR_OS_WORD)
+		return;
+
+	const uint8_t mac_mode = dma.sequence_control & 0x0c;
+	if (mac_mode != 0x00 && mac_mode != 0x04)
+		return;
+
+	m_maincpu->dma_external_start(1);
+
+	address_space &space = m_maincpu->space(AS_PROGRAM);
+	uint16_t remaining = dma.transfer_counter;
+
+	while (remaining != 0)
+	{
+		const uint16_t data = space.read_word(dma.memory_address_counter);
+		m_dvc->dma_w(data);
+
+		if (mac_mode == 0x04)
+			dma.memory_address_counter += 2;
+
+		--dma.transfer_counter;
+		--remaining;
+	}
+
+	m_maincpu->dma_external_complete(1);
+	m_dvc->dma_done();
+}
+
+
+uint8_t cdi_state::irq4_ack_r()
+{
+	switch (m_irq4_owner)
+	{
+	case IRQ4_CDIC:
+		return m_cdic ? m_cdic->intack_r() : 0x3c;
+
+	case IRQ4_DVC:
+		return m_dvc ? m_dvc->intack_r() : 0x3c;
+
+	default:
+		return 0x3c;
+	}
 }
 
 /*************************
@@ -427,7 +541,7 @@ void cdi_state::cdimono1_base(machine_config &config)
 {
 	SCC68070(config, m_maincpu, CLOCK_A);
 	m_maincpu->set_addrmap(AS_PROGRAM, &cdi_state::cdimono1_mem);
-	m_maincpu->iack4_callback().set(m_cdic, FUNC(cdicdic_device::intack_r));
+	m_maincpu->iack4_callback().set(FUNC(cdi_state::irq4_ack_r));
 
 	MCD212(config, m_mcd212, CLOCK_A, m_plane_ram[0], m_plane_ram[1]);
 	m_mcd212->set_screen("screen");
@@ -436,7 +550,7 @@ void cdi_state::cdimono1_base(machine_config &config)
 	screen_device &screen(SCREEN(config, "screen"));
 	screen.set_raw(14976000*2, 960, 0, 768, 312*2, 32*2, 312*2); // x2 for interlace
 	screen.set_video_attributes(VIDEO_UPDATE_SCANLINE);
-	screen.set_screen_update(m_mcd212, FUNC(mcd212_device::screen_update));
+	screen.set_screen_update(FUNC(cdi_state::screen_update_cdimono1));
 
 	SCREEN(config, m_lcd);
 	m_lcd->set_refresh_hz(50);
@@ -453,11 +567,19 @@ void cdi_state::cdimono1_base(machine_config &config)
 	// DSP input clock is 7.5264 MHz
 	CDI_CDIC(config, m_cdic, 45.1584_MHz_XTAL / 2);
 	m_cdic->set_clock2(45.1584_MHz_XTAL * 3 / 7); // generated by PLL circuit incorporating 19.3575 MHz XTAL
-	m_cdic->intreq_callback().set(m_maincpu, FUNC(scc68070_device::in4_w));
+	m_cdic->intreq_callback().set(FUNC(cdi_state::cdic_irq_w));
 
 	CDI_SLAVE_HLE(config, m_slave_hle);
 	m_slave_hle->int_callback().set(m_maincpu, FUNC(scc68070_device::in2_w));
 	m_slave_hle->atten_callback().set(m_cdic, FUNC(cdicdic_device::atten_w));
+
+	CDI_DVC(config, m_dvc, 0);
+
+	m_dvc->add_route(0, "speaker", 1.0, 0);
+
+	m_dvc->add_route(1, "speaker", 1.0, 1);
+	m_dvc->intreq_callback().set(FUNC(cdi_state::dvc_irq_w));
+	m_dvc->dma_req_callback().set(FUNC(cdi_state::dvc_dma_req_w));
 
 	CDROM(config, m_cdrom);
 	m_cdrom->set_interface("cdrom");
@@ -628,13 +750,26 @@ ROM_START( cdimono1 )
 	ROM_SYSTEM_BIOS( 2, "pcdi220_alt", "Philips CD-i 220?" ) // doesn't boot
 	ROMX_LOAD( "cdi220.rom", 0x000000, 0x80000, CRC(584c0af8) SHA1(5d757ab46b8c8fc36361555d978d7af768342d47), ROM_BIOS(2) )
 
-	// The two MCU dumps below are taken from the cdi910. We still need dumps from a Mono-I board in case the revisions are different.
-	ROM_REGION(0x2000, "servo", 0)
-	ROM_LOAD( "zx405037p__cdi_servo_2.1__b43t__llek9215.mc68hc705c8a_withtestrom.7201", 0x0000, 0x2000, CRC(7a3af407) SHA1(fdf8d78d6a0df4a56b5b963d72eabd39fcec163f) BAD_DUMP )
 
-	ROM_REGION(0x2000, "slave", 0)
-	ROM_LOAD( "zx405042p__cdi_slave_2.0__b43t__zzmk9213.mc68hc705c8a_withtestrom.7206", 0x0000, 0x2000, CRC(688cda63) SHA1(56d0acd7caad51c7de703247cd6d842b36173079) BAD_DUMP )
 ROM_END
+
+ROM_START( cdimono1dvc )
+	ROM_REGION(0x80000, "maincpu", 0) // these roms need byteswapping
+	ROM_SYSTEM_BIOS( 0, "mcdi200", "Magnavox CD-i 200" )
+	ROMX_LOAD( "cdi200.rom", 0x000000, 0x80000, CRC(40c4e6b9) SHA1(d961de803c89b3d1902d656ceb9ce7c02dccb40a), ROM_BIOS(0) )
+	ROM_SYSTEM_BIOS( 1, "pcdi220", "Philips CD-i 220 F2" )
+	ROMX_LOAD( "cdi220b.rom", 0x000000, 0x80000, CRC(279683ca) SHA1(53360a1f21ddac952e95306ced64186a3fc0b93e), ROM_BIOS(1) )
+	ROM_SYSTEM_BIOS( 2, "pcdi220_alt", "Philips CD-i 220?" ) // doesn't boot
+	ROMX_LOAD( "cdi220.rom", 0x000000, 0x80000, CRC(584c0af8) SHA1(5d757ab46b8c8fc36361555d978d7af768342d47), ROM_BIOS(2) )
+
+
+
+	// Philips CD-i Digital Video Cartridge 22ER9141
+	ROM_REGION(0x20000, "dvc_rom", 0)
+	ROM_LOAD16_BYTE( "fmv ffd9 p7308 r4.1 vmpeg.bin", 0x00000, 0x10000, CRC(30ba9273) SHA1(d8adca0627b356ced6131b9458ac1175e43e6548) )
+	ROM_LOAD16_BYTE( "fmv 4ba9 p7307 r4.1 vmpeg.bin", 0x00001, 0x10000, CRC(623edb1f) SHA1(4c6b11e28ad4c2f5c2e439f7910a783e0a79d1a9) )
+ROM_END
+
 
 ROM_START( cdi910 )
 	ROM_REGION(0x80000, "maincpu", 0)
@@ -673,11 +808,13 @@ ROM_START( cdi490a )
 	ROM_SYSTEM_BIOS( 0, "cdi490", "CD-i 490" )
 	ROMX_LOAD( "cdi490a.rom", 0x000000, 0x80000, CRC(e2f200f6) SHA1(c9bf3c4c7e4fe5cbec3fe3fc993c77a4522ca547), ROM_BIOS(0) | ROM_GROUPWORD | ROM_REVERSE  )
 
-	ROM_REGION(0x60000, "mpegs", 0) // keep these somewhere
+	ROM_REGION(0x40000, "mpegs", 0) // integrated MPEG ROM, currently not consumed
+
 	ROM_LOAD( "impega.rom", 0x00000, 0x40000, CRC(84d6f6aa) SHA1(02526482a0851ea2a7b582d8afaa8ef14a8bd914) ) // 1ST AND 2ND HALF IDENTICAL
-	// Philips CD-i - DVC card 22ER9141
-	ROM_LOAD16_BYTE( "fmv ffd9 p7308 r4.1 vmpeg.bin", 0x40000, 0x10000, CRC(30ba9273) SHA1(d8adca0627b356ced6131b9458ac1175e43e6548) )
-	ROM_LOAD16_BYTE( "fmv 4ba9 p7307 r4.1 vmpeg.bin", 0x40001, 0x10000, CRC(623edb1f) SHA1(4c6b11e28ad4c2f5c2e439f7910a783e0a79d1a9) )
+	// Philips CD-i Digital Video Cartridge 22ER9141
+	ROM_REGION(0x20000, "dvc_rom", 0)
+	ROM_LOAD16_BYTE( "fmv ffd9 p7308 r4.1 vmpeg.bin", 0x00000, 0x10000, CRC(30ba9273) SHA1(d8adca0627b356ced6131b9458ac1175e43e6548) )
+	ROM_LOAD16_BYTE( "fmv 4ba9 p7307 r4.1 vmpeg.bin", 0x00001, 0x10000, CRC(623edb1f) SHA1(4c6b11e28ad4c2f5c2e439f7910a783e0a79d1a9) )
 ROM_END
 
 ROM_START( gpi1200 )
@@ -912,6 +1049,7 @@ ROM_END
 /*    YEAR  NAME      PARENT  COMPAT  MACHINE   INPUT     CLASS      INIT        COMPANY       FULLNAME */
 // BIOS / System
 CONS( 1991, cdimono1, 0,      0,      cdimono1, cdi,      cdi_state, empty_init, "Philips",    "CD-i (Mono-I) (PAL)",   MACHINE_IMPERFECT_GRAPHICS | MACHINE_IMPERFECT_SOUND | MACHINE_SUPPORTS_SAVE )
+CONS( 1991, cdimono1dvc, cdimono1, 0, cdimono1, cdi, cdi_state, empty_init, "Philips", "CD-i (Mono-I) (PAL) with Digital Video Cartridge", MACHINE_NOT_WORKING | MACHINE_IMPERFECT_GRAPHICS | MACHINE_IMPERFECT_SOUND | MACHINE_SUPPORTS_SAVE )
 CONS( 1991, cdimono2, 0,      0,      cdimono2, cdimono2, cdi_state, empty_init, "Philips",    "CD-i (Mono-II) (NTSC)",   MACHINE_NOT_WORKING )
 CONS( 1991, cdi910,   0,      0,      cdi910,   cdimono2, cdi_state, empty_init, "Philips",    "CD-i 910-17P Mini-MMC (PAL)",   MACHINE_NOT_WORKING )
 CONS( 1991, cdi490a,  0,      0,      cdimono1, cdi,      cdi_state, empty_init, "Philips",    "CD-i 490",   MACHINE_NOT_WORKING )

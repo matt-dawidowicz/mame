@@ -678,6 +678,7 @@ void mcd212_device::mix_lines(uint32_t *plane_a, bool *transparent_a, uint32_t *
 		if (transparent_a[x] && transparent_b[x])
 		{
 			out[x] = get_backdrop_plane();
+			m_external_video_line[x + border_width] = BIT(m_image_coding_method, ICM_EV_BIT);
 			continue;
 		}
 		uint32_t plane_a_cur = MosaicA ? plane_a[x - (x % mosaic_count_a)] : plane_a[x];
@@ -760,7 +761,10 @@ void mcd212_device::draw_cursor(uint32_t *scanline)
 				{
 					const uint32_t index = cursor_x + x * resolution + j;
 					if (index < width)
+					{
 						scanline[index] = color;
+						m_external_video_line[index] = false;
+					}
 				}
 			}
 		}
@@ -973,6 +977,8 @@ uint32_t mcd212_device::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 	// It updates 2 bitmap lines each time
 	if (screen.vpos() & 1)
 		return 0;
+
+	std::fill_n(m_external_video_line, 768, false);
 
 	// FIXME this should use the clipping rectangle to determine which lines need drawing
 	int scanline = screen.vpos() / 2;
