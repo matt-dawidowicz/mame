@@ -1,6 +1,7 @@
 // license:BSD-3-Clause
 // copyright-holders:Matt Jordan
 
+#include <array>
 #include <vector>
 
 #include "catch.hpp"
@@ -241,13 +242,39 @@ TEST_CASE("CD-i DVC picture-event reordering covers every picture type and marke
 	}
 }
 
+TEST_CASE("CD-i DVC audio queue compaction discards only consumed samples", "[emu][philips][dvc]")
+{
+	std::vector<int16_t> samples { 10, 11, 20, 21, 30, 31 };
+	std::size_t read = 2;
+	cdi_dvc::compact_consumed_audio_samples(samples, read);
+	REQUIRE(read == 0);
+	REQUIRE((samples == std::vector<int16_t> { 20, 21, 30, 31 }));
+
+	read = 0;
+	cdi_dvc::compact_consumed_audio_samples(samples, read);
+	REQUIRE(read == 0);
+	REQUIRE((samples == std::vector<int16_t> { 20, 21, 30, 31 }));
+
+	read = samples.size();
+	cdi_dvc::compact_consumed_audio_samples(samples, read);
+	REQUIRE(read == 0);
+	REQUIRE(samples.empty());
+
+	samples = { 40, 41 };
+	read = samples.size() + 2;
+	cdi_dvc::compact_consumed_audio_samples(samples, read);
+	REQUIRE(read == 0);
+	REQUIRE(samples.empty());
+}
+
 TEST_CASE("CD-i DVC MPEG audio accepts legal per-frame channel-mode changes", "[emu][philips][dvc]")
 {
-	// Two synthetic 192 kbit/s, 44.1 kHz MPEG-1 Layer II frames.  The first
-	// uses stereo and the second joint stereo, matching the transition observed
+	// Synthetic 192 kbit/s, 44.1 kHz MPEG-1 Layer II frames cover all four
+	// channel modes.  The first two reproduce the transition observed
 	// at the beginning of The 7th Guest stream without retaining game data.
 	constexpr size_t frame_size = 627;
-	std::vector<uint8_t> stream(frame_size * 2, 0);
+	constexpr std::array<uint8_t, 4> modes { 0x00, 0x40, 0x80, 0xc0 };
+	std::vector<uint8_t> stream(frame_size * modes.size(), 0);
 	auto write_header = [&stream](size_t offset, uint8_t mode)
 	{
 		stream[offset + 0] = 0xff;
@@ -255,8 +282,8 @@ TEST_CASE("CD-i DVC MPEG audio accepts legal per-frame channel-mode changes", "[
 		stream[offset + 2] = 0xa2;
 		stream[offset + 3] = mode;
 	};
-	write_header(0, 0x00);
-	write_header(frame_size, 0x60);
+	for (size_t i = 0; i < modes.size(); ++i)
+		write_header(frame_size * i, modes[i]);
 
 	plm_buffer_t *const buffer = plm_buffer_create_with_capacity(stream.size());
 	REQUIRE(buffer != nullptr);
@@ -266,15 +293,46 @@ TEST_CASE("CD-i DVC MPEG audio accepts legal per-frame channel-mode changes", "[
 	REQUIRE(plm_audio_has_header(decoder));
 	REQUIRE(decoder->mode == PLM_AUDIO_MODE_STEREO);
 
-	plm_samples_t *const first = plm_audio_decode(decoder);
-	REQUIRE(first != nullptr);
-	REQUIRE(first->count == PLM_AUDIO_SAMPLES_PER_FRAME);
-	REQUIRE(decoder->mode == PLM_AUDIO_MODE_STEREO);
-
-	plm_samples_t *const second = plm_audio_decode(decoder);
-	REQUIRE(second != nullptr);
-	REQUIRE(second->count == PLM_AUDIO_SAMPLES_PER_FRAME);
-	REQUIRE(decoder->mode == PLM_AUDIO_MODE_JOINT_STEREO);
+	constexpr std::array<int, 4> expected_modes {
+		PLM_AUDIO_MODE_STEREO,
+		PLM_AUDIO_MODE_JOINT_STEREO,
+		PLM_AUDIO_MODE_DUAL_CHANNEL,
+		PLM_AUDIO_MODE_MONO
+	};
+	for (int const expected_mode : expected_modes)
+	{
+		plm_samples_t *const decoded = plm_audio_decode(decoder);
+		REQUIRE(decoded != nullptr);
+		REQUIRE(decoded->count == PLM_AUDIO_SAMPLES_PER_FRAME);
+		REQUIRE(decoder->mode == expected_mode);
+	}
 
 	plm_audio_destroy(decoder);
+}
+
+TEST_CASE("CD-i DVC MPEG audio rejects unsupported bitrate indices", "[emu][philips][dvc]")
+{
+	auto header_is_accepted = [](uint8_t bitrate_index)
+	{
+		std::array<uint8_t, 6> stream {
+			0xff,
+			0xfd,
+			uint8_t(bitrate_index << 4),
+			0x00,
+			0x00,
+			0x00
+		};
+
+		plm_buffer_t *const buffer = plm_buffer_create_with_capacity(stream.size());
+		REQUIRE(buffer != nullptr);
+		REQUIRE(plm_buffer_write(buffer, stream.data(), stream.size()) == stream.size());
+		plm_audio_t *const decoder = plm_audio_create_with_buffer(buffer, 1);
+		REQUIRE(decoder != nullptr);
+		bool const accepted = plm_audio_has_header(decoder);
+		plm_audio_destroy(decoder);
+		return accepted;
+	};
+
+	REQUIRE_FALSE(header_is_accepted(0));
+	REQUIRE_FALSE(header_is_accepted(15));
 }

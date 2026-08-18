@@ -6,7 +6,9 @@
 
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
+#include <vector>
 
 namespace cdi_dvc
 {
@@ -88,6 +90,22 @@ constexpr bool mpeg_stream_selected(bool for_fma, uint8_t stream_id, uint16_t se
 
 	return stream_id >= 0xe0 && stream_id <= 0xef
 		&& (stream_id & 0x0f) == (selected_stream & 0x0f);
+}
+
+inline void compact_consumed_audio_samples(std::vector<int16_t> &samples, std::size_t &read)
+{
+	if (!read)
+		return;
+
+	if (read >= samples.size())
+	{
+		samples.clear();
+	}
+	else
+	{
+		samples.erase(samples.begin(), samples.begin() + read);
+	}
+	read = 0;
 }
 
 constexpr video_command_effects decode_video_command(uint16_t command)

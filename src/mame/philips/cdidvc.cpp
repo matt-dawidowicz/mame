@@ -583,11 +583,7 @@ void cdi_dvc_device::audio_decoder_pump()
 	if (m_audio_stream)
 		m_audio_stream->update();
 
-	if (m_audio_pcm_read >= m_audio_pcm_queue.size())
-	{
-		m_audio_pcm_queue.clear();
-		m_audio_pcm_read = 0;
-	}
+	cdi_dvc::compact_consumed_audio_samples(m_audio_pcm_queue, m_audio_pcm_read);
 	bool const queue_was_empty = m_audio_pcm_queue.empty();
 	uint32_t const decoded_before = m_audio_decoded_samples;
 

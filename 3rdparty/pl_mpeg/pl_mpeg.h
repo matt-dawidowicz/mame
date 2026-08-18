@@ -4026,7 +4026,7 @@ int plm_audio_decode_header(plm_audio_t *self) {
 	}
 
 	int bitrate_index = plm_buffer_read(self->buffer, 4) - 1;
-	if (bitrate_index > 13) {
+	if (bitrate_index < 0 || bitrate_index > 13) {
 		return 0;
 	}
 
