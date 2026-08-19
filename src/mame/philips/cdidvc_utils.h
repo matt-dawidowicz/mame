@@ -50,6 +50,14 @@ struct full_motion_picture_rate
 	uint32_t denominator;
 };
 
+struct mpeg1_layer2_audio_header
+{
+	uint16_t bitrate_kbps;
+	uint16_t sample_rate_hz;
+	uint8_t channel_mode;
+	bool valid;
+};
+
 // Current scheduler implementation model: when multiple timestamped decoded
 // frames are already due at one display opportunity, present the newest due
 // frame and consume the older due frames it supersedes.  This helper describes
@@ -91,6 +99,24 @@ constexpr uint64_t mpeg_timestamp_normalize(uint64_t value)
 	return value & MPEG_TIMESTAMP_MASK;
 }
 
+// SCR, PTS and DTS use the same five-byte 33-bit timestamp packing pattern in
+// MPEG-1 system streams. The high-order tag bits in byte 0 identify the field;
+// this helper intentionally decodes only the shared timestamp payload.
+constexpr uint64_t decode_mpeg1_timestamp_field(
+		uint8_t byte0, uint8_t byte1, uint8_t byte2, uint8_t byte3, uint8_t byte4)
+{
+	return (uint64_t(byte0 & 0x0e) << 29)
+		| (uint64_t(byte1) << 22)
+		| (uint64_t(byte2 & 0xfe) << 14)
+		| (uint64_t(byte3) << 7)
+		| uint64_t(byte4 >> 1);
+}
+
+constexpr bool mpeg1_timestamp_marker_bits_valid(uint8_t byte0, uint8_t byte2, uint8_t byte4)
+{
+	return (byte0 & 0x01) && (byte2 & 0x01) && (byte4 & 0x01);
+}
+
 constexpr int64_t mpeg_timestamp_delta(uint64_t lhs, uint64_t rhs)
 {
 	uint64_t const raw = (lhs - rhs) & MPEG_TIMESTAMP_MASK;
@@ -99,11 +125,21 @@ constexpr int64_t mpeg_timestamp_delta(uint64_t lhs, uint64_t rhs)
 		: int64_t(raw);
 }
 
+// Convert a modulo-2^32 subtraction to its signed representative without
+// relying on implementation-defined unsigned-to-signed narrowing.
+constexpr int32_t signed_wrap_delta32(uint32_t lhs, uint32_t rhs)
+{
+	uint32_t const raw = lhs - rhs;
+	return raw < 0x80000000U
+		? int32_t(raw)
+		: int32_t(int64_t(raw) - 0x1'0000'0000LL);
+}
+
 constexpr int32_t mpeg_dclk_delta(uint64_t timestamp, uint64_t scr)
 {
 	uint32_t const target45 = uint32_t((timestamp >> 1) & 0xffffffffU);
 	uint32_t const scr45 = uint32_t((scr >> 1) & 0xffffffffU);
-	return int32_t(target45 - scr45);
+	return signed_wrap_delta32(target45, scr45);
 }
 
 // Anchor an ISO/IEC 11172 90 kHz system clock to the VMPEG 45 kHz DCLK.
@@ -145,6 +181,31 @@ constexpr uint64_t dclk_delay_to_samples(int32_t delta45, uint32_t sample_rate)
 		return 0;
 
 	return (uint64_t(uint32_t(delta45)) * sample_rate + (DCLK_HZ - 1U)) / DCLK_HZ;
+}
+
+// Decode the MPEG-1 Layer II fields currently consumed by the DVC audio path.
+// This is elementary-stream format parsing, not a VMPEG register/hardware claim.
+constexpr mpeg1_layer2_audio_header decode_mpeg1_layer2_audio_header(uint32_t header)
+{
+	constexpr uint16_t bitrate_kbps[16] =
+		{ 0, 32, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 384, 0 };
+	constexpr uint16_t sample_rate_hz[4] = { 44'100, 48'000, 32'000, 0 };
+
+	unsigned const sync = (header >> 21) & 0x7ff;
+	unsigned const version = (header >> 19) & 0x03;
+	unsigned const layer = (header >> 17) & 0x03;
+	unsigned const bitrate_index = (header >> 12) & 0x0f;
+	unsigned const sample_rate_index = (header >> 10) & 0x03;
+	uint8_t const channel_mode = uint8_t((header >> 6) & 0x03);
+	bool const valid = sync == 0x7ff && version == 3 && layer == 2
+		&& bitrate_kbps[bitrate_index] != 0 && sample_rate_hz[sample_rate_index] != 0;
+
+	return {
+		valid ? bitrate_kbps[bitrate_index] : uint16_t(0),
+		valid ? sample_rate_hz[sample_rate_index] : uint16_t(0),
+		channel_mode,
+		valid
+	};
 }
 
 // ISO/IEC 11172 picture-rate codes permitted by the CD-i Full Motion profile.
