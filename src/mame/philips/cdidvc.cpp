@@ -11,17 +11,19 @@
     acknowledge behavior, SCC68070 DMA ingress, MPEG-1 program-stream parsing,
     PL_MPEG-backed audio/video decoding, audio output, and video presentation.
 
-    Known limitations remain: DMA transfers are serviced synchronously, A/V
-    presentation scheduling is incomplete, decoder/presentation state is not
-    fully save-state serializable, and MPEG-RAM startup visibility currently
-    uses a provisional MAME-only compatibility trigger. Several fixed register
-    values and video-presentation scale factors also await independent hardware
-    attribution.
+    Known limitations remain: DMA service pacing and A/V presentation policy
+    are current implementation models pending broader runtime calibration;
+    decoder/presentation save-state reconstruction is still incomplete; and
+    E03018 MPEG-RAM visibility, several fixed register values, and presentation
+    scale factors still lack independent physical-hardware attribution.
 
 ***************************************************************************/
 
 #include "emu.h"
 #include "cdidvc.h"
+#include "cdidvc_fidelity.h"
+#include "cdidvc_mpeg_format.h"
+#include "cdidvc_save_state.h"
 #include "cdidvc_utils.h"
 
 #define PLM_NO_STDIO
@@ -57,7 +59,6 @@ void cdi_dvc_device::device_start()
 {
 	m_mpeg_ram.fill(0);
 	save_item(NAME(m_mpeg_ram));
-	save_item(NAME(m_mpeg_ram_compat_write_count));
 	save_item(NAME(m_mpeg_ram_compat_visible));
 	save_item(NAME(m_mpeg_ram_gated_reads));
 	save_item(NAME(m_mpeg_ram_gated_writes));
@@ -98,6 +99,16 @@ void cdi_dvc_device::device_start()
 	save_item(NAME(m_dma_first_word));
 	save_item(NAME(m_dma_last_word));
 
+	save_item(NAME(m_dsp_bootstrap_write_count));
+	save_item(NAME(m_dsp_bootstrap_last));
+	save_item(NAME(m_av_last_audio_pts90));
+	save_item(NAME(m_av_last_video_pts90));
+	save_item(NAME(m_av_audio_pts_valid));
+	save_item(NAME(m_av_video_pts_valid));
+	save_item(NAME(m_av_last_cross_delta90));
+	save_item(NAME(m_av_max_abs_cross_delta90));
+	save_item(NAME(m_av_cross_observations));
+
 	save_item(NAME(m_mpeg_prefix));
 	save_item(NAME(m_mpeg_state));
 	save_item(NAME(m_mpeg_stream_id));
@@ -126,6 +137,12 @@ void cdi_dvc_device::device_start()
 	save_item(NAME(m_mpeg_packet_have_dts));
 	save_item(NAME(m_mpeg_pts_events));
 	save_item(NAME(m_mpeg_dts_events));
+	save_item(NAME(m_mpeg_scr_raw));
+	save_item(NAME(m_mpeg_pts_raw));
+	save_item(NAME(m_mpeg_dts_raw));
+	save_item(NAME(m_mpeg_scr_marker_errors));
+	save_item(NAME(m_mpeg_pts_marker_errors));
+	save_item(NAME(m_mpeg_dts_marker_errors));
 	save_item(NAME(m_mpeg_clock90));
 	save_item(NAME(m_mpeg_clock_valid));
 	save_item(NAME(m_mpeg_scr_dclk_anchor));
@@ -135,10 +152,342 @@ void cdi_dvc_device::device_start()
 	save_item(NAME(m_mpeg_schedule_decode_delta45));
 	save_item(NAME(m_mpeg_schedule_valid));
 	save_item(NAME(m_mpeg_schedule_events));
+
+	// Save guest-visible audio/video state not covered by the parser/register
+	// block above. Dynamic containers are handled by presave/postload mirrors.
+	save_item(NAME(m_audio_output_rate));
+	save_item(NAME(m_audio_wait_samples));
+	save_item(NAME(m_audio_silence_frames));
+	save_item(NAME(m_audio_output_frames));
+	save_item(NAME(m_audio_output_nonzero));
+	save_item(NAME(m_audio_output_hash));
+	save_item(NAME(m_audio_queue_events));
+	save_item(NAME(m_audio_output_started));
+	save_item(NAME(m_audio_header_shift));
+	save_item(NAME(m_audio_decoded_frames));
+	save_item(NAME(m_audio_decoded_samples));
+	save_item(NAME(m_audio_header_events));
+	save_item(NAME(m_audio_decode_events));
+	save_item(NAME(m_audio_bitrate_kbps));
+	save_item(NAME(m_audio_samplerate));
+	save_item(NAME(m_audio_channel_mode));
+	save_item(NAME(m_audio_backend_status));
+	save_item(NAME(m_audio_have_es_header));
+	save_item(NAME(m_audio_have_header));
+
+	save_item(NAME(m_video_pts_anchor90));
+	save_item(NAME(m_video_backend_anchor90));
+	save_item(NAME(m_video_pts_anchor_valid));
+	save_item(NAME(m_video_present_width));
+	save_item(NAME(m_video_present_height));
+	save_item(NAME(m_video_present_generation));
+	save_item(NAME(m_video_present_valid));
+	save_item(NAME(m_video_compat_interrupts));
+	save_item(NAME(m_video_compat_generation));
+	save_item(NAME(m_video_compat_frame_pending));
+	save_item(NAME(m_scheduler_decoded_frames));
+	save_item(NAME(m_scheduler_presented_frames));
+	save_item(NAME(m_scheduler_due_superseded));
+	save_item(NAME(m_scheduler_flush_dropped));
+	save_item(NAME(m_scheduler_wait_vblanks));
+	save_item(NAME(m_scheduler_fallback_presented));
+	save_item(NAME(m_scheduler_clocked_presented));
+	save_item(NAME(m_scheduler_total_late90));
+	save_item(NAME(m_scheduler_max_late90));
+	save_item(NAME(m_scheduler_compat_frame_events));
+	save_item(NAME(m_scheduler_max_queue_depth));
+	save_item(NAME(m_scheduler_vblanks));
+	save_item(NAME(m_video_screen_y_shadow));
+	save_item(NAME(m_video_screen_x_shadow));
+	save_item(NAME(m_video_window_h_shadow));
+	save_item(NAME(m_video_window_w_shadow));
+	save_item(NAME(m_video_crop_y_shadow));
+	save_item(NAME(m_video_crop_x_shadow));
+	save_item(NAME(m_video_screen_y));
+	save_item(NAME(m_video_screen_x));
+	save_item(NAME(m_video_window_h));
+	save_item(NAME(m_video_window_w));
+	save_item(NAME(m_video_crop_y));
+	save_item(NAME(m_video_crop_x));
+	save_item(NAME(m_video_geometry_frame_pending));
+	save_item(NAME(m_video_geometry_vblank_pending));
+	save_item(NAME(m_video_visible));
+	save_item(NAME(m_video_show_on_next));
+	save_item(NAME(m_video_overlay_hash));
+	save_item(NAME(m_video_overlay_pixels));
+	save_item(NAME(m_video_overlay_complete));
+	save_item(NAME(m_video_overlay_total_pixels));
+	save_item(NAME(m_video_overlay_top64_pixels));
+	save_item(NAME(m_video_es_prefix));
+	save_item(NAME(m_video_sequence_headers));
+	save_item(NAME(m_video_gop_headers));
+	save_item(NAME(m_video_picture_headers));
+	save_item(NAME(m_video_picture_header_bytes));
+	save_item(NAME(m_video_picture_marker_interrupts));
+	save_item(NAME(m_video_reference_interrupts));
+	save_item(NAME(m_video_reference_valid));
+	save_item(NAME(m_video_decoded_frames));
+	save_item(NAME(m_video_width));
+	save_item(NAME(m_video_height));
+	save_item(NAME(m_video_framerate_millihz));
+	save_item(NAME(m_video_have_sequence));
+	save_item(NAME(m_video_sequence_end_pending));
+	save_item(NAME(m_video_sequence_end_events));
+	save_item(NAME(m_video_last_picture_generation));
+	save_item(NAME(m_video_last_picture_pending));
+
+	m_save_audio_replay = std::make_unique<uint8_t[]>(cdi_dvc::SAVE_AUDIO_REPLAY_CAPACITY);
+	m_save_video_replay = std::make_unique<uint8_t[]>(cdi_dvc::SAVE_VIDEO_REPLAY_CAPACITY);
+	m_save_audio_pcm = std::make_unique<int16_t[]>(cdi_dvc::SAVE_AUDIO_PCM_VALUES);
+	m_save_video_queue_pixels = std::make_unique<uint32_t[]>(cdi_dvc::SAVE_VIDEO_QUEUE_PIXELS);
+	m_save_video_present_pixels = std::make_unique<uint32_t[]>(cdi_dvc::SAVE_VIDEO_PIXELS_PER_FRAME);
+
+	save_pointer(NAME(m_save_audio_replay), cdi_dvc::SAVE_AUDIO_REPLAY_CAPACITY);
+	save_pointer(NAME(m_save_video_replay), cdi_dvc::SAVE_VIDEO_REPLAY_CAPACITY);
+	save_pointer(NAME(m_save_audio_pcm), cdi_dvc::SAVE_AUDIO_PCM_VALUES);
+	save_pointer(NAME(m_save_video_queue_pixels), cdi_dvc::SAVE_VIDEO_QUEUE_PIXELS);
+	save_pointer(NAME(m_save_video_present_pixels), cdi_dvc::SAVE_VIDEO_PIXELS_PER_FRAME);
+	save_item(NAME(m_save_audio_replay_length));
+	save_item(NAME(m_save_video_replay_length));
+	save_item(NAME(m_save_audio_pcm_values));
+	save_item(NAME(m_save_video_queue_count));
+	save_item(NAME(m_save_video_present_pixel_count));
+	save_item(NAME(m_save_picture_event_count));
+	save_item(NAME(m_save_snapshot_valid));
+	save_item(NAME(m_save_snapshot_serial));
+	save_item(NAME(m_save_video_queue_width));
+	save_item(NAME(m_save_video_queue_height));
+	save_item(NAME(m_save_video_queue_generation));
+	save_item(NAME(m_save_video_queue_interrupts));
+	save_item(NAME(m_save_video_queue_timestamp90));
+	save_item(NAME(m_save_video_queue_timestamp_valid));
+	save_item(NAME(m_save_picture_events));
+	save_item(NAME(m_audio_replay_overflow));
+	save_item(NAME(m_video_replay_overflow));
+
+	machine().save().register_presave(save_prepost_delegate(FUNC(cdi_dvc_device::save_state_presave), this));
+	machine().save().register_postload(save_prepost_delegate(FUNC(cdi_dvc_device::save_state_postload), this));
+}
+
+void cdi_dvc_device::save_state_presave()
+{
+	if (m_audio_stream)
+		m_audio_stream->update();
+
+	cdi_dvc::compact_consumed_audio_samples(m_audio_pcm_queue, m_audio_pcm_read);
+	if (m_video_picture_event_read)
+	{
+		if (m_video_picture_event_read > m_video_picture_event_queue.size())
+		{
+			m_video_picture_event_queue.clear();
+		}
+		else
+		{
+			m_video_picture_event_queue.erase(
+					m_video_picture_event_queue.begin(),
+					m_video_picture_event_queue.begin() + m_video_picture_event_read);
+		}
+		m_video_picture_event_read = 0;
+	}
+
+	m_save_snapshot_valid = !m_audio_replay_overflow && !m_video_replay_overflow;
+	m_save_audio_replay_length = uint32_t(m_audio_replay_journal.size());
+	m_save_video_replay_length = uint32_t(m_video_replay_journal.size());
+	m_save_audio_pcm_values = uint32_t(m_audio_pcm_queue.size());
+	m_save_video_queue_count = uint16_t(m_video_queue.size());
+	m_save_picture_event_count = uint16_t(m_video_picture_event_queue.size());
+	m_save_video_present_pixel_count = uint32_t(m_video_present_frame.size());
+
+	m_save_snapshot_valid &= cdi_dvc::save_replay_fits(
+			m_audio_replay_journal.size(), cdi_dvc::SAVE_AUDIO_REPLAY_CAPACITY);
+	m_save_snapshot_valid &= cdi_dvc::save_replay_fits(
+			m_video_replay_journal.size(), cdi_dvc::SAVE_VIDEO_REPLAY_CAPACITY);
+	m_save_snapshot_valid &= cdi_dvc::save_audio_pcm_fits(m_audio_pcm_queue.size());
+	m_save_snapshot_valid &= cdi_dvc::save_video_queue_fits(m_video_queue.size());
+	m_save_snapshot_valid &= cdi_dvc::save_picture_events_fit(m_video_picture_event_queue.size());
+	m_save_snapshot_valid &= cdi_dvc::save_video_frame_fits(
+			m_video_present_width, m_video_present_height, m_video_present_frame.size())
+		|| (!m_video_present_valid && m_video_present_frame.empty());
+
+	if (m_save_snapshot_valid)
+	{
+		std::copy(m_audio_replay_journal.begin(), m_audio_replay_journal.end(), m_save_audio_replay.get());
+		std::copy(m_video_replay_journal.begin(), m_video_replay_journal.end(), m_save_video_replay.get());
+		std::copy(m_audio_pcm_queue.begin(), m_audio_pcm_queue.end(), m_save_audio_pcm.get());
+		std::copy(m_video_picture_event_queue.begin(), m_video_picture_event_queue.end(), m_save_picture_events.begin());
+		std::copy(m_video_present_frame.begin(), m_video_present_frame.end(), m_save_video_present_pixels.get());
+
+		std::size_t index = 0;
+		for (queued_video_frame const &frame : m_video_queue)
+		{
+			if (!cdi_dvc::save_video_frame_fits(frame.width, frame.height, frame.pixels.size()))
+			{
+				m_save_snapshot_valid = false;
+				break;
+			}
+			m_save_video_queue_width[index] = frame.width;
+			m_save_video_queue_height[index] = frame.height;
+			m_save_video_queue_generation[index] = frame.generation;
+			m_save_video_queue_interrupts[index] = frame.interrupts;
+			m_save_video_queue_timestamp90[index] = frame.timestamp90;
+			m_save_video_queue_timestamp_valid[index] = frame.timestamp_valid ? 1U : 0U;
+			std::copy(frame.pixels.begin(), frame.pixels.end(),
+					m_save_video_queue_pixels.get() + index * cdi_dvc::SAVE_VIDEO_PIXELS_PER_FRAME);
+			++index;
+		}
+	}
+
+	++m_save_snapshot_serial;
+	logerror("DVC_SAVE_STATE_SNAPSHOT serial=%u valid=%u audio_replay=%u video_replay=%u pcm_values=%u queue=%u present_pixels=%u picture_events=%u audio_overflow=%u video_overflow=%u\n",
+			m_save_snapshot_serial, m_save_snapshot_valid ? 1U : 0U,
+			m_save_audio_replay_length, m_save_video_replay_length,
+			m_save_audio_pcm_values, m_save_video_queue_count,
+			m_save_video_present_pixel_count, m_save_picture_event_count,
+			m_audio_replay_overflow ? 1U : 0U, m_video_replay_overflow ? 1U : 0U);
+}
+
+bool cdi_dvc_device::save_state_rebuild_audio_decoder()
+{
+	uint32_t const wanted_frames = m_audio_decoded_frames;
+	audio_decoder_destroy();
+	m_audio_buffer = plm_buffer_create_with_capacity(128 * 1024);
+	m_audio_decoder = plm_audio_create_with_buffer(m_audio_buffer, 1);
+	if (!m_audio_buffer || !m_audio_decoder)
+		return false;
+
+	if (m_save_audio_replay_length)
+		plm_buffer_write(m_audio_buffer, m_save_audio_replay.get(), m_save_audio_replay_length);
+
+	if (m_audio_have_header && !plm_audio_has_header(m_audio_decoder))
+		return false;
+
+	for (uint32_t frame = 0; frame < wanted_frames; ++frame)
+	{
+		if (!plm_audio_decode(m_audio_decoder))
+			return false;
+	}
+	return true;
+}
+
+bool cdi_dvc_device::save_state_rebuild_video_decoder()
+{
+	uint32_t const wanted_frames = m_video_decoded_frames;
+	video_decoder_destroy();
+	m_video_buffer = plm_buffer_create_with_capacity(256 * 1024);
+	m_video_decoder = plm_video_create_with_buffer(m_video_buffer, 1);
+	if (!m_video_buffer || !m_video_decoder)
+		return false;
+
+	if (m_save_video_replay_length)
+		plm_buffer_write(m_video_buffer, m_save_video_replay.get(), m_save_video_replay_length);
+
+	if (m_video_have_sequence && !plm_video_has_header(m_video_decoder))
+		return false;
+
+	for (uint32_t frame = 0; frame < wanted_frames; ++frame)
+	{
+		if (!plm_video_decode(m_video_decoder))
+			return false;
+	}
+	return true;
+}
+
+void cdi_dvc_device::save_state_postload()
+{
+	if (!m_save_snapshot_valid)
+	{
+		logerror("DVC_SAVE_STATE_RESTORE_UNSUPPORTED serial=%u reason=invalid_snapshot\n",
+				m_save_snapshot_serial);
+		audio_decoder_destroy();
+		video_decoder_destroy();
+		m_audio_pcm_queue.clear();
+		m_video_queue.clear();
+		m_video_present_frame.clear();
+		m_video_picture_event_queue.clear();
+		return;
+	}
+
+	m_audio_replay_journal.assign(
+			m_save_audio_replay.get(), m_save_audio_replay.get() + m_save_audio_replay_length);
+	m_video_replay_journal.assign(
+			m_save_video_replay.get(), m_save_video_replay.get() + m_save_video_replay_length);
+	m_audio_pcm_queue.assign(
+			m_save_audio_pcm.get(), m_save_audio_pcm.get() + m_save_audio_pcm_values);
+	m_audio_pcm_read = 0;
+
+	m_video_queue.clear();
+	for (std::size_t index = 0; index < m_save_video_queue_count; ++index)
+	{
+		queued_video_frame frame;
+		frame.width = m_save_video_queue_width[index];
+		frame.height = m_save_video_queue_height[index];
+		frame.generation = m_save_video_queue_generation[index];
+		frame.interrupts = m_save_video_queue_interrupts[index];
+		frame.timestamp90 = m_save_video_queue_timestamp90[index];
+		frame.timestamp_valid = m_save_video_queue_timestamp_valid[index] != 0;
+		std::size_t const pixels = std::size_t(frame.width) * std::size_t(frame.height);
+		uint32_t const *const base = m_save_video_queue_pixels.get()
+				+ index * cdi_dvc::SAVE_VIDEO_PIXELS_PER_FRAME;
+		frame.pixels.assign(base, base + pixels);
+		m_video_queue.push_back(std::move(frame));
+	}
+
+	m_video_present_frame.assign(
+			m_save_video_present_pixels.get(),
+			m_save_video_present_pixels.get() + m_save_video_present_pixel_count);
+	m_video_picture_event_queue.assign(
+			m_save_picture_events.begin(),
+			m_save_picture_events.begin() + m_save_picture_event_count);
+	m_video_picture_event_read = 0;
+	m_video_rgb24.clear();
+
+	bool const audio_ok = save_state_rebuild_audio_decoder();
+	bool const video_ok = save_state_rebuild_video_decoder();
+	if (!audio_ok || !video_ok)
+	{
+		m_save_snapshot_valid = false;
+		logerror("DVC_SAVE_STATE_RESTORE_UNSUPPORTED serial=%u reason=decoder_replay audio_ok=%u video_ok=%u audio_frames=%u video_frames=%u\n",
+				m_save_snapshot_serial, audio_ok ? 1U : 0U, video_ok ? 1U : 0U,
+				m_audio_decoded_frames, m_video_decoded_frames);
+		return;
+	}
+
+	if (m_audio_stream)
+		m_audio_stream->set_sample_rate(m_audio_output_rate ? m_audio_output_rate : 48'000);
+	update_interrupt_state();
+	update_timer();
+
+	logerror("DVC_SAVE_STATE_RESTORE_OK serial=%u audio_replay=%u video_replay=%u pcm_values=%u queue=%u present_pixels=%u audio_frames=%u video_frames=%u\n",
+			m_save_snapshot_serial, m_save_audio_replay_length, m_save_video_replay_length,
+			m_save_audio_pcm_values, m_save_video_queue_count,
+			m_save_video_present_pixel_count, m_audio_decoded_frames, m_video_decoded_frames);
 }
 
 void cdi_dvc_device::device_stop()
 {
+	logerror("DVC_TIMESTAMP_MARKER_TELEMETRY fma=%u fmv=%u scr_fma=%u pts_fma=%u dts_fma=%u scr_fmv=%u pts_fmv=%u dts_fmv=%u\n",
+			m_mpeg_scr_marker_errors[MPEG_FMA] + m_mpeg_pts_marker_errors[MPEG_FMA] + m_mpeg_dts_marker_errors[MPEG_FMA],
+			m_mpeg_scr_marker_errors[MPEG_FMV] + m_mpeg_pts_marker_errors[MPEG_FMV] + m_mpeg_dts_marker_errors[MPEG_FMV],
+			m_mpeg_scr_marker_errors[MPEG_FMA], m_mpeg_pts_marker_errors[MPEG_FMA], m_mpeg_dts_marker_errors[MPEG_FMA],
+			m_mpeg_scr_marker_errors[MPEG_FMV], m_mpeg_pts_marker_errors[MPEG_FMV], m_mpeg_dts_marker_errors[MPEG_FMV]);
+	logerror("DVC_TOP_DISPLAY_ATTRIBUTION total_overlay_pixels=%llu top64_overlay_pixels=%llu top64_rows=64\n",
+			(unsigned long long)m_video_overlay_total_pixels,
+			(unsigned long long)m_video_overlay_top64_pixels);
+	logerror("DVC_DSP_BOOTSTRAP_TELEMETRY e03022_count=%u e03022_last=%04x e03024_count=%u e03024_last=%04x e0406c_count=%u e0406c_last=%04x e0406e_count=%u e0406e_last=%04x e04070_count=%u e04070_last=%04x e04072_count=%u e04072_last=%04x\n",
+			m_dsp_bootstrap_write_count[0], m_dsp_bootstrap_last[0],
+			m_dsp_bootstrap_write_count[1], m_dsp_bootstrap_last[1],
+			m_dsp_bootstrap_write_count[2], m_dsp_bootstrap_last[2],
+			m_dsp_bootstrap_write_count[3], m_dsp_bootstrap_last[3],
+			m_dsp_bootstrap_write_count[4], m_dsp_bootstrap_last[4],
+			m_dsp_bootstrap_write_count[5], m_dsp_bootstrap_last[5]);
+	logerror("DVC_AV_CLOCK_TELEMETRY observations=%llu last_delta90=%lld last_delta_us=%lld max_abs_delta90=%llu max_abs_delta_us=%lld audio_pts_valid=%u audio_pts=%llu video_pts_valid=%u video_pts=%llu\n",
+			(unsigned long long)m_av_cross_observations,
+			(long long)m_av_last_cross_delta90,
+			(long long)cdi_dvc::clock90_delta_microseconds(m_av_last_cross_delta90),
+			(unsigned long long)m_av_max_abs_cross_delta90,
+			(long long)cdi_dvc::clock90_delta_microseconds(int64_t(m_av_max_abs_cross_delta90)),
+			m_av_audio_pts_valid ? 1U : 0U, (unsigned long long)m_av_last_audio_pts90,
+			m_av_video_pts_valid ? 1U : 0U, (unsigned long long)m_av_last_video_pts90);
 	logerror("DVC_PRESENTATION_QUEUE_TELEMETRY decoded=%llu presented=%llu due_superseded=%llu flush_dropped=%llu waits=%llu fallback=%llu clocked=%llu total_late90=%llu max_late90=%llu compat_events=%llu max_depth=%llu vblanks=%llu queued=%u\n",
 			(unsigned long long)m_scheduler_decoded_frames,
 			(unsigned long long)m_scheduler_presented_frames,
@@ -203,6 +552,24 @@ void cdi_dvc_device::device_reset()
 	m_dma_transfer_words = 0;
 	m_dma_first_word = 0;
 	m_dma_last_word = 0;
+
+	m_video_overlay_total_pixels = 0;
+	m_video_overlay_top64_pixels = 0;
+	m_dsp_bootstrap_write_count.fill(0);
+	m_dsp_bootstrap_last.fill(0);
+	m_av_last_audio_pts90 = 0;
+	m_av_last_video_pts90 = 0;
+	m_av_audio_pts_valid = false;
+	m_av_video_pts_valid = false;
+	m_av_last_cross_delta90 = 0;
+	m_av_max_abs_cross_delta90 = 0;
+	m_av_cross_observations = 0;
+	m_mpeg_scr_raw.fill(0);
+	m_mpeg_pts_raw.fill(0);
+	m_mpeg_dts_raw.fill(0);
+	m_mpeg_scr_marker_errors.fill(0);
+	m_mpeg_pts_marker_errors.fill(0);
+	m_mpeg_dts_marker_errors.fill(0);
 
 	m_intreq_callback(CLEAR_LINE);
 	m_dma_req_callback(CLEAR_LINE);
@@ -545,6 +912,8 @@ void cdi_dvc_device::audio_decoder_reset()
 {
 	audio_output_reset();
 	audio_decoder_destroy();
+	m_audio_replay_journal.clear();
+	m_audio_replay_overflow = false;
 
 	m_audio_header_shift = 0;
 	m_audio_decoded_frames = 0;
@@ -564,28 +933,29 @@ void cdi_dvc_device::audio_decoder_reset()
 
 void cdi_dvc_device::audio_decoder_feed(uint8_t data)
 {
+	if (m_audio_replay_journal.size() < cdi_dvc::SAVE_AUDIO_REPLAY_CAPACITY)
+	{
+		m_audio_replay_journal.push_back(data);
+	}
+	else if (!m_audio_replay_overflow)
+	{
+		m_audio_replay_overflow = true;
+		logerror("DVC_SAVE_STATE_AUDIO_REPLAY_OVERFLOW capacity=%u\n",
+				unsigned(cdi_dvc::SAVE_AUDIO_REPLAY_CAPACITY));
+	}
+
 	m_audio_header_shift = (m_audio_header_shift << 8) | data;
 
 	if (!m_audio_have_es_header)
 	{
-		uint32_t const header = m_audio_header_shift;
-		unsigned const sync = (header >> 21) & 0x7ff;
-		unsigned const version = (header >> 19) & 0x03;
-		unsigned const layer = (header >> 17) & 0x03;
-		unsigned const bitrate_index = (header >> 12) & 0x0f;
-		unsigned const samplerate_index = (header >> 10) & 0x03;
-		unsigned const channel_mode = (header >> 6) & 0x03;
-		static constexpr uint16_t bitrate_kbps[16] =
-			{ 0, 32, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 384, 0 };
-		static constexpr uint16_t samplerate_hz[4] = { 44100, 48000, 32000, 0 };
-
-		if (sync == 0x7ff && version == 3 && layer == 2
-			&& bitrate_kbps[bitrate_index] != 0 && samplerate_hz[samplerate_index] != 0)
+		cdi_dvc::mpeg1_layer2_audio_header const header =
+			cdi_dvc::decode_mpeg1_layer2_audio_header(m_audio_header_shift);
+		if (header.valid)
 		{
 			m_audio_have_es_header = true;
-			m_audio_bitrate_kbps = bitrate_kbps[bitrate_index];
-			m_audio_samplerate = samplerate_hz[samplerate_index];
-			m_audio_channel_mode = channel_mode;
+			m_audio_bitrate_kbps = header.bitrate_kbps;
+			m_audio_samplerate = header.sample_rate_hz;
+			m_audio_channel_mode = header.channel_mode;
 			m_audio_backend_status |= 0x01;
 			++m_audio_header_events;
 			LOGMASKED(LOG_AUDIO, "%s: DVC AUDIO ES header bitrate=%u rate=%u mode=%u status=%02x event=%u\n",
@@ -686,6 +1056,12 @@ void cdi_dvc_device::audio_decoder_pump()
 	}
 
 	++m_audio_queue_events;
+	if (m_mpeg_packet_have_pts[MPEG_FMA])
+	{
+		m_av_last_audio_pts90 = m_mpeg_packet_pts[MPEG_FMA];
+		m_av_audio_pts_valid = true;
+		av_clock_observe();
+	}
 	uint32_t const pending = uint32_t((m_audio_pcm_queue.size() - m_audio_pcm_read) / 2);
 	LOGMASKED(LOG_AUDIO,
 			"%s: DVC AUDIO queue event=%u added=%u pending=%u rate=%u play45=%d wait=%llu\n",
@@ -818,6 +1194,12 @@ void cdi_dvc_device::video_latch_frame()
 	m_video_present_height = selected.height;
 	m_video_present_generation = selected.generation;
 	m_video_present_valid = true;
+	if (selected.timestamp_valid)
+	{
+		m_av_last_video_pts90 = selected.timestamp90;
+		m_av_video_pts_valid = true;
+		av_clock_observe();
+	}
 
 	video_overlay_reset();
 
@@ -926,22 +1308,24 @@ void cdi_dvc_device::video_overlay_scanline(uint32_t *pixels, unsigned pixel_cou
 	if (!window_w || !window_h)
 		return;
 
-	// Current MAME presentation mapping; hardware provenance for these scale
-	// factors is still pending.
-	int const dst_x = int(m_video_screen_x) * 4;
-	int const dst_y = visible_top + int(m_video_screen_y) * 2;
+	cdi_dvc::video_present_geometry const geometry =
+		cdi_dvc::current_video_present_geometry(
+			m_video_screen_x, m_video_screen_y, visible_top, window_w, window_h);
+	int const dst_x = geometry.dst_x;
+	int const dst_y = geometry.dst_y;
 	int const rel_y = physical_y - dst_y;
-	if (rel_y < 0 || rel_y >= int(window_h * 2))
+	if (rel_y < 0 || rel_y >= int(geometry.output_height))
 		return;
 
-	unsigned const src_y = unsigned(m_video_crop_y) + unsigned(rel_y / 2);
+	unsigned const src_y = unsigned(m_video_crop_y)
+		+ unsigned(rel_y / int(cdi_dvc::VIDEO_PIXEL_Y_SCALE));
 	for (unsigned x = 0; x < window_w; ++x)
 	{
 		unsigned const src_x = unsigned(m_video_crop_x) + x;
 		uint32_t const color = m_video_present_frame[size_t(src_y) * m_video_present_width + src_x];
-		for (unsigned repeat = 0; repeat < 2; ++repeat)
+		for (unsigned repeat = 0; repeat < cdi_dvc::VIDEO_PIXEL_X_SCALE; ++repeat)
 		{
-			int const out_x = dst_x + int(x * 2 + repeat);
+			int const out_x = dst_x + int(x * cdi_dvc::VIDEO_PIXEL_X_SCALE + repeat);
 			if (out_x < 0 || out_x >= int(pixel_count) || out_x >= int(external_count))
 				continue;
 			if (out_x < clip_min_x || out_x > clip_max_x || !external_video[out_x])
@@ -958,10 +1342,13 @@ void cdi_dvc_device::video_overlay_scanline(uint32_t *pixels, unsigned pixel_cou
 			m_video_overlay_hash ^= b;
 			m_video_overlay_hash *= 16777619U;
 			++m_video_overlay_pixels;
+			++m_video_overlay_total_pixels;
+			if (physical_y >= visible_top && physical_y < visible_top + 64)
+				++m_video_overlay_top64_pixels;
 		}
 	}
 
-	if (!m_video_overlay_complete && physical_y == dst_y + int(window_h * 2) - 1 && m_video_overlay_pixels)
+	if (!m_video_overlay_complete && physical_y == dst_y + int(geometry.output_height) - 1 && m_video_overlay_pixels)
 	{
 		m_video_overlay_complete = true;
 		LOGMASKED(LOG_VIDEO, "%s: DVC VIDEO overlay complete frame=%u crop=%u,%u window=%ux%u dst=%d,%d pixels=%u fnv=%08x\n",
@@ -990,6 +1377,8 @@ void cdi_dvc_device::video_decoder_reset()
 {
 	video_frame_clear();
 	video_decoder_destroy();
+	m_video_replay_journal.clear();
+	m_video_replay_overflow = false;
 
 	m_video_es_prefix = 0;
 	m_video_sequence_headers = 0;
@@ -1017,6 +1406,17 @@ void cdi_dvc_device::video_decoder_reset()
 
 void cdi_dvc_device::video_decoder_feed(uint8_t data)
 {
+	if (m_video_replay_journal.size() < cdi_dvc::SAVE_VIDEO_REPLAY_CAPACITY)
+	{
+		m_video_replay_journal.push_back(data);
+	}
+	else if (!m_video_replay_overflow)
+	{
+		m_video_replay_overflow = true;
+		logerror("DVC_SAVE_STATE_VIDEO_REPLAY_OVERFLOW capacity=%u\n",
+				unsigned(cdi_dvc::SAVE_VIDEO_REPLAY_CAPACITY));
+	}
+
 	if (m_video_picture_header_bytes)
 	{
 		--m_video_picture_header_bytes;
@@ -1274,6 +1674,9 @@ void cdi_dvc_device::mpeg_parser_reset(unsigned target)
 	m_mpeg_packet_have_dts[target] = false;
 	m_mpeg_pts_events[target] = 0;
 	m_mpeg_dts_events[target] = 0;
+	m_mpeg_scr_raw[target] = 0;
+	m_mpeg_pts_raw[target] = 0;
+	m_mpeg_dts_raw[target] = 0;
 	m_mpeg_schedule_play_delta90[target] = 0;
 	m_mpeg_schedule_decode_delta90[target] = 0;
 	m_mpeg_schedule_play_delta45[target] = 0;
@@ -1293,37 +1696,33 @@ void cdi_dvc_device::mpeg_scr_byte(unsigned target, uint8_t data)
 	if (target > MPEG_FMV)
 		return;
 
-	switch (m_mpeg_pack_index[target])
+	uint8_t const index = m_mpeg_pack_index[target];
+	if (index < 5)
 	{
-	case 0:
-		m_mpeg_scr_temp[target] = uint64_t(data & 0x0e) << 29;
-		break;
-	case 1:
-		m_mpeg_scr_temp[target] |= uint64_t(data) << 22;
-		break;
-	case 2:
-		m_mpeg_scr_temp[target] |= uint64_t(data & 0xfe) << 14;
-		break;
-	case 3:
-		m_mpeg_scr_temp[target] |= uint64_t(data) << 7;
-		break;
-	case 4:
-		m_mpeg_scr_temp[target] |= uint64_t(data >> 1);
-		m_mpeg_last_scr[target] = m_mpeg_scr_temp[target] & ((uint64_t(1) << 33) - 1);
-		m_mpeg_have_scr[target] = true;
-		m_mpeg_scr_dclk_anchor[target] = target == MPEG_FMA
-				? current_fma_dclk()
-				: current_fmv_dclk();
-		++m_mpeg_scr_events[target];
-		m_mpeg_clock90 = m_mpeg_last_scr[target];
-		m_mpeg_clock_valid = true;
-		LOGMASKED(LOG_MPEG, "%s: DVC MPEG SCR %s scr=%llu event=%u clock=%llu\n",
-				machine().describe_context(), target == MPEG_FMA ? "FMA" : "FMV",
-				(unsigned long long)m_mpeg_last_scr[target], m_mpeg_scr_events[target],
-				(unsigned long long)m_mpeg_clock90);
-		break;
-	default:
-		break;
+		m_mpeg_scr_raw[target] = (m_mpeg_scr_raw[target] << 8) | uint64_t(data);
+		if (index == 4)
+		{
+			uint64_t const raw = m_mpeg_scr_raw[target];
+			std::array<uint8_t, 5> const field = {
+				uint8_t(raw >> 32), uint8_t(raw >> 24), uint8_t(raw >> 16),
+				uint8_t(raw >> 8), uint8_t(raw)
+			};
+			if (!cdi_dvc::mpeg1_timestamp_marker_bits_valid(field, 0x2))
+				++m_mpeg_scr_marker_errors[target];
+			m_mpeg_scr_temp[target] = cdi_dvc::decode_mpeg1_timestamp_field(field);
+			m_mpeg_last_scr[target] = m_mpeg_scr_temp[target];
+			m_mpeg_have_scr[target] = true;
+			m_mpeg_scr_dclk_anchor[target] = target == MPEG_FMA
+					? current_fma_dclk()
+					: current_fmv_dclk();
+			++m_mpeg_scr_events[target];
+			m_mpeg_clock90 = m_mpeg_last_scr[target];
+			m_mpeg_clock_valid = true;
+			LOGMASKED(LOG_MPEG, "%s: DVC MPEG SCR %s scr=%llu event=%u clock=%llu marker_errors=%u\n",
+					machine().describe_context(), target == MPEG_FMA ? "FMA" : "FMV",
+					(unsigned long long)m_mpeg_last_scr[target], m_mpeg_scr_events[target],
+					(unsigned long long)m_mpeg_clock90, m_mpeg_scr_marker_errors[target]);
+		}
 	}
 
 	if (m_mpeg_pack_index[target] != 0xff)
@@ -1334,7 +1733,9 @@ void cdi_dvc_device::mpeg_timestamp_start(unsigned target, uint8_t data, bool wi
 {
 	m_mpeg_ts_mode[target] = with_dts ? 2 : 1;
 	m_mpeg_ts_index[target] = 0;
-	m_mpeg_pts_temp[target] = uint64_t(data & 0x0e) << 29;
+	m_mpeg_pts_raw[target] = data;
+	m_mpeg_dts_raw[target] = 0;
+	m_mpeg_pts_temp[target] = 0;
 	m_mpeg_dts_temp[target] = 0;
 }
 
@@ -1344,37 +1745,56 @@ void cdi_dvc_device::mpeg_timestamp_byte(unsigned target, uint8_t data)
 		return;
 
 	uint8_t const index = ++m_mpeg_ts_index[target];
-	switch (index)
+	if (index <= 4)
 	{
-	case 1: m_mpeg_pts_temp[target] |= uint64_t(data) << 22; break;
-	case 2: m_mpeg_pts_temp[target] |= uint64_t(data & 0xfe) << 14; break;
-	case 3: m_mpeg_pts_temp[target] |= uint64_t(data) << 7; break;
-	case 4:
-		m_mpeg_pts_temp[target] |= uint64_t(data >> 1);
-		if (m_mpeg_ts_mode[target] == 1)
+		m_mpeg_pts_raw[target] = (m_mpeg_pts_raw[target] << 8) | uint64_t(data);
+		if (index == 4 && m_mpeg_ts_mode[target] == 1)
 			mpeg_timestamp_commit(target);
-		break;
-	case 5: m_mpeg_dts_temp[target] = uint64_t(data & 0x0e) << 29; break;
-	case 6: m_mpeg_dts_temp[target] |= uint64_t(data) << 22; break;
-	case 7: m_mpeg_dts_temp[target] |= uint64_t(data & 0xfe) << 14; break;
-	case 8: m_mpeg_dts_temp[target] |= uint64_t(data) << 7; break;
-	case 9:
-		m_mpeg_dts_temp[target] |= uint64_t(data >> 1);
-		mpeg_timestamp_commit(target);
-		break;
-	default:
-		break;
+	}
+	else if (index == 5)
+	{
+		m_mpeg_dts_raw[target] = data;
+	}
+	else if (index <= 9)
+	{
+		m_mpeg_dts_raw[target] = (m_mpeg_dts_raw[target] << 8) | uint64_t(data);
+		if (index == 9)
+			mpeg_timestamp_commit(target);
 	}
 }
 
 void cdi_dvc_device::mpeg_timestamp_commit(unsigned target)
 {
-	static constexpr uint64_t mask = (uint64_t(1) << 33) - 1;
 	bool const explicit_dts = m_mpeg_ts_mode[target] == 2;
-	m_mpeg_packet_pts[target] = m_mpeg_pts_temp[target] & mask;
-	m_mpeg_packet_dts[target] = explicit_dts
-		? (m_mpeg_dts_temp[target] & mask)
-		: m_mpeg_packet_pts[target];
+	auto const field_from_raw = [](uint64_t raw)
+	{
+		return std::array<uint8_t, 5>{
+			uint8_t(raw >> 32), uint8_t(raw >> 24), uint8_t(raw >> 16),
+			uint8_t(raw >> 8), uint8_t(raw)
+		};
+	};
+
+	std::array<uint8_t, 5> const pts_field = field_from_raw(m_mpeg_pts_raw[target]);
+	uint8_t const pts_prefix = explicit_dts ? 0x3 : 0x2;
+	if (!cdi_dvc::mpeg1_timestamp_marker_bits_valid(pts_field, pts_prefix))
+		++m_mpeg_pts_marker_errors[target];
+	m_mpeg_packet_pts[target] = cdi_dvc::decode_mpeg1_timestamp_field(pts_field);
+	m_mpeg_pts_temp[target] = m_mpeg_packet_pts[target];
+
+	if (explicit_dts)
+	{
+		std::array<uint8_t, 5> const dts_field = field_from_raw(m_mpeg_dts_raw[target]);
+		if (!cdi_dvc::mpeg1_timestamp_marker_bits_valid(dts_field, 0x1))
+			++m_mpeg_dts_marker_errors[target];
+		m_mpeg_packet_dts[target] = cdi_dvc::decode_mpeg1_timestamp_field(dts_field);
+		m_mpeg_dts_temp[target] = m_mpeg_packet_dts[target];
+	}
+	else
+	{
+		m_mpeg_packet_dts[target] = m_mpeg_packet_pts[target];
+		m_mpeg_dts_temp[target] = m_mpeg_packet_dts[target];
+	}
+
 	m_mpeg_packet_decode_ts[target] = m_mpeg_packet_dts[target];
 	m_mpeg_packet_have_pts[target] = true;
 	m_mpeg_packet_have_dts[target] = explicit_dts;
@@ -1382,11 +1802,12 @@ void cdi_dvc_device::mpeg_timestamp_commit(unsigned target)
 	if (explicit_dts)
 		++m_mpeg_dts_events[target];
 
-	LOGMASKED(LOG_MPEG, "%s: DVC MPEG TS %s pts=%llu dts=%llu explicit_dts=%u pts_event=%u dts_event=%u\n",
+	LOGMASKED(LOG_MPEG, "%s: DVC MPEG TS %s pts=%llu dts=%llu explicit_dts=%u pts_event=%u dts_event=%u pts_marker_errors=%u dts_marker_errors=%u\n",
 			machine().describe_context(), target == MPEG_FMA ? "FMA" : "FMV",
 			(unsigned long long)m_mpeg_packet_pts[target],
 			(unsigned long long)m_mpeg_packet_dts[target], explicit_dts ? 1U : 0U,
-			m_mpeg_pts_events[target], m_mpeg_dts_events[target]);
+			m_mpeg_pts_events[target], m_mpeg_dts_events[target],
+			m_mpeg_pts_marker_errors[target], m_mpeg_dts_marker_errors[target]);
 
 	m_mpeg_ts_mode[target] = 0;
 	m_mpeg_ts_index[target] = 0;
@@ -1598,56 +2019,43 @@ void cdi_dvc_device::mpeg_byte_w(unsigned target, uint8_t data)
 
 		--m_mpeg_packet_remaining[target];
 
-		if (data == 0xff)
+		switch (cdi_dvc::classify_mpeg1_pes_header_byte(data))
 		{
-			// MPEG-1 PES stuffing byte.
+		case cdi_dvc::mpeg1_pes_header_kind::stuffing:
 			break;
-		}
 
-		if ((data & 0xc0) == 0x40)
-		{
-			// First byte of the optional STD buffer field.
+		case cdi_dvc::mpeg1_pes_header_kind::std_buffer:
 			m_mpeg_state[target] = MPEG_PES_STD_SECOND;
 			break;
-		}
 
-		if ((data & 0xf0) == 0x20)
-		{
-			// MPEG-1 PTS: current byte plus four more bytes.
+		case cdi_dvc::mpeg1_pes_header_kind::pts:
 			mpeg_timestamp_start(target, data, false);
 			m_mpeg_skip_remaining[target] = 4;
 			m_mpeg_state[target] = MPEG_PES_HEADER_SKIP;
 			break;
-		}
 
-		if ((data & 0xf0) == 0x30)
-		{
-			// MPEG-1 PTS + DTS: current PTS byte, four PTS bytes,
-			// then a five-byte DTS field.
+		case cdi_dvc::mpeg1_pes_header_kind::pts_dts:
 			mpeg_timestamp_start(target, data, true);
 			m_mpeg_skip_remaining[target] = 9;
 			m_mpeg_state[target] = MPEG_PES_HEADER_SKIP;
 			break;
-		}
 
-		if (data == 0x0f)
-		{
-			// No PTS/DTS. Payload starts with the next byte.
+		case cdi_dvc::mpeg1_pes_header_kind::no_timestamp:
 			mpeg_begin_payload(target);
 			m_mpeg_state[target] = MPEG_PAYLOAD;
+			if (m_mpeg_packet_remaining[target] == 0)
+				mpeg_packet_done(target);
+			break;
 
+		case cdi_dvc::mpeg1_pes_header_kind::payload_fallback:
+			// Defensive fallback for malformed/variant MPEG-1 PES headers:
+			// treat the unexpected byte as the first payload byte.
+			mpeg_payload_byte(target, data);
+			m_mpeg_state[target] = MPEG_PAYLOAD;
 			if (m_mpeg_packet_remaining[target] == 0)
 				mpeg_packet_done(target);
 			break;
 		}
-
-		// Defensive fallback for malformed/variant MPEG-1 PES headers:
-		// treat the unexpected byte as the first payload byte.
-		mpeg_payload_byte(target, data);
-		m_mpeg_state[target] = MPEG_PAYLOAD;
-
-		if (m_mpeg_packet_remaining[target] == 0)
-			mpeg_packet_done(target);
 		break;
 
 	case MPEG_PES_STD_SECOND:
@@ -1758,22 +2166,41 @@ void cdi_dvc_device::dma_done()
 	m_dma_req_callback(CLEAR_LINE);
 }
 
+void cdi_dvc_device::record_dsp_bootstrap_write(
+		unsigned index, uint32_t address, uint16_t data, uint16_t mem_mask)
+{
+	if (index >= m_dsp_bootstrap_last.size())
+		return;
+
+	COMBINE_DATA(&m_dsp_bootstrap_last[index]);
+	++m_dsp_bootstrap_write_count[index];
+	LOGMASKED(LOG_REGISTERS,
+			"%s: DVC DSP bootstrap telemetry %08x <- %04x & %04x count=%u last=%04x\n",
+			machine().describe_context(), address, data, mem_mask,
+			m_dsp_bootstrap_write_count[index], m_dsp_bootstrap_last[index]);
+}
+
+void cdi_dvc_device::av_clock_observe()
+{
+	if (!m_av_audio_pts_valid || !m_av_video_pts_valid)
+		return;
+
+	m_av_last_cross_delta90 = cdi_dvc::mpeg_timestamp_delta(
+			m_av_last_video_pts90, m_av_last_audio_pts90);
+	uint64_t const absolute = m_av_last_cross_delta90 < 0
+			? uint64_t(-m_av_last_cross_delta90)
+			: uint64_t(m_av_last_cross_delta90);
+	if (absolute > m_av_max_abs_cross_delta90)
+		m_av_max_abs_cross_delta90 = absolute;
+	++m_av_cross_observations;
+}
+
 void cdi_dvc_device::mpeg_ram_compat_reset()
 {
-	m_mpeg_ram_compat_write_count = 0;
 	m_mpeg_ram_compat_visible = false;
 	m_mpeg_ram_gated_reads = 0;
 	m_mpeg_ram_gated_writes = 0;
 }
-
-void cdi_dvc_device::mpeg_ram_compat_note_vmpeg_write()
-{
-	// PROVISIONAL COMPATIBILITY MECHANISM, NOT HARDWARE SPECIFICATION.
-	// Stage12G29 validated E03018 bit-0 state as a replacement visibility
-	// boundary. Keep the old VMPEG-write hook inert until dead compatibility
-	// bookkeeping is removed in a separately reviewed no-behavior cleanup.
-}
-
 
 uint16_t cdi_dvc_device::mpeg_ram_r(offs_t offset, uint16_t mem_mask)
 {
@@ -1834,8 +2261,6 @@ void cdi_dvc_device::rom_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 
 void cdi_dvc_device::write(offs_t offset, uint16_t data, uint16_t mem_mask)
 {
-	mpeg_ram_compat_note_vmpeg_write();
-
 	const uint32_t address = 0xe00000U + (uint32_t(offset) << 1);
 
 	// PROVISIONAL COMPATIBILITY MECHANISM: Stage12G29 validated this state
@@ -1878,8 +2303,8 @@ void cdi_dvc_device::write(offs_t offset, uint16_t data, uint16_t mem_mask)
 
 		if (m_fma_command & 0x8000)
 		{
-			// Assert the external DMA request.  The SCC68070 channel-1 callback
-			// services the current synchronous transfer model.
+			// Assert the external DMA request. The host driver services channel 1
+			// in scheduled bounded slices under the current timing model.
 			m_fma_status &= ~0x0008;
 			m_dma_active = true;
 			m_dma_for_fma = true;
@@ -1911,7 +2336,10 @@ void cdi_dvc_device::write(offs_t offset, uint16_t data, uint16_t mem_mask)
 		update_interrupt_state();
 		break;
 	case 0xe03022:
+		record_dsp_bootstrap_write(0, address, data, mem_mask);
+		break;
 	case 0xe03024:
+		record_dsp_bootstrap_write(1, address, data, mem_mask);
 		break;
 
 	case 0xe04060:
@@ -1923,6 +2351,18 @@ void cdi_dvc_device::write(offs_t offset, uint16_t data, uint16_t mem_mask)
 	case 0xe04064:
 		COMBINE_DATA(&m_fmv_timer_compare);
 		update_timer();
+		break;
+	case 0xe0406c:
+		record_dsp_bootstrap_write(2, address, data, mem_mask);
+		break;
+	case 0xe0406e:
+		record_dsp_bootstrap_write(3, address, data, mem_mask);
+		break;
+	case 0xe04070:
+		record_dsp_bootstrap_write(4, address, data, mem_mask);
+		break;
+	case 0xe04072:
+		record_dsp_bootstrap_write(5, address, data, mem_mask);
 		break;
 	case 0xe040ae:
 		update_timer();

@@ -6,6 +6,7 @@
 
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <vector>
@@ -112,9 +113,24 @@ constexpr uint64_t decode_mpeg1_timestamp_field(
 		| uint64_t(byte4 >> 1);
 }
 
+constexpr uint64_t decode_mpeg1_timestamp_field(std::array<uint8_t, 5> const &field)
+{
+	return decode_mpeg1_timestamp_field(field[0], field[1], field[2], field[3], field[4]);
+}
+
 constexpr bool mpeg1_timestamp_marker_bits_valid(uint8_t byte0, uint8_t byte2, uint8_t byte4)
 {
 	return (byte0 & 0x01) && (byte2 & 0x01) && (byte4 & 0x01);
+}
+
+// Format-validation overload used by measurement-only parser telemetry.  It
+// checks the MPEG-1 field tag and marker bits, but callers remain free to decode
+// the payload even when this reports false.
+constexpr bool mpeg1_timestamp_marker_bits_valid(
+		std::array<uint8_t, 5> const &field, uint8_t expected_prefix)
+{
+	return (field[0] >> 4) == (expected_prefix & 0x0f)
+		&& mpeg1_timestamp_marker_bits_valid(field[0], field[2], field[4]);
 }
 
 constexpr int64_t mpeg_timestamp_delta(uint64_t lhs, uint64_t rhs)

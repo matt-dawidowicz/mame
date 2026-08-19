@@ -6,8 +6,11 @@
 
 #pragma once
 
+#include "cdidvc_save_state.h"
+
 #include <array>
 #include <deque>
+#include <memory>
 #include <vector>
 
 struct plm_buffer_t;
@@ -98,7 +101,18 @@ private:
 
 	// Provisional MPEG-RAM compatibility mechanism.
 	void mpeg_ram_compat_reset();
-	void mpeg_ram_compat_note_vmpeg_write();
+
+	// Measurement-only diagnostics; no guest-visible behavior.
+	void record_dsp_bootstrap_write(unsigned index, uint32_t address, uint16_t data, uint16_t mem_mask);
+	void av_clock_observe();
+
+	// SAVE-STATE IMPLEMENTATION MODEL: dynamic queues are mirrored into
+	// fixed registered storage and opaque PL_MPEG state is reconstructed
+	// by replaying elementary-stream bytes on postload.
+	void save_state_presave();
+	void save_state_postload();
+	bool save_state_rebuild_audio_decoder();
+	bool save_state_rebuild_video_decoder();
 
 	// Current MAME compatibility values. Their hardware attribution is pending;
 	// keep them out of emulator-independent specifications until proven.
@@ -149,6 +163,19 @@ private:
 	uint16_t m_dma_first_word = 0;
 	uint16_t m_dma_last_word = 0;
 
+	// Measurement-only firmware bootstrap register telemetry.
+	std::array<uint32_t, 6> m_dsp_bootstrap_write_count{};
+	std::array<uint16_t, 6> m_dsp_bootstrap_last{};
+
+	// Measurement-only common-clock telemetry.
+	uint64_t m_av_last_audio_pts90 = 0;
+	uint64_t m_av_last_video_pts90 = 0;
+	bool m_av_audio_pts_valid = false;
+	bool m_av_video_pts_valid = false;
+	int64_t m_av_last_cross_delta90 = 0;
+	uint64_t m_av_max_abs_cross_delta90 = 0;
+	uint64_t m_av_cross_observations = 0;
+
 	// MPEG-1 program-stream parser and timestamp scheduling.
 	static constexpr unsigned MPEG_FMA = 0;
 	static constexpr unsigned MPEG_FMV = 1;
@@ -192,6 +219,14 @@ private:
 	bool m_mpeg_packet_have_dts[2] = { false, false };
 	uint32_t m_mpeg_pts_events[2] = { 0, 0 };
 	uint32_t m_mpeg_dts_events[2] = { 0, 0 };
+
+	// Measurement-only raw timestamp fields and marker diagnostics.
+	std::array<uint64_t, 2> m_mpeg_scr_raw{};
+	std::array<uint64_t, 2> m_mpeg_pts_raw{};
+	std::array<uint64_t, 2> m_mpeg_dts_raw{};
+	std::array<uint32_t, 2> m_mpeg_scr_marker_errors{};
+	std::array<uint32_t, 2> m_mpeg_pts_marker_errors{};
+	std::array<uint32_t, 2> m_mpeg_dts_marker_errors{};
 
 	uint64_t m_mpeg_clock90 = 0;
 	bool m_mpeg_clock_valid = false;
@@ -305,6 +340,11 @@ private:
 	uint32_t m_video_overlay_hash = 2166136261U;
 	uint32_t m_video_overlay_pixels = 0;
 	bool m_video_overlay_complete = false;
+	// Measurement-only attribution counters. They answer whether DVC
+	// composition wrote the first 64 visible rows; they do not diagnose
+	// MCD212 plane/backdrop/cursor semantics by themselves.
+	uint64_t m_video_overlay_total_pixels = 0;
+	uint64_t m_video_overlay_top64_pixels = 0;
 
 	plm_buffer_t *m_video_buffer = nullptr;
 	plm_video_t *m_video_decoder = nullptr;
@@ -328,20 +368,49 @@ private:
 	uint32_t m_video_last_picture_generation = 0;
 	bool m_video_last_picture_pending = false;
 
+	// SAVE-STATE IMPLEMENTATION MODEL, NOT HARDWARE SPECIFICATION.
+	// PL_MPEG owns pointer-rich decoder state that MAME cannot serialize
+	// directly.  Journal the ES byte stream and mirror dynamic queues into
+	// fixed registered buffers; postload reconstructs the decoder to the saved
+	// decoded-frame count without replaying guest-visible side effects.
+	std::vector<uint8_t> m_audio_replay_journal;
+	std::vector<uint8_t> m_video_replay_journal;
+	bool m_audio_replay_overflow = false;
+	bool m_video_replay_overflow = false;
+
+	std::unique_ptr<uint8_t[]> m_save_audio_replay;
+	std::unique_ptr<uint8_t[]> m_save_video_replay;
+	std::unique_ptr<int16_t[]> m_save_audio_pcm;
+	std::unique_ptr<uint32_t[]> m_save_video_queue_pixels;
+	std::unique_ptr<uint32_t[]> m_save_video_present_pixels;
+	uint32_t m_save_audio_replay_length = 0;
+	uint32_t m_save_video_replay_length = 0;
+	uint32_t m_save_audio_pcm_values = 0;
+	uint16_t m_save_video_queue_count = 0;
+	uint32_t m_save_video_present_pixel_count = 0;
+	uint16_t m_save_picture_event_count = 0;
+	bool m_save_snapshot_valid = false;
+	uint32_t m_save_snapshot_serial = 0;
+
+	std::array<uint16_t, cdi_dvc::SAVE_VIDEO_QUEUE_FRAMES> m_save_video_queue_width{};
+	std::array<uint16_t, cdi_dvc::SAVE_VIDEO_QUEUE_FRAMES> m_save_video_queue_height{};
+	std::array<uint32_t, cdi_dvc::SAVE_VIDEO_QUEUE_FRAMES> m_save_video_queue_generation{};
+	std::array<uint16_t, cdi_dvc::SAVE_VIDEO_QUEUE_FRAMES> m_save_video_queue_interrupts{};
+	std::array<uint64_t, cdi_dvc::SAVE_VIDEO_QUEUE_FRAMES> m_save_video_queue_timestamp90{};
+	std::array<uint8_t, cdi_dvc::SAVE_VIDEO_QUEUE_FRAMES> m_save_video_queue_timestamp_valid{};
+	std::array<uint16_t, cdi_dvc::SAVE_PICTURE_EVENTS> m_save_picture_events{};
+
 	// 512 KiB MPEG/DVC RAM at E80000-EFFFFF.
 	//
 	// VALIDATED BEHAVIORAL CONSTRAINT:
 	//   MPEG RAM must not participate in the ordinary CD-RTOS boot-time RAM
 	//   crawl, then must become usable by genuine DVC firmware later.
 	//
-	// MAME-ONLY COMPATIBILITY MECHANISM:
-	//   64 VMPEG writes currently make the RAM visible.  This threshold is not
-	//   known to represent a hardware register, bit, counter, or timing rule.
-	//   Keep it isolated here until the real ownership/enable mechanism is
-	//   identified.
-	static constexpr uint8_t MPEG_RAM_COMPAT_ACTIVATION_WRITES = 64;
+	// PROVISIONAL COMPATIBILITY MECHANISM, NOT HARDWARE SPECIFICATION:
+	//   firmware-visible E03018 bit 0 controls MAME-side MPEG-RAM visibility.
+	//   This model is validated for the current PAL/NTSC workloads, but the
+	//   physical meaning and lifecycle of E03018 remain unknown.
 	std::array<uint16_t, 0x40000> m_mpeg_ram{};
-	uint8_t m_mpeg_ram_compat_write_count = 0;
 	bool m_mpeg_ram_compat_visible = false;
 	uint32_t m_mpeg_ram_gated_reads = 0;
 	uint32_t m_mpeg_ram_gated_writes = 0;

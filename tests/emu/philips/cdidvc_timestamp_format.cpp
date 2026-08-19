@@ -47,7 +47,11 @@ TEST_CASE("CD-i DVC MPEG timestamp field decoding round-trips 33-bit values", "[
 			INFO("value=" << value << " tag=" << unsigned(tag));
 			REQUIRE(cdi_dvc::decode_mpeg1_timestamp_field(
 				bytes[0], bytes[1], bytes[2], bytes[3], bytes[4]) == value);
+			REQUIRE(cdi_dvc::decode_mpeg1_timestamp_field(bytes) == value);
 			REQUIRE(cdi_dvc::mpeg1_timestamp_marker_bits_valid(bytes[0], bytes[2], bytes[4]));
+			REQUIRE(cdi_dvc::mpeg1_timestamp_marker_bits_valid(bytes, uint8_t(tag >> 4)));
+			REQUIRE_FALSE(cdi_dvc::mpeg1_timestamp_marker_bits_valid(
+				bytes, uint8_t((tag >> 4) ^ 0x01)));
 		}
 	}
 }
@@ -56,6 +60,7 @@ TEST_CASE("CD-i DVC MPEG timestamp marker validation checks all three marker pos
 {
 	auto bytes = encode_timestamp(0x123456789ULL, 0x20);
 	REQUIRE(cdi_dvc::mpeg1_timestamp_marker_bits_valid(bytes[0], bytes[2], bytes[4]));
+	REQUIRE(cdi_dvc::mpeg1_timestamp_marker_bits_valid(bytes, 0x2));
 
 	for (unsigned marker = 0; marker < 3; ++marker)
 	{
@@ -63,7 +68,9 @@ TEST_CASE("CD-i DVC MPEG timestamp marker validation checks all three marker pos
 		broken[marker == 0 ? 0 : marker == 1 ? 2 : 4] &= 0xfe;
 		INFO("marker=" << marker);
 		REQUIRE_FALSE(cdi_dvc::mpeg1_timestamp_marker_bits_valid(broken[0], broken[2], broken[4]));
+		REQUIRE_FALSE(cdi_dvc::mpeg1_timestamp_marker_bits_valid(broken, 0x2));
 		REQUIRE(cdi_dvc::decode_mpeg1_timestamp_field(
 			broken[0], broken[1], broken[2], broken[3], broken[4]) == 0x123456789ULL);
+		REQUIRE(cdi_dvc::decode_mpeg1_timestamp_field(broken) == 0x123456789ULL);
 	}
 }

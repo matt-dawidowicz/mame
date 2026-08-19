@@ -76,6 +76,18 @@ protected:
 	bool m_dvc_irq_state = false;
 	uint8_t m_irq4_owner = IRQ4_NONE;
 
+	// CURRENT IMPLEMENTATION MODEL, NOT HARDWARE SPECIFICATION: service
+	// DVC DMA in scheduled bounded slices rather than draining the whole
+	// SCC68070 transfer inside the request callback.
+	emu_timer *m_dvc_dma_timer = nullptr;
+	bool m_dvc_dma_service_active = false;
+	uint8_t m_dvc_dma_mac_mode = 0;
+	uint16_t m_dvc_dma_initial_words = 0;
+	uint32_t m_dvc_dma_service_events = 0;
+	uint32_t m_dvc_dma_transfer_serial = 0;
+	uint64_t m_dvc_dma_request_clock = 0;
+	uint64_t m_dvc_dma_first_clock = 0;
+
 	uint32_t screen_update_cdimono1_lcd(screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &cliprect);
 	uint32_t screen_update_cdimono1(screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &cliprect);
 	virtual void machine_start() override ATTR_COLD;
@@ -96,6 +108,7 @@ protected:
 	void cdic_irq_w(int state);
 	void dvc_irq_w(int state);
 	void dvc_dma_req_w(int state);
+	TIMER_CALLBACK_MEMBER(dvc_dma_service_tick);
 	void update_irq4();
 	uint8_t irq4_ack_r();
 
