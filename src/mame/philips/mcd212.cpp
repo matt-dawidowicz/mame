@@ -993,6 +993,8 @@ uint32_t mcd212_device::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 		return 0;
 
 	std::fill_n(m_external_video_line, 768, false);
+	std::fill_n(m_external_video_second_line, 768, false);
+	m_external_video_secondary_y = -1;
 
 	// FIXME this should use the clipping rectangle to determine which lines need drawing
 	int scanline = screen.vpos() / 2;
@@ -1000,8 +1002,11 @@ uint32_t mcd212_device::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 	// Process VSR and mix if we're in the visible region
 	if (scanline >= m_ica_height)
 	{
-		uint32_t *const out = &bitmap.pix(scanline * 2 + BIT(~m_csrr[0], CSR1R_PA_BIT));
-		uint32_t *const out2 = &bitmap.pix(scanline * 2 + BIT(m_csrr[0], CSR1R_PA_BIT));
+		int const primary_y = scanline * 2 + BIT(~m_csrr[0], CSR1R_PA_BIT);
+		int const secondary_y = scanline * 2 + BIT(m_csrr[0], CSR1R_PA_BIT);
+		uint32_t *const out = &bitmap.pix(primary_y);
+		uint32_t *const out2 = &bitmap.pix(secondary_y);
+		m_external_video_secondary_y = secondary_y;
 
 		bool draw_line = true;
 		if (!BIT(m_dcr[0], DCR_FD_BIT) && BIT(m_csrw[0], CSR1W_ST_BIT))
@@ -1057,13 +1062,20 @@ uint32_t mcd212_device::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 
 		if (BIT(m_dcr[0], DCR_SM_BIT))
 		{
+			// DVC_EXTERNAL_VIDEO_MASK_ROW_PAIRED
+			// Pair the stored previous-field pixel row with the mask stored
+			// alongside that row, then retain the current mask for next field.
+			std::copy_n(m_external_video_field[scanline], 768, m_external_video_second_line);
+			std::copy_n(m_external_video_line, 768, m_external_video_field[scanline]);
 			// Interlace Output
 			std::copy_n(m_interlace_field[scanline], 768, out2);
 			std::copy_n(out, 768, m_interlace_field[scanline]);
 		}
 		else
 		{
-			// Single Field Output (duplicate lines)
+			// Single Field Output duplicates both pixels and their current
+			// external-video eligibility.
+			std::copy_n(m_external_video_line, 768, m_external_video_second_line);
 			std::copy_n(out, 768, out2);
 		}
 	}
@@ -1152,6 +1164,11 @@ void mcd212_device::device_reset()
 	std::fill_n(m_weight_factor[1], std::size(m_weight_factor[1]), 0);
 	std::fill_n(m_matte_flag[0], std::size(m_matte_flag[0]), false);
 	std::fill_n(m_matte_flag[1], std::size(m_matte_flag[1]), false);
+	std::fill_n(m_external_video_line, std::size(m_external_video_line), false);
+	std::fill_n(m_external_video_second_line, std::size(m_external_video_second_line), false);
+	for (auto &field_line : m_external_video_field)
+		std::fill_n(field_line, std::size(field_line), false);
+	m_external_video_secondary_y = -1;
 
 	cdi_video::timing_profile const video_timing = cdi_video::profile(m_video_standard);
 	m_total_height = video_timing.noninterlace_total_lines;
@@ -1234,6 +1251,8 @@ void mcd212_device::device_start()
 	save_item(NAME(m_weight_factor[1]));
 
 	save_item(NAME(m_matte_flag));
+	// Persistent previous-field eligibility affects future rendered output.
+	save_item(NAME(m_external_video_field));
 	save_item(NAME(m_ica_height));
 	save_item(NAME(m_total_height));
 

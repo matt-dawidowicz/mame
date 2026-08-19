@@ -51,7 +51,16 @@ public:
 	void set_video_standard(cdi_video::standard video_standard) { m_video_standard = video_standard; }
 
 	uint32_t screen_update(screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &cliprect);
-	bool const *external_video_line() const { return m_external_video_line; }
+	// DVC_EXTERNAL_VIDEO_MASK_ROW_PAIRED
+	// CURRENT IMPLEMENTATION MODEL, NOT HARDWARE SPECIFICATION:
+	// return the mask paired with the MCD212 field row whose pixels are
+	// currently being presented on this physical output row.
+	bool const *external_video_line(int physical_y) const
+	{
+		return physical_y == m_external_video_secondary_y
+			? m_external_video_second_line
+			: m_external_video_line;
+	}
 
 	void map(address_map &map) ATTR_COLD;
 
@@ -241,6 +250,11 @@ protected:
 	// internal state
 	bool m_matte_flag[2][768]{};
 	bool m_external_video_line[768]{};
+	bool m_external_video_second_line[768]{};
+	// Persistent mask state mirrors m_interlace_field so a stored previous
+	// field pixel row retains the external-video eligibility from that row.
+	bool m_external_video_field[312][768]{};
+	int m_external_video_secondary_y = -1;
 	int m_ica_height = 0;
 	int m_total_height = 0;
 	cdi_video::standard m_video_standard = cdi_video::standard::pal_tv;

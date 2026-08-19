@@ -215,13 +215,13 @@ uint32_t cdi_state::screen_update_cdimono1(screen_device &screen, bitmap_rgb32 &
 	uint32_t const result = m_mcd212->screen_update(screen, bitmap, cliprect);
 	if (m_dvc && !(screen.vpos() & 1))
 	{
-		bool const *const external_video = m_mcd212->external_video_line();
 		int const visible_top = screen.visible_area().min_y;
 		for (int row = 0; row < 2; ++row)
 		{
 			int const y = screen.vpos() + row;
 			if (y >= 0 && y < bitmap.height())
 			{
+				bool const *const external_video = m_mcd212->external_video_line(y);
 				m_dvc->video_overlay_scanline(&bitmap.pix(y), bitmap.width(), y, visible_top,
 						cliprect.min_x, cliprect.max_x, external_video, 768);
 			}
