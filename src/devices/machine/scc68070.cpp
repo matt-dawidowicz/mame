@@ -330,6 +330,7 @@ void scc68070_device::device_start()
 	save_item(STRUCT_MEMBER(m_dma.channel, transfer_counter));
 	save_item(STRUCT_MEMBER(m_dma.channel, memory_address_counter));
 	save_item(STRUCT_MEMBER(m_dma.channel, device_address_counter));
+	save_item(STRUCT_MEMBER(m_dma.channel, channel_priority));
 
 	save_item(NAME(m_mmu.status));
 	save_item(NAME(m_mmu.control));
@@ -408,6 +409,7 @@ void scc68070_device::device_reset()
 		m_dma.channel[index].transfer_counter = 0;
 		m_dma.channel[index].memory_address_counter = 0;
 		m_dma.channel[index].device_address_counter = 0;
+		m_dma.channel[index].channel_priority = 0;
 	}
 
 	m_mmu.status = 0;
@@ -1604,6 +1606,11 @@ uint16_t scc68070_device::dma_r(offs_t offset, uint16_t mem_mask)
 		if (!machine().side_effects_disabled())
 			LOGMASKED(LOG_DMA, "%s: DMA(%d) Device Address Counter (Low Word) Read: %04x & %04x\n", machine().describe_context(), offset / 32, m_dma.channel[offset / 32].device_address_counter, mem_mask);
 		return m_dma.channel[offset / 32].device_address_counter;
+	case 0x2c/2:
+	case 0x6c/2:
+		if (ACCESSING_BITS_0_7 && !machine().side_effects_disabled())
+			LOGMASKED(LOG_DMA, "%s: DMA(%d) Channel Priority Register Read: %02x & %04x\n", machine().describe_context(), offset / 32, m_dma.channel[offset / 32].channel_priority, mem_mask);
+		return m_dma.channel[offset / 32].channel_priority;
 
 	default:
 		LOGMASKED(LOG_DMA | LOG_UNKNOWN, "%s: DMA Unknown Register Read: %04x & %04x\n", machine().describe_context(), offset * 2, mem_mask);
@@ -1690,6 +1697,14 @@ void scc68070_device::dma_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 		LOGMASKED(LOG_DMA, "%s: DMA(%d) Device Address Counter (Low Word) Write: %04x & %04x\n", machine().describe_context(), offset / 32, data, mem_mask);
 		m_dma.channel[offset / 32].device_address_counter &= ~mem_mask;
 		m_dma.channel[offset / 32].device_address_counter |= data;
+		break;
+	case 0x2c/2:
+	case 0x6c/2:
+		if (ACCESSING_BITS_0_7)
+		{
+			LOGMASKED(LOG_DMA, "%s: DMA(%d) Channel Priority Register Write: %02x & %04x\n", machine().describe_context(), offset / 32, data & 0xff, mem_mask);
+			m_dma.channel[offset / 32].channel_priority = data & 0xff;
+		}
 		break;
 	default:
 		LOGMASKED(LOG_DMA | LOG_UNKNOWN, "%s: DMA Unknown Register Write: %04x = %04x & %04x\n", machine().describe_context(), offset * 2, data, mem_mask);
