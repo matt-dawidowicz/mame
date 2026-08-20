@@ -1121,24 +1121,21 @@ void cdicdic_device::regs_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 
 		case 0x3ff8/2:
 		{
-			uint32_t start = m_scc->dma().channel[0].memory_address_counter;
-			uint32_t count = m_scc->dma().channel[0].transfer_counter;
 			uint32_t device_index = (data & 0x3fff) >> 1;
 			uint16_t *ram = (uint16_t *)m_ram.get();
+
 			LOGMASKED(LOG_WRITES, "%s: cdic_w: DMA Control Register = %04x & %04x\n", machine().describe_context(), data, mem_mask);
-			LOGMASKED(LOG_WRITES, "%s: Memory address counter: %08x\n", machine().describe_context(), m_scc->dma().channel[0].memory_address_counter);
-			LOGMASKED(LOG_WRITES, "%s: Doing copy, transferring %04x bytes %s\n", machine().describe_context(), count * 2, (m_scc->dma().channel[0].operation_control & SCC68070_OCR_D) ? "to main RAM" : "to device RAM");
-			for (uint32_t index = start / 2; index < (start / 2 + count); index++)
+
+			// SCC68070 channel 1 owns the memory-side DMA cycle.
+			// CDIC supplies or consumes only the device-side operand.
+			while (m_scc->dma_channel1_active())
 			{
-				if (m_scc->dma().channel[0].operation_control & SCC68070_OCR_D)
-				{
-					m_memory_space->write_word(index * 2, ram[device_index++]);
-				}
-				else
-				{
-					ram[device_index++] = m_memory_space->read_word(index * 2);
-				}
-				m_scc->dma_channel1_transfer(1);
+				uint16_t operand = ram[device_index];
+
+				if (!m_scc->dma_channel1_transfer(operand))
+					break;
+
+				ram[device_index++] = operand;
 			}
 			break;
 		}
@@ -1294,7 +1291,6 @@ uint32_t cdicdic_device::lba_from_time()
 cdicdic_device::cdicdic_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
 	: device_t(mconfig, CDI_CDIC, tag, owner, clock)
 	, m_intreq_callback(*this)
-	, m_memory_space(*this, ":maincpu", AS_PROGRAM)
 	, m_dmadac(*this, ":dac%u", 1U)
 	, m_scc(*this, ":maincpu")
 	, m_cdrom(*this, ":cdrom")

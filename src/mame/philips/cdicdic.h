@@ -152,7 +152,6 @@ private:
 
 	devcb_write_line m_intreq_callback;
 
-	required_address_space m_memory_space;
 	required_device_array<dmadac_sound_device, 2> m_dmadac;
 	required_device<scc68070_device> m_scc;
 	required_device<cdrom_image_device> m_cdrom;
