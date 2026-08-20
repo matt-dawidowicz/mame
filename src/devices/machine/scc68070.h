@@ -189,8 +189,8 @@ public:
 		mmu_desc_t desc[8];
 	};
 
-	dma_regs_t& dma() { return m_dma; }
-	void dma_channel1_transfer(uint16_t count);
+	bool dma_channel1_active() const;
+	bool dma_channel1_transfer(uint16_t &data);
 
 protected:
 	// device_t implementation
