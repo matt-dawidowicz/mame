@@ -1543,6 +1543,44 @@ void scc68070_device::timer_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 	}
 }
 
+void scc68070_device::dma_channel1_transfer(uint16_t count)
+{
+	if (count == 0)
+		return;
+
+	dma_channel_t &dma = m_dma.channel[0];
+
+	if (!(dma.channel_status & CSR_CA) || dma.transfer_counter == 0)
+		return;
+
+	uint32_t operand_size;
+	switch (dma.operation_control & SCC68070_OCR_OS)
+	{
+	case SCC68070_OCR_OS_BYTE:
+		operand_size = 1;
+		break;
+
+	case SCC68070_OCR_OS_WORD:
+		operand_size = 2;
+		break;
+
+	default:
+		return;
+	}
+
+	const uint16_t transferred = std::min<uint16_t>(count, dma.transfer_counter);
+
+	dma.memory_address_counter += uint32_t(transferred) * operand_size;
+	dma.transfer_counter -= transferred;
+
+	if (dma.transfer_counter == 0)
+	{
+		dma.channel_status &= ~CSR_CA;
+		dma.channel_status |= CSR_COC;
+		update_ipl();
+	}
+}
+
 uint16_t scc68070_device::dma_r(offs_t offset, uint16_t mem_mask)
 {
 	switch (offset)
@@ -1634,10 +1672,20 @@ void scc68070_device::dma_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 		if (ACCESSING_BITS_8_15)
 		{
 			LOGMASKED(LOG_DMA, "%s: DMA(%d) Status Write: %04x & %04x\n", machine().describe_context(), offset / 32, data, mem_mask);
-			m_dma.channel[offset / 32].channel_status &= ~((data >> 8) & 0xb0);
+
+			dma_channel_t &dma = m_dma.channel[offset / 32];
+			const uint8_t clear_mask =
+				(data >> 8) & (CSR_COC | CSR_NDT | CSR_ERR);
+
+			dma.channel_status &= ~clear_mask;
+
+			if (clear_mask & CSR_ERR)
+				dma.channel_error = CER_NONE;
+
 			update_ipl();
 		}
 		break;
+
 	case 0x04/2:
 	case 0x44/2:
 		if (ACCESSING_BITS_0_7)
@@ -1656,19 +1704,47 @@ void scc68070_device::dma_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 		if (ACCESSING_BITS_0_7)
 		{
 			LOGMASKED(LOG_DMA, "%s: DMA(%d) Channel Control Register Write: %04x & %04x\n", machine().describe_context(), offset / 32, data, mem_mask);
-			m_dma.channel[offset / 32].channel_control = data & 0x007f;
-			if (data & CCR_SO)
+
+			dma_channel_t &dma = m_dma.channel[offset / 32];
+
+			// SO and SA are command bits and do not read back as set.
+			dma.channel_control = data & (CCR_INE | CCR_IPL);
+
+			if (data & CCR_SA)
 			{
-				m_dma.channel[offset / 32].channel_status |= CSR_COC;
+				// Software abort terminates the current operation.
+				dma.channel_status &= ~CSR_CA;
+				dma.channel_status |= CSR_COC | CSR_ERR;
+				dma.channel_error = CER_SOFT_ABORT;
 			}
+			else if (data & CCR_SO)
+			{
+				// Starting before all status bits have been cleared
+				// produces an operation timing error.
+				if (dma.channel_status &
+					(CSR_COC | CSR_NDT | CSR_ERR | CSR_CA))
+				{
+					dma.channel_status &= ~CSR_CA;
+					dma.channel_status |= CSR_COC | CSR_ERR;
+					dma.channel_error = CER_TIMING;
+				}
+				else
+				{
+					dma.channel_error = CER_NONE;
+					dma.channel_status |= CSR_CA;
+				}
+			}
+
 			update_ipl();
 		}
+
 		if (ACCESSING_BITS_8_15)
 		{
 			LOGMASKED(LOG_DMA, "%s: DMA(%d) Sequence Control Register Write: %04x & %04x\n", machine().describe_context(), offset / 32, data, mem_mask);
 			m_dma.channel[offset / 32].sequence_control = data >> 8;
 		}
 		break;
+
 	case 0x0a/2:
 	case 0x4a/2:
 		LOGMASKED(LOG_DMA, "%s: DMA(%d) Memory Transfer Counter Write: %04x & %04x\n", machine().describe_context(), offset / 32, data, mem_mask);
