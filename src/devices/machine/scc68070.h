@@ -190,6 +190,7 @@ public:
 	};
 
 	dma_regs_t& dma() { return m_dma; }
+	void dma_channel1_transfer(uint16_t count);
 
 protected:
 	// device_t implementation
