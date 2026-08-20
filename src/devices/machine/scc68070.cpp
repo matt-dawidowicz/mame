@@ -141,7 +141,8 @@ enum cer_bits
 enum dcr1_bits
 {
 	DCR1_ERM        = 0x80,
-	DCR1_DT         = 0x30
+	DCR1_DT         = 0x30,
+	DCR1_DS         = 0x08
 };
 
 enum dcr2_bits
@@ -151,6 +152,14 @@ enum dcr2_bits
 	DCR2_DS         = 0x08
 };
 
+
+enum scr1_bits
+{
+	SCR1_MAC_INC    = 0x04
+};
+
+static constexpr uint32_t DMA_ADDRESS_MASK = 0x00ffffff;
+static constexpr uint8_t DMA_OCR_READ_FIXED = 0x02;
 
 enum scr2_bits
 {
@@ -402,9 +411,9 @@ void scc68070_device::device_reset()
 	{
 		m_dma.channel[index].channel_status = 0;
 		m_dma.channel[index].channel_error = 0;
-		m_dma.channel[index].device_control = 0;
-		m_dma.channel[index].operation_control = 0;
-		m_dma.channel[index].sequence_control = 0;
+		m_dma.channel[index].device_control = index == 0 ? DCR1_DT : 0;
+		m_dma.channel[index].operation_control = DMA_OCR_READ_FIXED;
+		m_dma.channel[index].sequence_control = index == 0 ? SCR1_MAC_INC : 0;
 		m_dma.channel[index].channel_control = 0;
 		m_dma.channel[index].transfer_counter = 0;
 		m_dma.channel[index].memory_address_counter = 0;
@@ -1558,6 +1567,8 @@ bool scc68070_device::dma_channel1_transfer(uint16_t &data)
 		return false;
 
 	address_space &memory = space(AS_PROGRAM);
+	const uint32_t memory_address =
+		dma.memory_address_counter & DMA_ADDRESS_MASK;
 	uint32_t operand_size;
 
 	switch (dma.operation_control & SCC68070_OCR_OS)
@@ -1566,25 +1577,27 @@ bool scc68070_device::dma_channel1_transfer(uint16_t &data)
 		operand_size = 1;
 
 		if (dma.operation_control & SCC68070_OCR_D)
-			memory.write_byte(dma.memory_address_counter, data & 0x00ff);
+			memory.write_byte(memory_address, data & 0x00ff);
 		else
-			data = (data & 0xff00) | memory.read_byte(dma.memory_address_counter);
+			data = (data & 0xff00) | memory.read_byte(memory_address);
 		break;
 
 	case SCC68070_OCR_OS_WORD:
 		operand_size = 2;
 
 		if (dma.operation_control & SCC68070_OCR_D)
-			memory.write_word(dma.memory_address_counter, data);
+			memory.write_word(memory_address, data);
 		else
-			data = memory.read_word(dma.memory_address_counter);
+			data = memory.read_word(memory_address);
 		break;
 
 	default:
 		return false;
 	}
 
-	dma.memory_address_counter += operand_size;
+	dma.memory_address_counter =
+		(dma.memory_address_counter + operand_size)
+		& DMA_ADDRESS_MASK;
 	--dma.transfer_counter;
 
 	if (dma.transfer_counter == 0)
@@ -1644,18 +1657,20 @@ uint16_t scc68070_device::dma_r(offs_t offset, uint16_t mem_mask)
 	case 0x4c/2:
 		if (!machine().side_effects_disabled())
 			LOGMASKED(LOG_DMA, "%s: DMA(%d) Memory Address Counter (High Word) Read: %04x & %04x\n", machine().describe_context(), offset / 32, (m_dma.channel[offset / 32].memory_address_counter >> 16), mem_mask);
-		return (m_dma.channel[offset / 32].memory_address_counter >> 16);
+		return (m_dma.channel[offset / 32].memory_address_counter >> 16) & 0x00ff;
 	case 0x0e/2:
 	case 0x4e/2:
 		if (!machine().side_effects_disabled())
 			LOGMASKED(LOG_DMA, "%s: DMA(%d) Memory Address Counter (Low Word) Read: %04x & %04x\n", machine().describe_context(), offset / 32, m_dma.channel[offset / 32].memory_address_counter, mem_mask);
 		return m_dma.channel[offset / 32].memory_address_counter;
 	case 0x14/2:
+		return 0;
 	case 0x54/2:
 		if (!machine().side_effects_disabled())
 			LOGMASKED(LOG_DMA, "%s: DMA(%d) Device Address Counter (High Word) Read: %04x & %04x\n", machine().describe_context(), offset / 32, (m_dma.channel[offset / 32].device_address_counter >> 16), mem_mask);
-		return (m_dma.channel[offset / 32].device_address_counter >> 16);
+		return (m_dma.channel[offset / 32].device_address_counter >> 16) & 0x00ff;
 	case 0x16/2:
+		return 0;
 	case 0x56/2:
 		if (!machine().side_effects_disabled())
 			LOGMASKED(LOG_DMA, "%s: DMA(%d) Device Address Counter (Low Word) Read: %04x & %04x\n", machine().describe_context(), offset / 32, m_dma.channel[offset / 32].device_address_counter, mem_mask);
@@ -1707,12 +1722,68 @@ void scc68070_device::dma_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 		if (ACCESSING_BITS_0_7)
 		{
 			LOGMASKED(LOG_DMA, "%s: DMA(%d) Operation Control Register Write: %04x & %04x\n", machine().describe_context(), offset / 32, data, mem_mask);
-			m_dma.channel[offset / 32].operation_control = data & 0x00ff;
+			const int channel = offset / 32;
+
+			m_dma.channel[channel].operation_control =
+				(data & (SCC68070_OCR_D | SCC68070_OCR_OS))
+				| DMA_OCR_READ_FIXED;
+
+			if (channel == 0)
+			{
+				m_dma.channel[0].device_control &= ~DCR1_DS;
+
+				if (m_dma.channel[0].operation_control
+					& SCC68070_OCR_OS)
+				{
+					m_dma.channel[0].device_control |= DCR1_DS;
+				}
+			}
+			else if ((m_dma.channel[1].device_control & DCR2_DT)
+				== DCR2_DT)
+			{
+				m_dma.channel[1].device_control &= ~DCR2_DS;
+
+				if (m_dma.channel[1].operation_control
+					& SCC68070_OCR_OS)
+				{
+					m_dma.channel[1].device_control |= DCR2_DS;
+				}
+			}
 		}
 		if (ACCESSING_BITS_8_15)
 		{
 			LOGMASKED(LOG_DMA, "%s: DMA(%d) Device Control Register Write: %04x & %04x\n", machine().describe_context(), offset / 32, data, mem_mask);
-			m_dma.channel[offset / 32].device_control = data >> 8;
+			const int channel = offset / 32;
+
+			if (channel == 0)
+			{
+				m_dma.channel[0].device_control =
+					((data >> 8) & DCR1_ERM) | DCR1_DT;
+
+				if (m_dma.channel[0].operation_control
+					& SCC68070_OCR_OS)
+				{
+					m_dma.channel[0].device_control |= DCR1_DS;
+				}
+			}
+			else
+			{
+				m_dma.channel[1].device_control =
+					(data >> 8)
+					& (DCR2_ERM | DCR2_DT | DCR2_DS);
+
+				if ((m_dma.channel[1].device_control & DCR2_DT)
+					== DCR2_DT)
+				{
+					m_dma.channel[1].device_control &= ~DCR2_DS;
+
+					if (m_dma.channel[1].operation_control
+						& SCC68070_OCR_OS)
+					{
+						m_dma.channel[1].device_control |= DCR2_DS;
+					}
+				}
+			}
 		}
 		break;
 	case 0x06/2:
@@ -1757,7 +1828,15 @@ void scc68070_device::dma_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 		if (ACCESSING_BITS_8_15)
 		{
 			LOGMASKED(LOG_DMA, "%s: DMA(%d) Sequence Control Register Write: %04x & %04x\n", machine().describe_context(), offset / 32, data, mem_mask);
-			m_dma.channel[offset / 32].sequence_control = data >> 8;
+			if ((offset / 32) == 0)
+			{
+				m_dma.channel[0].sequence_control = SCR1_MAC_INC;
+			}
+			else
+			{
+				m_dma.channel[1].sequence_control =
+					(data >> 8) & (SCR2_MAC | SCR2_DAC);
+			}
 		}
 		break;
 
@@ -1769,26 +1848,38 @@ void scc68070_device::dma_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 	case 0x0c/2:
 	case 0x4c/2:
 		LOGMASKED(LOG_DMA, "%s: DMA(%d) Memory Address Counter (High Word) Write: %04x & %04x\n", machine().describe_context(), offset / 32, data, mem_mask);
-		m_dma.channel[offset / 32].memory_address_counter &= ~(mem_mask << 16);
-		m_dma.channel[offset / 32].memory_address_counter |= data << 16;
+		m_dma.channel[offset / 32].memory_address_counter &= ~(uint32_t(mem_mask) << 16);
+		m_dma.channel[offset / 32].memory_address_counter |=
+			uint32_t(data) << 16;
+		m_dma.channel[offset / 32].memory_address_counter &=
+			DMA_ADDRESS_MASK;
 		break;
 	case 0x0e/2:
 	case 0x4e/2:
 		LOGMASKED(LOG_DMA, "%s: DMA(%d) Memory Address Counter (Low Word) Write: %04x & %04x\n", machine().describe_context(), offset / 32, data, mem_mask);
 		m_dma.channel[offset / 32].memory_address_counter &= ~mem_mask;
 		m_dma.channel[offset / 32].memory_address_counter |= data;
+		m_dma.channel[offset / 32].memory_address_counter &=
+			DMA_ADDRESS_MASK;
 		break;
 	case 0x14/2:
+		break;
 	case 0x54/2:
 		LOGMASKED(LOG_DMA, "%s: DMA(%d) Device Address Counter (High Word) Write: %04x & %04x\n", machine().describe_context(), offset / 32, data, mem_mask);
-		m_dma.channel[offset / 32].device_address_counter &= ~(mem_mask << 16);
-		m_dma.channel[offset / 32].device_address_counter |= data << 16;
+		m_dma.channel[offset / 32].device_address_counter &= ~(uint32_t(mem_mask) << 16);
+		m_dma.channel[offset / 32].device_address_counter |=
+			uint32_t(data) << 16;
+		m_dma.channel[offset / 32].device_address_counter &=
+			DMA_ADDRESS_MASK;
 		break;
 	case 0x16/2:
+		break;
 	case 0x56/2:
 		LOGMASKED(LOG_DMA, "%s: DMA(%d) Device Address Counter (Low Word) Write: %04x & %04x\n", machine().describe_context(), offset / 32, data, mem_mask);
 		m_dma.channel[offset / 32].device_address_counter &= ~mem_mask;
 		m_dma.channel[offset / 32].device_address_counter |= data;
+		m_dma.channel[offset / 32].device_address_counter &=
+			DMA_ADDRESS_MASK;
 		break;
 	case 0x2c/2:
 	case 0x6c/2:
