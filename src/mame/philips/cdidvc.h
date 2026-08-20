@@ -375,8 +375,10 @@ private:
 	// decoded-frame count without replaying guest-visible side effects.
 	std::vector<uint8_t> m_audio_replay_journal;
 	std::vector<uint8_t> m_video_replay_journal;
+	std::vector<uint32_t> m_video_replay_pump_events;
 	bool m_audio_replay_overflow = false;
 	bool m_video_replay_overflow = false;
+	bool m_video_replay_pump_overflow = false;
 
 	std::unique_ptr<uint8_t[]> m_save_audio_replay;
 	std::unique_ptr<uint8_t[]> m_save_video_replay;
@@ -389,6 +391,7 @@ private:
 	uint16_t m_save_video_queue_count = 0;
 	uint32_t m_save_video_present_pixel_count = 0;
 	uint16_t m_save_picture_event_count = 0;
+	uint32_t m_save_video_replay_pump_count = 0;
 	bool m_save_snapshot_valid = false;
 	uint32_t m_save_snapshot_serial = 0;
 
@@ -399,6 +402,7 @@ private:
 	std::array<uint64_t, cdi_dvc::SAVE_VIDEO_QUEUE_FRAMES> m_save_video_queue_timestamp90{};
 	std::array<uint8_t, cdi_dvc::SAVE_VIDEO_QUEUE_FRAMES> m_save_video_queue_timestamp_valid{};
 	std::array<uint16_t, cdi_dvc::SAVE_PICTURE_EVENTS> m_save_picture_events{};
+	std::array<uint32_t, cdi_dvc::SAVE_VIDEO_REPLAY_PUMP_EVENTS> m_save_video_replay_pump_events{};
 
 	// 512 KiB MPEG/DVC RAM at E80000-EFFFFF.
 	//
