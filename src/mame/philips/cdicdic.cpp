@@ -1138,8 +1138,8 @@ void cdicdic_device::regs_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 				{
 					ram[device_index++] = m_memory_space->read_word(index * 2);
 				}
+				m_scc->dma_channel1_transfer(1);
 			}
-			m_scc->dma().channel[0].memory_address_counter += m_scc->dma().channel[0].transfer_counter * 2;
 			break;
 		}
 
