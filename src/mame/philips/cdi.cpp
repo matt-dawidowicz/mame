@@ -386,7 +386,7 @@ void cdi_state::cdimono1_base(machine_config &config, uint32_t clock, bool ntsc)
 	screen.set_screen_update(m_mcd212, FUNC(mcd212_device::screen_update));
 
 	SCREEN(config, m_lcd);
-	m_lcd->set_refresh_hz(50);
+	m_lcd->set_refresh_hz(ntsc ? 60 : 50);
 	m_lcd->set_vblank_time(ATTOSECONDS_IN_USEC(0));
 	m_lcd->set_size(cdi220_lcd::WIDTH, cdi220_lcd::HEIGHT);
 	m_lcd->set_visarea_full();
