@@ -191,6 +191,14 @@ public:
 	bool dma_channel_active(unsigned channel) const;
 	bool dma_channel_transfer(unsigned channel, uint16_t &data);
 
+	// Read-only state exposed to peripheral-side DMA clients.
+	bool dma_channel_memory_to_device(unsigned channel) const;
+	bool dma_channel_word_transfer(unsigned channel) const;
+	bool dma_channel_memory_increment(unsigned channel, bool &increment) const;
+	uint16_t dma_channel_remaining(unsigned channel) const;
+	uint32_t dma_channel_memory_address(unsigned channel) const;
+	bool dma_channel_external_start(unsigned channel);
+
 	// Compatibility wrappers for the existing channel-1 peripheral path.
 	bool dma_channel1_active() const { return dma_channel_active(0); }
 	bool dma_channel1_transfer(uint16_t &data) { return dma_channel_transfer(0, data); }

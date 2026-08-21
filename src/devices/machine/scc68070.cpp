@@ -1650,6 +1650,83 @@ bool scc68070_device::dma_channel_transfer(unsigned channel, uint16_t &data)
 	return true;
 }
 
+bool scc68070_device::dma_channel_external_start(unsigned channel)
+{
+	if (channel >= 2)
+		return false;
+
+	dma_channel_t &dma = m_dma.channel[channel];
+
+	if (dma.transfer_counter == 0)
+		return false;
+
+	// Peripheral DREQ begins an externally requested operation.  Preserve
+	// the validated DVC behavior of clearing a stale completion condition,
+	// while the modern controller owns the live CA state and completion.
+	dma.channel_status &= ~CSR_COC;
+	dma.channel_error = CER_NONE;
+	dma.channel_status |= CSR_CA;
+	update_ipl();
+
+	return true;
+}
+
+bool scc68070_device::dma_channel_memory_to_device(unsigned channel) const
+{
+	if (channel >= 2)
+		return false;
+
+	return (m_dma.channel[channel].operation_control & SCC68070_OCR_D)
+		== SCC68070_OCR_D_M2D;
+}
+
+bool scc68070_device::dma_channel_word_transfer(unsigned channel) const
+{
+	if (channel >= 2)
+		return false;
+
+	return (m_dma.channel[channel].operation_control & SCC68070_OCR_OS)
+		== SCC68070_OCR_OS_WORD;
+}
+
+bool scc68070_device::dma_channel_memory_increment(unsigned channel, bool &increment) const
+{
+	if (channel >= 2)
+		return false;
+
+	if (channel == 0)
+	{
+		increment = true;
+		return true;
+	}
+
+	switch (m_dma.channel[1].sequence_control & SCR2_MAC)
+	{
+	case SCR2_MAC_NONE:
+		increment = false;
+		return true;
+
+	case SCR2_MAC_INC:
+		increment = true;
+		return true;
+
+	default:
+		return false;
+	}
+}
+
+uint16_t scc68070_device::dma_channel_remaining(unsigned channel) const
+{
+	return channel < 2 ? m_dma.channel[channel].transfer_counter : 0;
+}
+
+uint32_t scc68070_device::dma_channel_memory_address(unsigned channel) const
+{
+	return channel < 2
+		? (m_dma.channel[channel].memory_address_counter & DMA_ADDRESS_MASK)
+		: 0;
+}
+
 uint16_t scc68070_device::dma_r(offs_t offset, uint16_t mem_mask)
 {
 	switch (offset)
