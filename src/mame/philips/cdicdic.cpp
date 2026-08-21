@@ -1048,11 +1048,19 @@ uint16_t cdicdic_device::regs_r(offs_t offset, uint16_t mem_mask)
 			return temp;
 		}
 
+		case 0x3ff8/2: // DMACTL
+			LOGMASKED(LOG_READS, "%s: cdic_r: DMA Control Register = %04x & %04x\n", machine().describe_context(), m_dma_control, mem_mask);
+			return m_dma_control;
+
 		case 0x3ffa/2: // AUDCTL
 			if (!m_decoding_audio_map)
 				m_z_buffer ^= 0x0001;
 			LOGMASKED(LOG_READS, "%s: cdic_r: Z-Buffer Register Read: %04x & %04x\n", machine().describe_context(), m_z_buffer, mem_mask);
 			return m_z_buffer;
+
+		case 0x3ffc/2: // IVEC
+			LOGMASKED(LOG_READS, "%s: cdic_r: Interrupt Vector Register = %04x & %04x\n", machine().describe_context(), m_interrupt_vector, mem_mask);
+			return m_interrupt_vector;
 
 		case 0x3ffe/2:
 			LOGMASKED(LOG_READS, "%s: cdic_r: Data buffer Register = %04x & %04x\n", machine().describe_context(), m_data_buffer, mem_mask);
@@ -1121,10 +1129,11 @@ void cdicdic_device::regs_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 
 		case 0x3ff8/2:
 		{
-			uint32_t device_index = (data & 0x3fff) >> 1;
-			uint16_t *ram = (uint16_t *)m_ram.get();
-
 			LOGMASKED(LOG_WRITES, "%s: cdic_w: DMA Control Register = %04x & %04x\n", machine().describe_context(), data, mem_mask);
+			COMBINE_DATA(&m_dma_control);
+
+			uint32_t device_index = (m_dma_control & 0x3fff) >> 1;
+			uint16_t *ram = (uint16_t *)m_ram.get();
 
 			// SCC68070 channel 1 owns the memory-side DMA cycle.
 			// CDIC supplies or consumes only the device-side operand.
