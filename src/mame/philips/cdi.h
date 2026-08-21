@@ -67,6 +67,17 @@ protected:
 
 	required_device_array<dmadac_sound_device, 2> m_dmadac;
 
+	enum : uint8_t
+	{
+		IRQ4_NONE = 0,
+		IRQ4_CDIC,
+		IRQ4_DVC
+	};
+
+	bool m_cdic_irq_state = false;
+	bool m_dvc_irq_state = false;
+	uint8_t m_irq4_owner = IRQ4_NONE;
+
 	// CURRENT IMPLEMENTATION MODEL, NOT HARDWARE SPECIFICATION:
 	// preserve the validated DVC one-word scheduled DMA service while
 	// keeping SCC68070 transfer state owned by the SCC device.
@@ -94,6 +105,11 @@ protected:
 	template<int Channel> void plane_w(offs_t offset, uint16_t data, uint16_t mem_mask = ~0);
 
 	uint16_t main_rom_r(offs_t offset);
+
+	void cdic_irq_w(int state);
+	void dvc_irq_w(int state);
+	void update_irq4();
+	uint8_t irq4_ack_r();
 
 	void dvc_dma_req_w(int state);
 	TIMER_CALLBACK_MEMBER(dvc_dma_service_tick);
