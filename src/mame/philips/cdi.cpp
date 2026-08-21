@@ -65,7 +65,7 @@ TODO:
 static constexpr uint32_t CLOCK_A_PAL = 30'000'000;
 static constexpr uint32_t CLOCK_A_NTSC = 30'209'800;
 
-// TODO: NTSC systems also provide an additional 4.9152 MHz XTAL for UART.
+static constexpr uint32_t CLOCK_UART = 4'915'200;
 
 #define LOG_QUIZARD_READS   (1U << 2)
 #define LOG_QUIZARD_WRITES  (1U << 3)
@@ -369,6 +369,7 @@ uint32_t cdi_state::screen_update_cdimono1_lcd(screen_device &screen, bitmap_rgb
 void cdi_state::cdimono1_base(machine_config &config, uint32_t clock, bool ntsc)
 {
 	SCC68070(config, m_maincpu, clock);
+	m_maincpu->set_uart_external_clock(CLOCK_UART);
 	m_maincpu->set_addrmap(AS_PROGRAM, &cdi_state::cdimono1_mem);
 	m_maincpu->iack4_callback().set(m_cdic, FUNC(cdicdic_device::intack_r));
 
@@ -426,6 +427,7 @@ void cdi_state::cdimono1_base(machine_config &config, uint32_t clock, bool ntsc)
 void cdi_state::cdimono2(machine_config &config)
 {
 	SCC68070(config, m_maincpu, CLOCK_A_NTSC);
+	m_maincpu->set_uart_external_clock(CLOCK_UART);
 	m_maincpu->set_addrmap(AS_PROGRAM, &cdi_state::cdimono2_mem);
 
 	MCD212(config, m_mcd212, CLOCK_A_NTSC, m_plane_ram[0], m_plane_ram[1]);
@@ -471,6 +473,7 @@ void cdi_state::cdimono2(machine_config &config)
 void cdi_state::cdi910(machine_config &config)
 {
 	SCC68070(config, m_maincpu, CLOCK_A_NTSC);
+	m_maincpu->set_uart_external_clock(CLOCK_UART);
 	m_maincpu->set_addrmap(AS_PROGRAM, &cdi_state::cdi910_mem);
 
 	MCD212(config, m_mcd212, CLOCK_A_NTSC, m_plane_ram[0], m_plane_ram[1]);
