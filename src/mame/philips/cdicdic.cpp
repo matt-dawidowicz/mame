@@ -651,6 +651,16 @@ TIMER_CALLBACK_MEMBER( cdicdic_device::sector_tick )
 
 	process_disc_sector();
 
+	// Reset commands stop after the next physical sector.  Keep this in the
+	// scheduler rather than process_sector_data(), because filtering may cause
+	// a sector to return before it is copied to a CPU-visible buffer.
+	if (m_command == 0x23 || m_command == 0x24)
+	{
+		LOGMASKED(LOG_SECTORS, "Reset command observed after sector; stopping disc read.\n");
+		cancel_disc_read();
+		return;
+	}
+
 	if (m_disc_command == 0)
 	{
 		LOGMASKED(LOG_SECTORS, "Disc command has been reset after processing; stopping processing.\n");
@@ -663,57 +673,32 @@ TIMER_CALLBACK_MEMBER( cdicdic_device::sector_tick )
 
 uint8_t cdicdic_device::get_sector_count_for_coding(uint8_t coding)
 {
-	uint8_t base_count = 2;
+	const uint8_t channel_mode = coding & CODING_CHAN_MASK;
+	const uint8_t bits_per_sample = coding & CODING_BPS_MASK;
+	const uint8_t sample_rate = coding & CODING_RATE_MASK;
 
-	switch (coding & CODING_BPS_MASK)
+	// Reject reserved coding before deriving playback duration.  This must
+	// stay in sync with play_audio_sector().
+	if (BIT(coding, 7)
+			|| channel_mode > CODING_STEREO
+			|| (bits_per_sample != CODING_4BPS && bits_per_sample != CODING_8BPS)
+			|| (sample_rate != CODING_37KHZ && sample_rate != CODING_18KHZ))
 	{
-	case CODING_4BPS:
-		// Twice as many 4bpp audio frames fit as usual
-		base_count *= 2;
-		break;
-	case CODING_8BPS:
-	case CODING_16BPS:
-		// No multiplier vs. base
-		break;
-	case CODING_BPS_MPEG:
-		// Unsupported; clear to zero for now
-		base_count = 0;
-		break;
+		return 0;
 	}
 
-	switch (coding & CODING_RATE_MASK)
-	{
-	case CODING_18KHZ:
-		// Twice as many half-rate audio frames fit as usual
-		base_count *= 2;
-		break;
-	case CODING_37KHZ:
-	case CODING_44KHZ:
-		// No multiplier vs. base
-		break;
-	case CODING_RATE_RESV:
-		// Unsupported reserved mode; clear to zero for now
-		base_count = 0;
-		break;
-	}
+	uint8_t sector_count = 2;
 
-	switch (coding & CODING_CHAN_MASK)
-	{
-	case CODING_MONO:
-		// Twice as many mono audio frames fit vs. stereo
-		base_count *= 2;
-		break;
-	case CODING_STEREO:
-		// No multiplier vs. base
-		break;
-	case CODING_CHAN_RESV:
-	case CODING_CHAN_MPEG:
-		// MPEG mode and reserved modes are unsupported; clear to zero for now
-		base_count = 0;
-		break;
-	}
+	if (bits_per_sample == CODING_4BPS)
+		sector_count *= 2;
 
-	return base_count;
+	if (sample_rate == CODING_18KHZ)
+		sector_count *= 2;
+
+	if (channel_mode == CODING_MONO)
+		sector_count *= 2;
+
+	return sector_count;
 }
 
 void cdicdic_device::process_disc_sector()
@@ -976,8 +961,6 @@ void cdicdic_device::process_sector_data(const uint8_t *buffer, const uint8_t *s
 	m_data_buffer |= 0x4000;
 	update_interrupt_state();
 
-	if (m_command == 0x23 || m_command == 0x24) // Reset? If so, stop.
-		cancel_disc_read();
 }
 
 uint16_t cdicdic_device::regs_r(offs_t offset, uint16_t mem_mask)
@@ -1230,13 +1213,13 @@ void cdicdic_device::handle_cdic_command()
 	{
 		case 0x23: // Reset Mode 1
 			LOGMASKED(LOG_WRITES, "%s: cdic_w: Reset Mode 1 command\n", machine().describe_context());
-			if (m_disc_command == 0)
-				init_disc_read(DISC_MODE1);
+			// Reset commands do not initiate a disc read.  While a read is
+			// active, sector_tick() observes the live command register and
+			// stops after the next physical sector.
 			break;
 		case 0x24: // Reset Mode 2
 			LOGMASKED(LOG_WRITES, "%s: cdic_w: Reset Mode 2 command\n", machine().describe_context());
-			if (m_disc_command == 0)
-				init_disc_read(DISC_MODE2);
+			// Same stop-after-sector behavior as Reset Mode 1.
 			break;
 		case 0x2b: // Stop CDDA
 			LOGMASKED(LOG_WRITES, "%s: cdic_w: Stop CDDA command\n", machine().describe_context());
