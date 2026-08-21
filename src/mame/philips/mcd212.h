@@ -49,6 +49,15 @@ public:
 
 	uint32_t screen_update(screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &cliprect);
 
+	// External-video eligibility is paired with the currently cached
+	// physical raster row. A mismatched source line has no valid cache.
+	bool const *external_video_line(int physical_y) const
+	{
+		if (physical_y < 0 || (physical_y / 2) != m_scanline_cache_scanline)
+			return nullptr;
+		return m_external_video_cache[physical_y & 1];
+	}
+
 	void map(address_map &map) ATTR_COLD;
 
 	template <int Path> int ram_dtack_cycle_count();
@@ -233,7 +242,9 @@ protected:
 	required_shared_ptr<uint16_t> m_planeb;
 
 	uint32_t m_interlace_field[312][768];
+	bool m_external_video_field[312][768]{};
 	uint32_t m_scanline_cache[2][768]{};
+	bool m_external_video_cache[2][768]{};
 	int m_scanline_cache_scanline = -1;
 
 	// internal state
@@ -277,9 +288,9 @@ protected:
 
 	template <int Path> void set_register(uint8_t reg, uint32_t value);
 
-	template <bool MosaicA, bool MosaicB, bool OrderAB> void mix_lines(uint32_t *plane_a, bool *transparent_a, uint32_t *plane_b, bool *transparent_b, uint32_t *out);
+	template <bool MosaicA, bool MosaicB, bool OrderAB> void mix_lines(uint32_t *plane_a, bool *transparent_a, uint32_t *plane_b, bool *transparent_b, uint32_t *out, bool *external_video);
 
-	void draw_cursor(uint32_t *scanline);
+	void draw_cursor(uint32_t *scanline, bool *external_video);
 };
 
 // device type definition
