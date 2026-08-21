@@ -250,7 +250,14 @@ void cdislave_hle_device::slave_w(offs_t offset, uint16_t data)
 				{
 					switch (m_in_buf[0])
 					{
-						case 0xc0: case 0xc1: case 0xc2: case 0xc3: case 0xc4: case 0xc5: case 0xc6: case 0xc7:
+						case 0x8a: // Reset Main CPU
+						LOGMASKED(LOG_COMMANDS | LOG_WRITES, "slave_w: Channel %d: Reset Main CPU (0x8a)\n", offset);
+						m_reset_callback(ASSERT_LINE);
+						m_reset_callback(CLEAR_LINE);
+						m_in_index = 0;
+						m_in_count = 0;
+						break;
+					case 0xc0: case 0xc1: case 0xc2: case 0xc3: case 0xc4: case 0xc5: case 0xc6: case 0xc7:
 						case 0xc8: case 0xc9: case 0xca: case 0xcb: case 0xcc: case 0xcd: case 0xce: case 0xcf:
 							m_atten_w((((u32)m_in_buf[1]) << 24) | (((u32)m_in_buf[2]) << 16) | (((u32)m_in_buf[3]) << 8) | (((u32)m_in_buf[4])));
 							m_in_index = 0;
@@ -272,6 +279,12 @@ void cdislave_hle_device::slave_w(offs_t offset, uint16_t data)
 			{
 				switch (data & 0x00ff)
 				{
+					case 0x80: // Enable Keyboard Events
+						LOGMASKED(LOG_COMMANDS | LOG_WRITES, "slave_w: Channel %d: Enable Keyboard Events (0x80)\n", offset);
+						m_keyboard_events_enabled = true;
+						m_in_index = 0;
+						m_in_count = 0;
+						break;
 					case 0x82: // Mute Audio
 					{
 						LOGMASKED(LOG_COMMANDS, "slave_w: Channel %d: Mute Audio (0x82)\n", offset);
@@ -371,8 +384,8 @@ void cdislave_hle_device::slave_w(offs_t offset, uint16_t data)
 						prepare_readback(attotime::never, 2, 2, 0xf6, m_ntsc ? 1 : 2, 0, 0, 0xf6);
 						m_in_index = 0;
 						break;
-					case 0xf7: // TODO: Arm Developer Mode
-						LOGMASKED(LOG_COMMANDS | LOG_WRITES, "slave_w: Channel %d: TODO: Unimplemented (0xf7)\n", offset);
+					case 0xf7: // Arm Developer Mode
+						LOGMASKED(LOG_COMMANDS | LOG_WRITES, "slave_w: Channel %d: Arm Developer Mode (0xf7)\n", offset);
 						m_debug_mode = 1;
 						m_in_index = 0;
 						break;
@@ -381,8 +394,8 @@ void cdislave_hle_device::slave_w(offs_t offset, uint16_t data)
 						m_xbus_interrupt_enable = 1;
 						m_in_index = 0;
 						break;
-					case 0xfe: // TODO: Disrm Developer Mode
-						LOGMASKED(LOG_COMMANDS | LOG_WRITES, "slave_w: Channel %d: TODO: Unimplemeneted (0xfe)\n", offset);
+					case 0xfe: // Disarm Developer Mode
+						LOGMASKED(LOG_COMMANDS | LOG_WRITES, "slave_w: Channel %d: Disarm Developer Mode (0xfe)\n", offset);
 						m_debug_mode = 0;
 						m_in_index = 0;
 						break;
@@ -409,6 +422,7 @@ void cdislave_hle_device::slave_w(offs_t offset, uint16_t data)
 cdislave_hle_device::cdislave_hle_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock)
 	: device_t(mconfig, CDI_SLAVE_HLE, tag, owner, clock)
 	, m_int_callback(*this)
+	, m_reset_callback(*this)
 	, m_read_mousex(*this, 0x0000)
 	, m_read_mousey(*this, 0x0000)
 	, m_read_mousebtn(*this, 0x00)
@@ -456,6 +470,7 @@ void cdislave_hle_device::device_start()
 	save_item(NAME(m_in_buf));
 	save_item(NAME(m_in_index));
 	save_item(NAME(m_in_count));
+	save_item(NAME(m_keyboard_events_enabled));
 
 	save_item(NAME(m_debug_mode));
 
@@ -498,6 +513,7 @@ void cdislave_hle_device::device_reset()
 	memset(m_in_buf, 0, 17);
 	m_in_index = 0;
 	m_in_count = 0;
+	m_keyboard_events_enabled = false;
 
 	m_debug_mode = 0;
 

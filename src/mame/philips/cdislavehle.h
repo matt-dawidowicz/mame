@@ -35,6 +35,7 @@ public:
 	cdislave_hle_device(const machine_config &mconfig, const char *tag, device_t *owner, uint32_t clock = 0);
 
 	auto int_callback() { return m_int_callback.bind(); }
+	auto reset_callback() { return m_reset_callback.bind(); }
 	auto read_mousex() { return m_read_mousex.bind(); }
 	auto read_mousey() { return m_read_mousey.bind(); }
 	auto read_mousebtn() { return m_read_mousebtn.bind(); }
@@ -64,6 +65,7 @@ private:
 	void prepare_pointer_readback();
 
 	devcb_write_line m_int_callback;
+	devcb_write_line m_reset_callback;
 	devcb_read16 m_read_mousex;
 	devcb_read16 m_read_mousey;
 	devcb_read8 m_read_mousebtn;
@@ -87,6 +89,8 @@ private:
 	uint8_t m_in_buf[17];
 	uint8_t m_in_index;
 	uint8_t m_in_count;
+
+	bool m_keyboard_events_enabled = false;
 
 	uint8_t m_debug_mode;
 	bool m_ntsc = false;
