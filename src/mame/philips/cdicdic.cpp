@@ -1332,6 +1332,7 @@ void cdicdic_device::device_start()
 	save_item(NAME(m_z_buffer));
 	save_item(NAME(m_interrupt_vector));
 	save_item(NAME(m_data_buffer));
+	save_item(NAME(m_cd_byteswap));
 
 	save_item(NAME(m_disc_command));
 	save_item(NAME(m_disc_mode));

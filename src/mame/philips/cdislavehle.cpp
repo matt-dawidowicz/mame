@@ -432,6 +432,7 @@ void cdislave_hle_device::device_start()
 
 	save_item(NAME(m_input_mouse_x));
 	save_item(NAME(m_input_mouse_y));
+	save_item(NAME(m_input_mouse_btn));
 
 	save_item(NAME(m_device_mouse_x));
 	save_item(NAME(m_device_mouse_y));
@@ -472,6 +473,7 @@ void cdislave_hle_device::device_reset()
 
 	m_input_mouse_x = 0xffff;
 	m_input_mouse_y = 0xffff;
+	m_input_mouse_btn = 0;
 
 	m_device_mouse_x = 0;
 	m_device_mouse_y = 0;
