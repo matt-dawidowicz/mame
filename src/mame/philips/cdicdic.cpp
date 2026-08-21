@@ -48,6 +48,14 @@ constexpr int16_t clip_int16(int32_t sample)
 	return int16_t(std::clamp<int32_t>(sample, -32768, 32767));
 }
 
+float attenuation_scale(uint8_t attenuation)
+{
+	if (attenuation & 0x80)
+		return 0.0f;
+
+	return powf(10.0f, -(attenuation & 0x7f) / 20.0f);
+}
+
 } // anonymous namespace
 
 
@@ -449,10 +457,10 @@ void cdicdic_device::play_audio_sector(const uint8_t coding, const uint8_t *data
 		int16_t sampleL = 0, sampleR = 0, outL = 0, outR = 0;
 		// Attenuation is logarithmic (decibels).
 		// Floats are not chip accurate, but the formula is correct.
-		float scaleLL = powf(10.0f, -m_atten[0] / 20.0f);
-		float scaleLR = powf(10.0f, -m_atten[1] / 20.0f);
-		float scaleRR = powf(10.0f, -m_atten[2] / 20.0f);
-		float scaleRL = powf(10.0f, -m_atten[3] / 20.0f);
+		const float scaleLL = attenuation_scale(m_atten[0]);
+		const float scaleLR = attenuation_scale(m_atten[1]);
+		const float scaleRR = attenuation_scale(m_atten[2]);
+		const float scaleRL = attenuation_scale(m_atten[3]);
 		for (uint16_t i = 0; i < 18 * 28 * num_samples; i++)
 		{
 			sampleL = m_samples[0][i];
