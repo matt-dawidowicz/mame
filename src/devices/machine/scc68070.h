@@ -188,8 +188,12 @@ public:
 		mmu_desc_t desc[8];
 	};
 
-	bool dma_channel1_active() const;
-	bool dma_channel1_transfer(uint16_t &data);
+	bool dma_channel_active(unsigned channel) const;
+	bool dma_channel_transfer(unsigned channel, uint16_t &data);
+
+	// Compatibility wrappers for the existing channel-1 peripheral path.
+	bool dma_channel1_active() const { return dma_channel_active(0); }
+	bool dma_channel1_transfer(uint16_t &data) { return dma_channel_transfer(0, data); }
 
 protected:
 	// device_t implementation
