@@ -76,9 +76,6 @@ protected:
 
 	uint16_t main_rom_r(offs_t offset);
 
-	uint16_t dvc_r(offs_t offset, uint16_t mem_mask = ~0);
-	void dvc_w(offs_t offset, uint16_t data, uint16_t mem_mask = ~0);
-
 	uint16_t bus_error_r(offs_t offset);
 	void bus_error_w(offs_t offset, uint16_t data);
 };
