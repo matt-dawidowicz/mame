@@ -1376,10 +1376,28 @@ void scc68070_device::ucsr_w(uint8_t data)
 	LOGMASKED(LOG_UART, "%s: UART Clock Select Write: %02x\n", machine().describe_context(), data);
 	m_uart.clock_select = data;
 
-	static const uint32_t s_baud_divisors[8] = { 65536, 32768, 16384, 4096, 2048, 1024, 512, 256 };
+	static constexpr uint32_t s_baud_divisors[8] =
+	{
+		65536, 32768, 16384, 4096, 2048, 1024, 512, 256
+	};
 
-	attotime rx_rate = attotime::from_ticks(s_baud_divisors[(data >> 4) & 7] * 10, 49152000);
-	attotime tx_rate = attotime::from_ticks(s_baud_divisors[data & 7] * 10, 49152000);
+	// CLS bit 7 selects the baud-rate clock source.  The internal source is
+	// the SCC68070 system clock divided by four; the external source is XCKI.
+	const uint32_t uart_clock = BIT(data, 7) ? m_uart_external_clock : clock() / 4;
+
+	if (!uart_clock)
+	{
+		LOGMASKED(LOG_UART | LOG_UNKNOWN, "%s: UART external clock selected with no XCKI frequency configured\n", machine().describe_context());
+		m_uart.rx_timer->adjust(attotime::never);
+		m_uart.tx_timer->adjust(attotime::never);
+		return;
+	}
+
+	const attotime rx_rate = attotime::from_ticks(
+			uint64_t(s_baud_divisors[(data >> 4) & 7]) * 10, uart_clock);
+	const attotime tx_rate = attotime::from_ticks(
+			uint64_t(s_baud_divisors[data & 7]) * 10, uart_clock);
+
 	m_uart.rx_timer->adjust(rx_rate, 0, rx_rate);
 	m_uart.tx_timer->adjust(tx_rate, 0, tx_rate);
 }
