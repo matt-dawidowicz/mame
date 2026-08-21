@@ -130,6 +130,7 @@ void mcd212_device::set_register(uint8_t reg, uint32_t value)
 			{
 				LOGMASKED(LOG_REGISTERS, "%s: Path 0: Image Coding Method = %08x\n", machine().describe_context(), value);
 				m_image_coding_method = value;
+				update_matte_arrays();
 			}
 			break;
 		case 0xc1: // Transparency Control

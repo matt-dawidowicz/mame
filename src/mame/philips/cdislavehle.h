@@ -61,6 +61,7 @@ protected:
 private:
 	void prepare_readback(const attotime &delay, uint8_t channel, uint8_t count, uint8_t data0, uint8_t data1, uint8_t data2, uint8_t data3, uint8_t cmd);
 	void set_mouse_position();
+	void prepare_pointer_readback();
 
 	devcb_write_line m_int_callback;
 	devcb_read16 m_read_mousex;
@@ -97,6 +98,7 @@ private:
 	uint16_t m_input_mouse_x;
 	uint16_t m_input_mouse_y;
 	uint8_t m_input_mouse_btn;
+	bool m_pointer_input_enabled = false;
 
 	int16_t m_device_mouse_x;
 	int16_t m_device_mouse_y;
