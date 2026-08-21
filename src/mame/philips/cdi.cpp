@@ -67,7 +67,6 @@ static constexpr uint32_t CLOCK_A_NTSC = 30'209'800;
 
 // TODO: NTSC systems also provide an additional 4.9152 MHz XTAL for UART.
 
-#define LOG_DVC             (1U << 1)
 #define LOG_QUIZARD_READS   (1U << 2)
 #define LOG_QUIZARD_WRITES  (1U << 3)
 #define LOG_QUIZARD_OTHER   (1U << 4)
@@ -98,9 +97,9 @@ void cdi_state::cdimono1_mem(address_map &map)
 	map(0x400000, 0x47ffff).r(FUNC(cdi_state::main_rom_r));
 	map(0x4fffe0, 0x4fffff).m(m_mcd212, FUNC(mcd212_device::map));
 	map(0x500000, 0x57ffff).ram();
-	map(0xd00000, 0xdfffff).ram(); // DVC RAM block 1
-	map(0xe00000, 0xe7ffff).rw(FUNC(cdi_state::dvc_r), FUNC(cdi_state::dvc_w));
-	map(0xe80000, 0xefffff).ram(); // DVC RAM block 2
+	// 0xd00000-0xefffff is reserved for the optional Digital Video Cartridge.
+	// Do not populate it in the base Mono-I machine.  A DVC-equipped
+	// configuration will install the cartridge device in this address space.
 }
 
 void cdi_state::cdimono2_mem(address_map &map)
@@ -346,21 +345,6 @@ void quizard_state::mcu_p3_w(uint8_t data)
 	LOGMASKED(LOG_QUIZARD_WRITES, "%s: MCU Port 3 Write (%02x)\n", machine().describe_context(), data);
 	rx_w(BIT(data, 1));
 	m_maincpu->uart_ctsn(BIT(data, 6));
-}
-
-/*************************
-*     DVC cartridge      *
-*************************/
-
-uint16_t cdi_state::dvc_r(offs_t offset, uint16_t mem_mask)
-{
-	LOGMASKED(LOG_DVC, "%s: dvc_r: %08x = 0000 & %04x\n", machine().describe_context(), 0xe80000 + (offset << 1), mem_mask);
-	return 0;
-}
-
-void cdi_state::dvc_w(offs_t offset, uint16_t data, uint16_t mem_mask)
-{
-	LOGMASKED(LOG_DVC, "%s: dvc_w: %08x = %04x & %04x\n", machine().describe_context(), 0xe80000 + (offset << 1), data, mem_mask);
 }
 
 /*************************
