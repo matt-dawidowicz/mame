@@ -67,6 +67,10 @@ static constexpr uint32_t CLOCK_A_NTSC = 30'209'800;
 
 static constexpr uint32_t CLOCK_UART = 4'915'200;
 
+// CURRENT IMPLEMENTATION MODEL, NOT HARDWARE SPECIFICATION.
+// Preserve the validated DVC service cadence.
+static constexpr uint32_t DVC_DMA_SERVICE_CLOCK_TICKS = 2;
+
 #define LOG_QUIZARD_READS   (1U << 2)
 #define LOG_QUIZARD_WRITES  (1U << 3)
 #define LOG_QUIZARD_OTHER   (1U << 4)
@@ -190,8 +194,32 @@ INPUT_PORTS_END
 *  Machine Initialization  *
 ***************************/
 
+void cdi_state::machine_start()
+{
+	m_dvc_dma_timer = timer_alloc(FUNC(cdi_state::dvc_dma_service_tick), this);
+	m_dvc_dma_timer->adjust(attotime::never);
+
+	save_item(NAME(m_dvc_dma_service_active));
+	save_item(NAME(m_dvc_dma_mac_mode));
+	save_item(NAME(m_dvc_dma_initial_words));
+	save_item(NAME(m_dvc_dma_service_events));
+	save_item(NAME(m_dvc_dma_transfer_serial));
+	save_item(NAME(m_dvc_dma_request_clock));
+	save_item(NAME(m_dvc_dma_first_clock));
+}
+
 void cdi_state::machine_reset()
 {
+	m_dvc_dma_service_active = false;
+	m_dvc_dma_mac_mode = 0;
+	m_dvc_dma_initial_words = 0;
+	m_dvc_dma_service_events = 0;
+	m_dvc_dma_request_clock = 0;
+	m_dvc_dma_first_clock = 0;
+
+	if (m_dvc_dma_timer)
+		m_dvc_dma_timer->adjust(attotime::never);
+
 	uint16_t *src = &m_main_rom[0];
 	uint16_t *dst = &m_plane_ram[0][0];
 	memcpy(dst, src, 0x8);
@@ -199,6 +227,8 @@ void cdi_state::machine_reset()
 
 void quizard_state::machine_start()
 {
+	cdi_state::machine_start();
+
 	save_item(NAME(m_boot_press));
 
 	m_boot_timer = timer_alloc(FUNC(quizard_state::boot_press_tick), this);
@@ -239,6 +269,144 @@ uint16_t cdi_state::main_rom_r(offs_t offset)
 {
 	m_maincpu->eat_cycles(m_mcd212->rom_dtack_cycle_count());
 	return m_main_rom[offset];
+}
+
+
+/*************************
+*  DVC DMA service      *
+*************************/
+
+void cdi_state::dvc_dma_req_w(int state)
+{
+	if (!state)
+	{
+		if (m_dvc_dma_service_active)
+		{
+			logerror("DVC_DMA_SERVICE_ABORT serial=%u remaining=%u events=%u\n",
+				m_dvc_dma_transfer_serial,
+				m_maincpu->dma_channel_remaining(1),
+				m_dvc_dma_service_events);
+
+			m_dvc_dma_service_active = false;
+
+			if (m_dvc_dma_timer)
+				m_dvc_dma_timer->adjust(attotime::never);
+		}
+
+		return;
+	}
+
+	if (!m_dvc)
+		return;
+
+	if (m_dvc_dma_service_active)
+	{
+		logerror("DVC_DMA_SERVICE_REASSERT serial=%u remaining=%u\n",
+			m_dvc_dma_transfer_serial,
+			m_maincpu->dma_channel_remaining(1));
+		return;
+	}
+
+	if (!m_maincpu->dma_channel_memory_to_device(1))
+		return;
+
+	if (!m_maincpu->dma_channel_word_transfer(1))
+		return;
+
+	bool increment_memory = false;
+	if (!m_maincpu->dma_channel_memory_increment(1, increment_memory))
+		return;
+
+	if (!m_maincpu->dma_channel_remaining(1))
+		return;
+
+	if (!m_maincpu->dma_channel_external_start(1))
+		return;
+
+	m_dvc_dma_service_active = true;
+	m_dvc_dma_mac_mode = increment_memory ? 0x04 : 0x00;
+	m_dvc_dma_initial_words = m_maincpu->dma_channel_remaining(1);
+	m_dvc_dma_service_events = 0;
+	++m_dvc_dma_transfer_serial;
+	m_dvc_dma_request_clock =
+		machine().time().as_ticks(m_maincpu->clock());
+	m_dvc_dma_first_clock = 0;
+
+	logerror("DVC_DMA_SERVICE_START serial=%u words=%u mac=%02x address=%08x clock=%llu\n",
+		m_dvc_dma_transfer_serial,
+		m_dvc_dma_initial_words,
+		m_dvc_dma_mac_mode,
+		m_maincpu->dma_channel_memory_address(1),
+		(unsigned long long)m_dvc_dma_request_clock);
+
+	m_dvc_dma_timer->adjust(attotime::zero);
+}
+
+TIMER_CALLBACK_MEMBER(cdi_state::dvc_dma_service_tick)
+{
+	if (!m_dvc_dma_service_active || !m_dvc)
+		return;
+
+	if (!m_maincpu->dma_channel_active(1))
+	{
+		logerror("DVC_DMA_SERVICE_ABORT serial=%u remaining=%u events=%u\n",
+			m_dvc_dma_transfer_serial,
+			m_maincpu->dma_channel_remaining(1),
+			m_dvc_dma_service_events);
+
+		m_dvc_dma_service_active = false;
+		return;
+	}
+
+	if (!m_dvc_dma_service_events)
+	{
+		m_dvc_dma_first_clock =
+			machine().time().as_ticks(m_maincpu->clock());
+
+		logerror("DVC_DMA_SERVICE_FIRST serial=%u latency_clocks=%llu\n",
+			m_dvc_dma_transfer_serial,
+			(unsigned long long)
+				(m_dvc_dma_first_clock - m_dvc_dma_request_clock));
+	}
+
+	uint16_t data = 0;
+
+	if (!m_maincpu->dma_channel_transfer(1, data))
+	{
+		logerror("DVC_DMA_SERVICE_ABORT serial=%u remaining=%u events=%u\n",
+			m_dvc_dma_transfer_serial,
+			m_maincpu->dma_channel_remaining(1),
+			m_dvc_dma_service_events);
+
+		m_dvc_dma_service_active = false;
+		return;
+	}
+
+	m_dvc->dma_w(data);
+	++m_dvc_dma_service_events;
+
+	if (!m_maincpu->dma_channel_active(1))
+	{
+		uint64_t const complete_clock =
+			machine().time().as_ticks(m_maincpu->clock());
+
+		m_dvc_dma_service_active = false;
+
+		logerror("DVC_DMA_SERVICE_COMPLETE serial=%u words=%u events=%u elapsed_clocks=%llu first_latency_clocks=%llu\n",
+			m_dvc_dma_transfer_serial,
+			m_dvc_dma_initial_words,
+			m_dvc_dma_service_events,
+			(unsigned long long)
+				(complete_clock - m_dvc_dma_request_clock),
+			(unsigned long long)
+				(m_dvc_dma_first_clock - m_dvc_dma_request_clock));
+
+		m_dvc->dma_done();
+		return;
+	}
+
+	m_dvc_dma_timer->adjust(attotime::from_ticks(
+		DVC_DMA_SERVICE_CLOCK_TICKS, m_maincpu->clock()));
 }
 
 

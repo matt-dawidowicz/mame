@@ -7,6 +7,7 @@
 #include "machine/scc68070.h"
 #include "cdislavehle.h"
 #include "cdicdic.h"
+#include "cdidvc.h"
 #include "cdi220_lcd.h"
 #include "sound/dmadac.h"
 #include "mcd212.h"
@@ -30,6 +31,7 @@ public:
 		, m_servo(*this, "servo")
 		, m_slave(*this, "slave")
 		, m_cdic(*this, "cdic")
+		, m_dvc(*this, "dvc")
 		, m_cdrom(*this, "cdrom")
 		, m_mcd212(*this, "mcd212")
 		, m_dmadac(*this, "dac%u", 1U)
@@ -57,12 +59,26 @@ protected:
 	optional_device<m68hc05c8_device> m_servo;
 	optional_device<m68hc05c8_device> m_slave;
 	optional_device<cdicdic_device> m_cdic;
+	optional_device<cdi_dvc_device> m_dvc;
 	required_device<cdrom_image_device> m_cdrom;
 	required_device<mcd212_device> m_mcd212;
 
 	required_device_array<dmadac_sound_device, 2> m_dmadac;
 
+	// CURRENT IMPLEMENTATION MODEL, NOT HARDWARE SPECIFICATION:
+	// preserve the validated DVC one-word scheduled DMA service while
+	// keeping SCC68070 transfer state owned by the SCC device.
+	emu_timer *m_dvc_dma_timer = nullptr;
+	bool m_dvc_dma_service_active = false;
+	uint8_t m_dvc_dma_mac_mode = 0;
+	uint16_t m_dvc_dma_initial_words = 0;
+	uint32_t m_dvc_dma_service_events = 0;
+	uint32_t m_dvc_dma_transfer_serial = 0;
+	uint64_t m_dvc_dma_request_clock = 0;
+	uint64_t m_dvc_dma_first_clock = 0;
+
 	uint32_t screen_update_cdimono1_lcd(screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &cliprect);
+	virtual void machine_start() override ATTR_COLD;
 	virtual void machine_reset() override ATTR_COLD;
 
 	void cdimono1_mem(address_map &map) ATTR_COLD;
@@ -75,6 +91,9 @@ protected:
 	template<int Channel> void plane_w(offs_t offset, uint16_t data, uint16_t mem_mask = ~0);
 
 	uint16_t main_rom_r(offs_t offset);
+
+	void dvc_dma_req_w(int state);
+	TIMER_CALLBACK_MEMBER(dvc_dma_service_tick);
 
 	uint16_t bus_error_r(offs_t offset);
 	void bus_error_w(offs_t offset, uint16_t data);
