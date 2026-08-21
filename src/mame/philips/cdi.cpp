@@ -606,6 +606,57 @@ void quizard_state::mcu_p3_w(uint8_t data)
 }
 
 /*************************
+*  CD-i video composition *
+*************************/
+
+uint32_t cdi_state::screen_update_cdimono1(
+		screen_device &screen,
+		bitmap_rgb32 &bitmap,
+		const rectangle &cliprect)
+{
+	uint32_t result = 0;
+	int const visible_top = screen.visible_area().min_y;
+
+	// The modern MCD212 caches the two physical raster rows belonging
+	// to one source line. Render and compose each physical row before
+	// advancing to another source line so the external-video mask stays
+	// paired with the pixels that produced it.
+	for (int y = cliprect.min_y; y <= cliprect.max_y; ++y)
+	{
+		if (m_dvc && y == visible_top)
+			m_dvc->video_vblank();
+
+		rectangle const row_clip(
+			cliprect.min_x, cliprect.max_x, y, y);
+
+		result |= m_mcd212->screen_update(
+			screen, bitmap, row_clip);
+
+		if (!m_dvc)
+			continue;
+
+		bool const *const external_video =
+			m_mcd212->external_video_line(y);
+
+		if (!external_video)
+			continue;
+
+		m_dvc->video_overlay_scanline(
+			&bitmap.pix(y),
+			bitmap.width(),
+			y,
+			visible_top,
+			row_clip.min_x,
+			row_clip.max_x,
+			external_video,
+			768);
+	}
+
+	return result;
+}
+
+
+/*************************
 *       LCD screen       *
 *************************/
 
@@ -642,7 +693,7 @@ void cdi_state::cdimono1_base(machine_config &config, uint32_t clock, bool ntsc)
 	screen.set_raw(clock, 960, 0, 768,
 		total_half_lines, visible_start, visible_end);
 	screen.set_video_attributes(VIDEO_UPDATE_SCANLINE);
-	screen.set_screen_update(m_mcd212, FUNC(mcd212_device::screen_update));
+	screen.set_screen_update(FUNC(cdi_state::screen_update_cdimono1));
 
 	SCREEN(config, m_lcd);
 	m_lcd->set_refresh_hz(ntsc ? 60 : 50);
