@@ -830,7 +830,11 @@ uint8_t mcd212_device::csr1_r()
 void mcd212_device::csr1_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 {
 	LOGMASKED(LOG_MAIN_REG_WRITES, "%s: Control/Status Register 1 Write: %04x & %08x\n", machine().describe_context(), data, mem_mask);
+	const uint16_t old_value = m_csrw[0];
 	COMBINE_DATA(&m_csrw[0]);
+
+	if (BIT(m_csrw[0], CSR1W_ST_BIT) != BIT(old_value, CSR1W_ST_BIT))
+		update_matte_arrays();
 }
 
 uint16_t mcd212_device::dcr1_r(offs_t offset, uint16_t mem_mask)
@@ -845,12 +849,15 @@ void mcd212_device::dcr1_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 
 	const uint16_t timing_mask =
 		(1U << DCR_CF_BIT) | (1U << DCR_FD_BIT);
-	const uint16_t old_timing = m_dcr[0] & timing_mask;
+	const uint16_t old_value = m_dcr[0];
 
 	COMBINE_DATA(&m_dcr[0]);
 
-	if ((m_dcr[0] & timing_mask) != old_timing)
+	if (((m_dcr[0] ^ old_value) & timing_mask) != 0)
 		update_screen_timing();
+
+	if (BIT(m_dcr[0], DCR_CF_BIT) != BIT(old_value, DCR_CF_BIT))
+		update_matte_arrays();
 }
 
 uint16_t mcd212_device::vsr1_r(offs_t offset, uint16_t mem_mask)
