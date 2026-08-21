@@ -50,19 +50,25 @@ project("mametests")
 		MAME_DIR .. "src/osd",
 		MAME_DIR .. "src/emu",
 		MAME_DIR .. "src/lib/util",
+		MAME_DIR .. "src/mame/philips",
 		ext_includedir("expat"),
 		ext_includedir("zlib"),
 	}
 
 	files {
-		MAME_DIR .. "src/emu/video/rgbsse.cpp",
-		MAME_DIR .. "src/emu/video/rgbsse.h",
-		MAME_DIR .. "src/emu/video/rgbvmx.cpp",
-		MAME_DIR .. "src/emu/video/rgbvmx.h",
+		MAME_DIR .. "src/emu/video/rgbutil.cpp",
+		MAME_DIR .. "src/emu/video/rgbutil.h",
 	}
 
 	files {
 		MAME_DIR .. "tests/main.cpp",
+		MAME_DIR .. "tests/emu/philips/cdidvc.cpp",
+		MAME_DIR .. "tests/emu/philips/cdidvc_timing.cpp",
+		MAME_DIR .. "tests/emu/philips/cdidvc_invariants.cpp",
+		MAME_DIR .. "tests/emu/philips/cdidvc_audio_format.cpp",
+		MAME_DIR .. "tests/emu/philips/cdidvc_timestamp_format.cpp",
+		MAME_DIR .. "tests/emu/philips/cdidvc_pes_format.cpp",
+		MAME_DIR .. "tests/emu/philips/cdidvc_dclk_wrap.cpp",
 		MAME_DIR .. "tests/lib/util/corestr.cpp",
 		MAME_DIR .. "tests/lib/util/options.cpp",
 		MAME_DIR .. "tests/emu/attotime.cpp",
