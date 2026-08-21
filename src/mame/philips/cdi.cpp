@@ -1277,7 +1277,7 @@ ROM_END
 CONS( 1991, cdimono1, 0,      0,      cdimono1, cdi,      cdi_state, empty_init, "Philips",    "CD-i (Mono-I) (PAL)",   MACHINE_IMPERFECT_GRAPHICS | MACHINE_IMPERFECT_SOUND | MACHINE_SUPPORTS_SAVE )
 CONS( 1991, cdi200, cdimono1, 0,      cdi200, cdi, cdi_state, empty_init, "Magnavox", "CD-i 200 (NTSC)",  MACHINE_IMPERFECT_GRAPHICS | MACHINE_IMPERFECT_SOUND | MACHINE_SUPPORTS_SAVE )
 CONS( 1991, cdimono1dvc, cdimono1, 0, cdimono1dvc, cdi, cdi_state, empty_init, "Philips", "CD-i (Mono-I) (PAL) with Digital Video Cartridge", MACHINE_NOT_WORKING | MACHINE_IMPERFECT_GRAPHICS | MACHINE_IMPERFECT_SOUND )
-CONS( 1991, cdimono1dvcntsc, cdi200, 0, cdimono1dvc_ntsc, cdi, cdi_state, empty_init, "Magnavox", "CD-i 200 (NTSC) with Digital Video Cartridge", MACHINE_NOT_WORKING | MACHINE_IMPERFECT_GRAPHICS | MACHINE_IMPERFECT_SOUND )
+CONS( 1991, cdimono1dvcntsc, cdimono1, 0, cdimono1dvc_ntsc, cdi, cdi_state, empty_init, "Magnavox", "CD-i 200 (NTSC) with Digital Video Cartridge", MACHINE_NOT_WORKING | MACHINE_IMPERFECT_GRAPHICS | MACHINE_IMPERFECT_SOUND )
 CONS( 1991, cdimono2, 0,      0,      cdimono2, cdimono2, cdi_state, empty_init, "Philips",    "CD-i (Mono-II) (NTSC)",   MACHINE_NOT_WORKING )
 CONS( 1991, cdi910,   0,      0,      cdi910,   cdimono2, cdi_state, empty_init, "Philips",    "CD-i 910-17P Mini-MMC (NTSC)",   MACHINE_NOT_WORKING )
 CONS( 1991, cdi490a,  0,      0,      cdimono1, cdi,      cdi_state, empty_init, "Philips",    "CD-i 490",   MACHINE_NOT_WORKING )
