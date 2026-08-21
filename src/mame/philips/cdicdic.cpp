@@ -374,9 +374,16 @@ void cdicdic_device::play_cdda_sector(const uint8_t *data)
 
 void cdicdic_device::play_audio_sector(const uint8_t coding, const uint8_t *data)
 {
-	if ((coding & CODING_CHAN_MASK) > CODING_STEREO || (coding & CODING_BPS_MASK) == CODING_BPS_MPEG || (coding & CODING_RATE_MASK) == CODING_RATE_RESV)
+	const uint8_t channel_mode = coding & CODING_CHAN_MASK;
+	const uint8_t bits_per_sample = coding & CODING_BPS_MASK;
+	const uint8_t sample_rate = coding & CODING_RATE_MASK;
+
+	if (BIT(coding, 7)
+		|| channel_mode > CODING_STEREO
+		|| (bits_per_sample != CODING_4BPS && bits_per_sample != CODING_8BPS)
+		|| (sample_rate != CODING_37KHZ && sample_rate != CODING_18KHZ))
 	{
-		LOGMASKED(LOG_SECTORS, "Invalid coding (%02x), ignoring\n", coding);
+		LOGMASKED(LOG_SECTORS, "Invalid/reserved coding (%02x), ignoring\n", coding);
 		return;
 	}
 
@@ -386,46 +393,9 @@ void cdicdic_device::play_audio_sector(const uint8_t coding, const uint8_t *data
 		// TODO: Emphasis is commonly used. Do not throw a fatal error.
 	}
 
-	int channels = 2;
-	//offs_t buffer_length = 1;
-	if (!(coding & CODING_STEREO))
-	{
-		channels = 1;
-		//buffer_length *= 2;
-	}
-
-	int bits = 4;
-	switch (coding & CODING_BPS_MASK)
-	{
-	case CODING_8BPS:
-		bits = 8;
-		break;
-	case CODING_16BPS:
-		bits = 16;
-		fatalerror("play_audio_sector: unhandled 16-bit coding mode\n");
-		break;
-	default:
-		bits = 4;
-		//buffer_length *= 2;
-		break;
-	}
-
-	int32_t sample_frequency = 0;
-	switch (coding & CODING_RATE_MASK)
-	{
-	case CODING_37KHZ:
-		sample_frequency = clock2() / 512.0f;
-		break;
-	case CODING_18KHZ:
-		sample_frequency = clock2() / 1024.0f;
-		break;
-	case CODING_44KHZ:
-		fatalerror("play_audio_sector: unhandled 44KHz coding mode\n");
-		break;
-	default:
-		// Can't happen due to above early-out
-		break;
-	}
+	const int channels = (channel_mode == CODING_STEREO) ? 2 : 1;
+	const int bits = (bits_per_sample == CODING_8BPS) ? 8 : 4;
+	const int32_t sample_frequency = (sample_rate == CODING_37KHZ) ? clock2() / 512.0f : clock2() / 1024.0f;
 
 	LOGMASKED(LOG_SECTORS, "Coding %02x, %d channels, %d bits, %08x frequency\n", coding, channels, bits, sample_frequency);
 
@@ -434,8 +404,8 @@ void cdicdic_device::play_audio_sector(const uint8_t coding, const uint8_t *data
 	m_dmadac[0]->set_volume(0x100);
 	m_dmadac[1]->set_volume(0x100);
 
-	const uint16_t bps = ((coding & CODING_BPS_MASK) == CODING_8BPS);
-	const uint16_t chan = ((coding & CODING_CHAN_MASK) == CODING_STEREO);
+	const uint16_t bps = (bits_per_sample == CODING_8BPS);
+	const uint16_t chan = (channel_mode == CODING_STEREO);
 	const uint16_t num_samples = 8 >> (bps + chan);
 
 	if (bits == 16 && channels == 2)
