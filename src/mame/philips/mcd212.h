@@ -233,6 +233,8 @@ protected:
 	required_shared_ptr<uint16_t> m_planeb;
 
 	uint32_t m_interlace_field[312][768];
+	uint32_t m_scanline_cache[2][768]{};
+	int m_scanline_cache_scanline = -1;
 
 	// internal state
 	bool m_matte_flag[2][768]{};
