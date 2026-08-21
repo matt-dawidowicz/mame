@@ -50,17 +50,9 @@ TIMER_CALLBACK_MEMBER( cdislave_hle_device::poll_inputs )
 	const uint16_t x = m_read_mousex();
 	const uint16_t y = m_read_mousey();
 	const uint8_t btn = m_read_mousebtn();
+
 	if (x == m_input_mouse_x && y == m_input_mouse_y && btn == m_input_mouse_btn)
 		return;
-
-	m_input_mouse_btn = btn;
-	uint8_t button_bits = 0x01;
-	if (BIT(m_input_mouse_btn, 0))
-		button_bits |= 0x02;
-	if (BIT(m_input_mouse_btn, 1))
-		button_bits |= 0x04;
-	if (BIT(m_input_mouse_btn, 2))
-		button_bits |= 0x06;
 
 	int16_t deltax = 0;
 	int16_t deltay = 0;
@@ -73,15 +65,13 @@ TIMER_CALLBACK_MEMBER( cdislave_hle_device::poll_inputs )
 
 	m_input_mouse_x = x;
 	m_input_mouse_y = y;
+	m_input_mouse_btn = btn;
 
 	m_device_mouse_x = std::clamp(m_device_mouse_x + deltax, 0, 767);
 	m_device_mouse_y = std::clamp(m_device_mouse_y + deltay, 0, 559);
 
-	const uint8_t byte3 = ((m_device_mouse_x & 0x380) >> 7) | (button_bits << 3);
-	const uint8_t byte2 = m_device_mouse_x & 0x7f;
-	const uint8_t byte1 = (m_device_mouse_y & 0x380) >> 7;
-	const uint8_t byte0 = m_device_mouse_y & 0x7f;
-	prepare_readback(attotime::zero, 0, 4, byte3, byte2, byte1, byte0, 0xf7);
+	if (m_pointer_input_enabled)
+		prepare_pointer_readback();
 }
 
 void cdislave_hle_device::prepare_readback(const attotime &delay, uint8_t channel, uint8_t count, uint8_t data0, uint8_t data1, uint8_t data2, uint8_t data3, uint8_t cmd)
@@ -103,31 +93,36 @@ uint16_t cdislave_hle_device::slave_r(offs_t offset)
 	{
 		uint8_t ret = m_channel[offset].m_out_buf[m_channel[offset].m_out_index];
 		LOGMASKED(LOG_READS, "%s: slave_r: Channel %d: %d, %02x\n", machine().describe_context(), offset, m_channel[offset].m_out_index, ret);
-		if (m_channel[offset].m_out_index == 0)
-		{
-			switch (m_channel[offset].m_out_cmd)
-			{
-				case 0xb0:
-				case 0xb1:
-				case 0xf0:
-				case 0xf3:
-				case 0xf4:
-				case 0xf7:
-					LOGMASKED(LOG_IRQS, "slave_r: De-asserting IRQ2\n");
-					m_int_callback(CLEAR_LINE);
-					break;
-			}
-		}
+
 		m_channel[offset].m_out_index++;
 		m_channel[offset].m_out_count--;
+
 		if (!m_channel[offset].m_out_count)
 		{
 			m_channel[offset].m_out_index = 0;
 			m_channel[offset].m_out_cmd = 0;
 			memset(m_channel[offset].m_out_buf, 0, 4);
 		}
+
+		bool output_pending = false;
+		for (const auto &channel : m_channel)
+		{
+			if (channel.m_out_count)
+			{
+				output_pending = true;
+				break;
+			}
+		}
+
+		if (!output_pending)
+		{
+			LOGMASKED(LOG_IRQS, "slave_r: De-asserting IRQ2\n");
+			m_int_callback(CLEAR_LINE);
+		}
+
 		return ret;
 	}
+
 	LOGMASKED(LOG_READS, "slave_r: Channel %d: %d (nothing to output)\n", offset, m_channel[offset].m_out_index);
 	return 0xff;
 }
@@ -135,12 +130,53 @@ uint16_t cdislave_hle_device::slave_r(offs_t offset)
 void cdislave_hle_device::set_mouse_position()
 {
 	m_device_mouse_x = ((m_in_buf[1] & 0x70) << 3) | (m_in_buf[2] & 0x7f);
-	m_device_mouse_y = ((m_in_buf[1] & 0x0f) << 6) | (m_in_buf[0] & 0x3f);
+	m_device_mouse_y = ((m_in_buf[0] & 0x3f) << 4) | (m_in_buf[1] & 0x0f);
+}
+
+void cdislave_hle_device::prepare_pointer_readback()
+{
+	uint8_t byte3 = ((m_device_mouse_x & 0x380) >> 7) | 0x08;
+
+	if (BIT(m_input_mouse_btn, 0))
+		byte3 |= 0x10;
+
+	if (BIT(m_input_mouse_btn, 1))
+		byte3 |= 0x20;
+
+	const uint8_t byte2 = m_device_mouse_x & 0x7f;
+	const uint8_t byte1 = (m_device_mouse_y & 0x380) >> 7;
+	const uint8_t byte0 = m_device_mouse_y & 0x7f;
+
+	prepare_readback(attotime::zero, 0, 4, byte3, byte2, byte1, byte0, 0xf7);
 }
 
 void cdislave_hle_device::slave_w_mouse(offs_t offset, uint16_t data)
 {
-	bool set_mouse = m_in_buf[0] >= 0xc0;
+	if (m_in_index == 1)
+	{
+		switch (m_in_buf[0])
+		{
+			case 0x83: // Enable pointer input
+				LOGMASKED(LOG_COMMANDS, "slave_w: Channel %d: Enable Pointer Input (0x83)\n", offset);
+				m_pointer_input_enabled = true;
+				prepare_pointer_readback();
+				memset(m_in_buf, 0, 17);
+				m_in_index = 0;
+				m_in_count = 0;
+				return;
+
+			case 0x84: // Disable pointer input
+				LOGMASKED(LOG_COMMANDS, "slave_w: Channel %d: Disable Pointer Input (0x84)\n", offset);
+				m_pointer_input_enabled = false;
+				memset(m_in_buf, 0, 17);
+				m_in_index = 0;
+				m_in_count = 0;
+				return;
+		}
+	}
+
+	const bool set_mouse = m_in_buf[0] >= 0xc0;
+
 	if (set_mouse)
 	{
 		if (m_in_index == 1)
@@ -148,26 +184,23 @@ void cdislave_hle_device::slave_w_mouse(offs_t offset, uint16_t data)
 			LOGMASKED(LOG_COMMANDS, "slave_w: Channel %d: Update Mouse Position (0x%02x)\n", offset, data & 0x00ff);
 			m_in_count = 3;
 		}
-		else
+		else if (m_in_index == m_in_count)
 		{
-			if (m_in_index == m_in_count)
-			{
-				// Update Mouse Position
-				set_mouse_position();
-				memset(m_in_buf, 0, 17);
-				m_in_index = 0;
-				m_in_count = 0;
-				return;
-			}
+			set_mouse_position();
+			memset(m_in_buf, 0, 17);
+			m_in_index = 0;
+			m_in_count = 0;
 		}
 	}
 	else
 	{
 		LOGMASKED(LOG_COMMANDS | LOG_UNKNOWNS, "slave_w: Channel %d: Unknown register: %02x\n", offset, data & 0x00ff);
+
 		if (m_in_index == 1)
 		{
+			memset(m_in_buf, 0, 17);
 			m_in_index = 0;
-			return;
+			m_in_count = 0;
 		}
 	}
 }
@@ -433,6 +466,7 @@ void cdislave_hle_device::device_start()
 	save_item(NAME(m_input_mouse_x));
 	save_item(NAME(m_input_mouse_y));
 	save_item(NAME(m_input_mouse_btn));
+	save_item(NAME(m_pointer_input_enabled));
 
 	save_item(NAME(m_device_mouse_x));
 	save_item(NAME(m_device_mouse_y));

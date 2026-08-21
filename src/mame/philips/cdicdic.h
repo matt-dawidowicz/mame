@@ -164,6 +164,7 @@ private:
 	uint16_t m_file;              // CDIC File Register               (0x303c06)
 	uint32_t m_channel;           // CDIC Channel Register            (0x303c08)
 	uint16_t m_audio_channel;     // CDIC Audio Channel Register      (0x303c0c)
+	uint16_t m_data_select = 0;
 
 	uint16_t m_audio_buffer;      // CDIC Audio Buffer Register       (0x303ff4)
 	uint16_t m_x_buffer;          // CDIC X-Buffer Register           (0x303ff6)

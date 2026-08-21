@@ -1030,6 +1030,10 @@ uint16_t cdicdic_device::regs_r(offs_t offset, uint16_t mem_mask)
 			LOGMASKED(LOG_READS, "%s: cdic_r: Audio Channel Register = %04x & %04x\n", machine().describe_context(), m_audio_channel, mem_mask);
 			return m_audio_channel;
 
+		case 0x3c80/2: // DSEL
+			LOGMASKED(LOG_READS, "%s: cdic_r: Data Select Register = %04x & %04x\n", machine().describe_context(), m_data_select, mem_mask);
+			return m_data_select;
+
 		case 0x3ff4/2: // ABUF
 		{
 			uint16_t temp = m_audio_buffer;
@@ -1115,6 +1119,11 @@ void cdicdic_device::regs_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 		case 0x3c0c/2: // Audio Channel register
 			LOGMASKED(LOG_WRITES, "%s: cdic_w: Audio Channel Register = %04x & %04x\n", machine().describe_context(), data, mem_mask);
 			COMBINE_DATA(&m_audio_channel);
+			break;
+
+		case 0x3c80/2: // DSEL
+			LOGMASKED(LOG_WRITES, "%s: cdic_w: Data Select Register = %04x & %04x\n", machine().describe_context(), data, mem_mask);
+			COMBINE_DATA(&m_data_select);
 			break;
 
 		case 0x3ff4/2:
@@ -1232,7 +1241,7 @@ void cdicdic_device::handle_cdic_command()
 		case 0x24: // Reset Mode 2
 			LOGMASKED(LOG_WRITES, "%s: cdic_w: Reset Mode 2 command\n", machine().describe_context());
 			if (m_disc_command == 0)
-				init_disc_read(DISC_MODE1);
+				init_disc_read(DISC_MODE2);
 			break;
 		case 0x2b: // Stop CDDA
 			LOGMASKED(LOG_WRITES, "%s: cdic_w: Stop CDDA command\n", machine().describe_context());
@@ -1326,6 +1335,7 @@ void cdicdic_device::device_start()
 	save_item(NAME(m_file));
 	save_item(NAME(m_channel));
 	save_item(NAME(m_audio_channel));
+	save_item(NAME(m_data_select));
 	save_item(NAME(m_audio_buffer));
 	save_item(NAME(m_x_buffer));
 	save_item(NAME(m_dma_control));
