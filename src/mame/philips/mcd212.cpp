@@ -686,7 +686,7 @@ const uint32_t mcd212_device::s_4bpp_color[16] =
 };
 
 template <bool MosaicA, bool MosaicB, bool OrderAB>
-void mcd212_device::mix_lines(uint32_t *plane_a, bool *transparent_a, uint32_t *plane_b, bool *transparent_b, uint32_t *out)
+void mcd212_device::mix_lines(uint32_t *plane_a, bool *transparent_a, uint32_t *plane_b, bool *transparent_b, uint32_t *out, bool *external_video)
 {
 	const uint8_t icmA = get_icm<0>();
 	const uint8_t icmB = get_icm<1>();
@@ -716,6 +716,7 @@ void mcd212_device::mix_lines(uint32_t *plane_a, bool *transparent_a, uint32_t *
 		if (transparent_a[x] && transparent_b[x])
 		{
 			out[x] = get_backdrop_plane();
+			external_video[x + border_width] = BIT(m_image_coding_method, ICM_EV_BIT);
 			continue;
 		}
 		uint32_t plane_a_cur = MosaicA ? plane_a[x - (x % mosaic_count_a)] : plane_a[x];
@@ -766,7 +767,7 @@ void mcd212_device::mix_lines(uint32_t *plane_a, bool *transparent_a, uint32_t *
 	}
 }
 
-void mcd212_device::draw_cursor(uint32_t *scanline)
+void mcd212_device::draw_cursor(uint32_t *scanline, bool *external_video)
 {
 	if (!(m_cursor_control & CURCNT_EN))
 		return; // Cursor is Disabled
@@ -798,7 +799,10 @@ void mcd212_device::draw_cursor(uint32_t *scanline)
 				{
 					const uint32_t index = cursor_x + x * resolution + j;
 					if (index < width)
+					{
 						scanline[index] = color;
+						external_video[index] = false;
+					}
 				}
 			}
 		}
@@ -1054,6 +1058,7 @@ uint32_t mcd212_device::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 		}
 
 		std::fill_n(&m_scanline_cache[0][0], 2 * 768, 0);
+		std::fill_n(&m_external_video_cache[0][0], 2 * 768, false);
 
 		// The final raster row represents the half-line at the end of the field.
 		if (scanline >= m_total_height)
@@ -1064,6 +1069,8 @@ uint32_t mcd212_device::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 		{
 			uint32_t *const out = m_scanline_cache[BIT(~m_csrr[0], CSR1R_PA_BIT)];
 			uint32_t *const out2 = m_scanline_cache[BIT(m_csrr[0], CSR1R_PA_BIT)];
+			bool *const external_video = m_external_video_cache[BIT(~m_csrr[0], CSR1R_PA_BIT)];
+			bool *const external_video2 = m_external_video_cache[BIT(m_csrr[0], CSR1R_PA_BIT)];
 
 			bool draw_line = true;
 			if (!BIT(m_dcr[0], DCR_FD_BIT) && BIT(m_csrw[0], CSR1W_ST_BIT))
@@ -1089,43 +1096,48 @@ uint32_t mcd212_device::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 				switch (mixing_mode & 7)
 				{
 					case 0: // No Mosaic A/B, A->B->Backdrop plane ordering
-						mix_lines<false, false, true>(plane_a, transparent_a, plane_b, transparent_b, out);
+						mix_lines<false, false, true>(plane_a, transparent_a, plane_b, transparent_b, out, external_video);
 						break;
 					case 1: // Mosaic A, No Mosaic B, A->B->Backdrop plane ordering
-						mix_lines<true, false, true>(plane_a, transparent_a, plane_b, transparent_b, out);
+						mix_lines<true, false, true>(plane_a, transparent_a, plane_b, transparent_b, out, external_video);
 						break;
 					case 2: // No Mosaic A, Mosaic B, A->B->Backdrop plane ordering
-						mix_lines<false, true, true>(plane_a, transparent_a, plane_b, transparent_b, out);
+						mix_lines<false, true, true>(plane_a, transparent_a, plane_b, transparent_b, out, external_video);
 						break;
 					case 3: // Mosaic A/B, A->B->Backdrop plane ordering
-						mix_lines<true, true, true>(plane_a, transparent_a, plane_b, transparent_b, out);
+						mix_lines<true, true, true>(plane_a, transparent_a, plane_b, transparent_b, out, external_video);
 						break;
 					case 4: // No Mosaic A/B, B->A->Backdrop plane ordering
-						mix_lines<false, false, false>(plane_a, transparent_a, plane_b, transparent_b, out);
+						mix_lines<false, false, false>(plane_a, transparent_a, plane_b, transparent_b, out, external_video);
 						break;
 					case 5: // Mosaic A, No Mosaic B, B->A->Backdrop plane ordering
-						mix_lines<true, false, false>(plane_a, transparent_a, plane_b, transparent_b, out);
+						mix_lines<true, false, false>(plane_a, transparent_a, plane_b, transparent_b, out, external_video);
 						break;
 					case 6: // No Mosaic A, Mosaic B, B->A->Backdrop plane ordering
-						mix_lines<false, true, false>(plane_a, transparent_a, plane_b, transparent_b, out);
+						mix_lines<false, true, false>(plane_a, transparent_a, plane_b, transparent_b, out, external_video);
 						break;
 					case 7: // Mosaic A/B, B->A->Backdrop plane ordering
-						mix_lines<true, true, false>(plane_a, transparent_a, plane_b, transparent_b, out);
+						mix_lines<true, true, false>(plane_a, transparent_a, plane_b, transparent_b, out, external_video);
 						break;
 				}
 
-				draw_cursor(out);
+				draw_cursor(out, external_video);
 			}
 
 			if (BIT(m_dcr[0], DCR_SM_BIT))
 			{
-				// Interlace Output
+				// Interlace Output: keep the previous-field pixel row
+				// paired with the eligibility mask from that same row.
+				std::copy_n(m_external_video_field[scanline], 768, external_video2);
+				std::copy_n(external_video, 768, m_external_video_field[scanline]);
 				std::copy_n(m_interlace_field[scanline], 768, out2);
 				std::copy_n(out, 768, m_interlace_field[scanline]);
 			}
 			else
 			{
-				// Single Field Output (duplicate lines)
+				// Single Field Output duplicates pixels and their
+				// external-video eligibility.
+				std::copy_n(external_video, 768, external_video2);
 				std::copy_n(out, 768, out2);
 			}
 		}
@@ -1233,6 +1245,8 @@ void mcd212_device::device_reset()
 	m_ica_timer->adjust(screen().time_until_pos(m_ica_height * 2, 0));
 
 	std::fill_n(&m_scanline_cache[0][0], 2 * 768, 0);
+	std::fill_n(&m_external_video_cache[0][0], 2 * 768, false);
+	std::fill_n(&m_external_video_field[0][0], 312 * 768, false);
 	m_scanline_cache_scanline = -1;
 }
 
@@ -1309,7 +1323,9 @@ void mcd212_device::device_start()
 	save_item(NAME(m_blink_active));
 
 	save_item(NAME(m_interlace_field));
+	save_item(NAME(m_external_video_field));
 	save_item(NAME(m_scanline_cache));
+	save_item(NAME(m_external_video_cache));
 	save_item(NAME(m_scanline_cache_scanline));
 
 	m_dca_timer = timer_alloc(FUNC(mcd212_device::dca_tick), this);
