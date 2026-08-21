@@ -32,11 +32,9 @@ STATUS:
 
 TODO:
 
-- Screen clocks are a hack right now; they should be exactly CLOCK_A/2. However, the
-  MCD-212 documentation states in both tables and timing diagrams that vertical retrace
-  has an additional half-line even in non-interlaced mode, which cannot be represented
-  in the current screen-timing framework. The input clock has been adjusted downward
-  to factor out this half-line, resulting in the expected 50Hz exactly in PAL mode.
+- MCD-212 interlace timing still needs refinement. The doubled-raster representation
+  allows the documented half-line to be modeled using the real PAL/NTSC master clocks,
+  but exact odd/even field edge placement should still be verified against hardware.
 
 - Proper abstraction of the 68070's internal devices (UART, DMA, Timers, etc.)
 
@@ -64,8 +62,10 @@ TODO:
 
 #include "cdi.lh"
 
-// TODO: NTSC system clock is 30.2098 MHz; additional 4.9152 MHz XTAL provided for UART
-#define CLOCK_A 30_MHz_XTAL
+static constexpr uint32_t CLOCK_A_PAL = 30'000'000;
+static constexpr uint32_t CLOCK_A_NTSC = 30'209'800;
+
+// TODO: NTSC systems also provide an additional 4.9152 MHz XTAL for UART.
 
 #define LOG_DVC             (1U << 1)
 #define LOG_QUIZARD_READS   (1U << 2)
@@ -382,18 +382,22 @@ uint32_t cdi_state::screen_update_cdimono1_lcd(screen_device &screen, bitmap_rgb
 *************************/
 
 // CD-i Mono-I system base
-void cdi_state::cdimono1_base(machine_config &config)
+void cdi_state::cdimono1_base(machine_config &config, uint32_t clock, bool ntsc)
 {
-	SCC68070(config, m_maincpu, CLOCK_A);
+	SCC68070(config, m_maincpu, clock);
 	m_maincpu->set_addrmap(AS_PROGRAM, &cdi_state::cdimono1_mem);
 	m_maincpu->iack4_callback().set(m_cdic, FUNC(cdicdic_device::intack_r));
 
-	MCD212(config, m_mcd212, CLOCK_A, m_plane_ram[0], m_plane_ram[1]);
+	MCD212(config, m_mcd212, clock, m_plane_ram[0], m_plane_ram[1]);
 	m_mcd212->set_screen("screen");
 	m_mcd212->int_callback().set(m_maincpu, FUNC(scc68070_device::int1_w));
 
 	screen_device &screen(SCREEN(config, "screen"));
-	screen.set_raw(14976000*2, 960, 0, 768, 312*2, 32*2, 312*2); // x2 for interlace
+	const int total_half_lines = ntsc ? 525 : 625;
+	const int visible_start = ntsc ? 44 : 64;
+	const int visible_end = ntsc ? 524 : 624;
+	screen.set_raw(clock, 960, 0, 768,
+		total_half_lines, visible_start, visible_end);
 	screen.set_video_attributes(VIDEO_UPDATE_SCANLINE);
 	screen.set_screen_update(m_mcd212, FUNC(mcd212_device::screen_update));
 
@@ -415,6 +419,7 @@ void cdi_state::cdimono1_base(machine_config &config)
 	m_cdic->intreq_callback().set(m_maincpu, FUNC(scc68070_device::in4_w));
 
 	CDI_SLAVE_HLE(config, m_slave_hle);
+	m_slave_hle->set_ntsc(ntsc);
 	m_slave_hle->int_callback().set(m_maincpu, FUNC(scc68070_device::in2_w));
 	m_slave_hle->atten_callback().set(m_cdic, FUNC(cdicdic_device::atten_w));
 
@@ -436,15 +441,16 @@ void cdi_state::cdimono1_base(machine_config &config)
 // CD-i model 220 (Mono-II, NTSC)
 void cdi_state::cdimono2(machine_config &config)
 {
-	SCC68070(config, m_maincpu, CLOCK_A);
+	SCC68070(config, m_maincpu, CLOCK_A_NTSC);
 	m_maincpu->set_addrmap(AS_PROGRAM, &cdi_state::cdimono2_mem);
 
-	MCD212(config, m_mcd212, CLOCK_A, m_plane_ram[0], m_plane_ram[1]);
+	MCD212(config, m_mcd212, CLOCK_A_NTSC, m_plane_ram[0], m_plane_ram[1]);
 	m_mcd212->set_screen("screen");
 	m_mcd212->int_callback().set(m_maincpu, FUNC(scc68070_device::int1_w));
 
 	screen_device &screen(SCREEN(config, "screen"));
-	screen.set_raw(14976000*2, 960, 0, 768, 312*2, 32*2, 312*2); // x2 for interlace
+	screen.set_raw(CLOCK_A_NTSC, 960, 0, 768,
+		525, 44, 524);
 	screen.set_video_attributes(VIDEO_UPDATE_SCANLINE);
 	screen.set_screen_update(m_mcd212, FUNC(mcd212_device::screen_update));
 
@@ -480,15 +486,16 @@ void cdi_state::cdimono2(machine_config &config)
 
 void cdi_state::cdi910(machine_config &config)
 {
-	SCC68070(config, m_maincpu, CLOCK_A);
+	SCC68070(config, m_maincpu, CLOCK_A_NTSC);
 	m_maincpu->set_addrmap(AS_PROGRAM, &cdi_state::cdi910_mem);
 
-	MCD212(config, m_mcd212, CLOCK_A, m_plane_ram[0], m_plane_ram[1]);
+	MCD212(config, m_mcd212, CLOCK_A_NTSC, m_plane_ram[0], m_plane_ram[1]);
 	m_mcd212->set_screen("screen");
 	m_mcd212->int_callback().set(m_maincpu, FUNC(scc68070_device::int1_w));
 
 	screen_device &screen(SCREEN(config, "screen"));
-	screen.set_raw(14976000*2, 960, 0, 768, 312*2, 32*2, 312*2); // x2 for interlace
+	screen.set_raw(CLOCK_A_NTSC, 960, 0, 768,
+		525, 44, 524);
 	screen.set_video_attributes(VIDEO_UPDATE_SCANLINE);
 	screen.set_screen_update(m_mcd212, FUNC(mcd212_device::screen_update));
 
@@ -525,7 +532,20 @@ void cdi_state::cdi910(machine_config &config)
 // CD-i Mono-I, with CD-ROM image device (MESS) and Software List (MESS)
 void cdi_state::cdimono1(machine_config &config)
 {
-	cdimono1_base(config);
+	cdimono1_base(config, CLOCK_A_PAL, false);
+
+	m_slave_hle->read_mousex().set_ioport("MOUSEX");
+	m_slave_hle->read_mousey().set_ioport("MOUSEY");
+	m_slave_hle->read_mousebtn().set_ioport("MOUSEBTN");
+	m_slave_hle->testplug_callback().set_ioport("TESTPLUG");
+
+	SOFTWARE_LIST(config, "cd_list").set_original("cdi").set_filter("!DVC");
+	SOFTWARE_LIST(config, "photocd_list").set_compatible("photo_cd");
+}
+
+void cdi_state::cdi200(machine_config &config)
+{
+	cdimono1_base(config, CLOCK_A_NTSC, true);
 
 	m_slave_hle->read_mousex().set_ioport("MOUSEX");
 	m_slave_hle->read_mousey().set_ioport("MOUSEY");
@@ -538,7 +558,7 @@ void cdi_state::cdimono1(machine_config &config)
 
 void quizard_state::quizard(machine_config &config)
 {
-	cdimono1_base(config);
+	cdimono1_base(config, CLOCK_A_PAL, false);
 	m_cdrom->add_region("cdrom");
 
 	m_maincpu->set_addrmap(AS_PROGRAM, &quizard_state::cdimono1_mem);
@@ -579,22 +599,32 @@ void quizard_state::rcv_complete()
 *        Rom Load        *
 *************************/
 
+// These MCU dumps are borrowed from cdi910 and still need verification against real Mono-I boards.
+#define CDI_MONO1_COMMON_MCU_ROMS \
+	ROM_REGION(0x2000, "servo", 0) \
+	ROM_LOAD( "zx405037p__cdi_servo_2.1__b43t__llek9215.mc68hc705c8a_withtestrom.7201", 0x0000, 0x2000, CRC(7a3af407) SHA1(fdf8d78d6a0df4a56b5b963d72eabd39fcec163f) BAD_DUMP ) \
+	ROM_REGION(0x2000, "slave", 0) \
+	ROM_LOAD( "zx405042p__cdi_slave_2.0__b43t__zzmk9213.mc68hc705c8a_withtestrom.7206", 0x0000, 0x2000, CRC(688cda63) SHA1(56d0acd7caad51c7de703247cd6d842b36173079) BAD_DUMP )
+
 ROM_START( cdimono1 )
 	ROM_REGION(0x80000, "maincpu", 0) // these roms need byteswapping
+	ROM_SYSTEM_BIOS( 0, "pcdi220", "Philips CD-i 220 F2" )
+	ROMX_LOAD( "cdi220b.rom", 0x000000, 0x80000, CRC(279683ca) SHA1(53360a1f21ddac952e95306ced64186a3fc0b93e), ROM_BIOS(0) )
+	ROM_SYSTEM_BIOS( 1, "pcdi220_alt", "Philips CD-i 220?" ) // doesn't boot
+	ROMX_LOAD( "cdi220.rom", 0x000000, 0x80000, CRC(584c0af8) SHA1(5d757ab46b8c8fc36361555d978d7af768342d47), ROM_BIOS(1) )
+
+	CDI_MONO1_COMMON_MCU_ROMS
+ROM_END
+
+ROM_START( cdi200 )
+	ROM_REGION(0x80000, "maincpu", 0)
 	ROM_SYSTEM_BIOS( 0, "mcdi200", "Magnavox CD-i 200" )
 	ROMX_LOAD( "cdi200.rom", 0x000000, 0x80000, CRC(40c4e6b9) SHA1(d961de803c89b3d1902d656ceb9ce7c02dccb40a), ROM_BIOS(0) )
-	ROM_SYSTEM_BIOS( 1, "pcdi220", "Philips CD-i 220 F2" )
-	ROMX_LOAD( "cdi220b.rom", 0x000000, 0x80000, CRC(279683ca) SHA1(53360a1f21ddac952e95306ced64186a3fc0b93e), ROM_BIOS(1) )
-	ROM_SYSTEM_BIOS( 2, "pcdi220_alt", "Philips CD-i 220?" ) // doesn't boot
-	ROMX_LOAD( "cdi220.rom", 0x000000, 0x80000, CRC(584c0af8) SHA1(5d757ab46b8c8fc36361555d978d7af768342d47), ROM_BIOS(2) )
 
-	// The two MCU dumps below are taken from the cdi910. We still need dumps from a Mono-I board in case the revisions are different.
-	ROM_REGION(0x2000, "servo", 0)
-	ROM_LOAD( "zx405037p__cdi_servo_2.1__b43t__llek9215.mc68hc705c8a_withtestrom.7201", 0x0000, 0x2000, CRC(7a3af407) SHA1(fdf8d78d6a0df4a56b5b963d72eabd39fcec163f) BAD_DUMP )
-
-	ROM_REGION(0x2000, "slave", 0)
-	ROM_LOAD( "zx405042p__cdi_slave_2.0__b43t__zzmk9213.mc68hc705c8a_withtestrom.7206", 0x0000, 0x2000, CRC(688cda63) SHA1(56d0acd7caad51c7de703247cd6d842b36173079) BAD_DUMP )
+	CDI_MONO1_COMMON_MCU_ROMS
 ROM_END
+
+#undef CDI_MONO1_COMMON_MCU_ROMS
 
 ROM_START( cdi910 )
 	ROM_REGION(0x80000, "maincpu", 0)
@@ -872,8 +902,9 @@ ROM_END
 /*    YEAR  NAME      PARENT  COMPAT  MACHINE   INPUT     CLASS      INIT        COMPANY       FULLNAME */
 // BIOS / System
 CONS( 1991, cdimono1, 0,      0,      cdimono1, cdi,      cdi_state, empty_init, "Philips",    "CD-i (Mono-I) (PAL)",   MACHINE_IMPERFECT_GRAPHICS | MACHINE_IMPERFECT_SOUND | MACHINE_SUPPORTS_SAVE )
+CONS( 1991, cdi200, cdimono1, 0,      cdi200, cdi, cdi_state, empty_init, "Magnavox", "CD-i 200 (NTSC)",  MACHINE_IMPERFECT_GRAPHICS | MACHINE_IMPERFECT_SOUND | MACHINE_SUPPORTS_SAVE )
 CONS( 1991, cdimono2, 0,      0,      cdimono2, cdimono2, cdi_state, empty_init, "Philips",    "CD-i (Mono-II) (NTSC)",   MACHINE_NOT_WORKING )
-CONS( 1991, cdi910,   0,      0,      cdi910,   cdimono2, cdi_state, empty_init, "Philips",    "CD-i 910-17P Mini-MMC (PAL)",   MACHINE_NOT_WORKING )
+CONS( 1991, cdi910,   0,      0,      cdi910,   cdimono2, cdi_state, empty_init, "Philips",    "CD-i 910-17P Mini-MMC (NTSC)",   MACHINE_NOT_WORKING )
 CONS( 1991, cdi490a,  0,      0,      cdimono1, cdi,      cdi_state, empty_init, "Philips",    "CD-i 490",   MACHINE_NOT_WORKING )
 CONS( 1995, gpi1200,  0,      0,      cdimono1, cdi,      cdi_state, empty_init, "Goldstar",   "GPi 1200",   MACHINE_NOT_WORKING )
 

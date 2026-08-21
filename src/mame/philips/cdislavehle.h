@@ -41,6 +41,8 @@ public:
 	auto atten_callback() { return m_atten_w.bind(); }
 	auto testplug_callback() { return m_testplug_cb.bind(); }
 
+	void set_ntsc(bool ntsc) { m_ntsc = ntsc; }
+
 	uint8_t* get_lcd_state() { return m_lcd_state; }
 
 	uint16_t slave_r(offs_t offset);
@@ -86,6 +88,7 @@ private:
 	uint8_t m_in_count;
 
 	uint8_t m_debug_mode;
+	bool m_ntsc = false;
 
 	uint8_t m_xbus_interrupt_enable;
 
