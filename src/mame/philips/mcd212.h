@@ -251,6 +251,7 @@ protected:
 	uint8_t get_matte_op(const uint32_t Matte_idx);
 	void update_matte_arrays();
 
+	void update_screen_timing();
 	int get_screen_width();
 	int get_border_width();
 	uint32_t get_backdrop_plane();

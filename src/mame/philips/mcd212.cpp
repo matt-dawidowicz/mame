@@ -302,6 +302,43 @@ inline ATTR_FORCE_INLINE void mcd212_device::set_display_parameters(uint8_t valu
 	m_dcr[Path] |= (value & 0x10) << 7;
 }
 
+void mcd212_device::update_screen_timing()
+{
+	// One MAME raster row represents one half-line.  This allows the
+	// 312.5-line PAL and 262.5-line NTSC fields to be represented exactly.
+	const bool sixty_hz = BIT(m_dcr[0], DCR_FD_BIT);
+	const int horizontal_total = BIT(m_dcr[0], DCR_CF_BIT) ? 960 : 896;
+
+	// MAME begins active rendering after the complete vertical blanking/ICA interval.
+	// MCD212 table 5-6 gives 18+4 = 22 lines at 60 Hz and 26+6 = 32 at 50 Hz.
+	m_ica_height = sixty_hz ? 22 : 32;
+	m_total_height = sixty_hz ? 262 : 312;
+
+	const int vertical_total = m_total_height * 2 + 1;
+	const rectangle visarea(
+		0, 767,
+		m_ica_height * 2,
+		m_total_height * 2 - 1);
+
+	const attotime frame_period = attotime::from_ticks(
+		uint64_t(horizontal_total) * vertical_total, clock());
+
+	screen().configure(
+		horizontal_total,
+		vertical_total,
+		visarea,
+		frame_period);
+
+	// Timing changes alter the positions of the ICA and DCA windows.
+	if (m_dca_timer)
+		m_dca_timer->adjust(
+			screen().time_until_pos(m_ica_height * 2, 784));
+
+	if (m_ica_timer)
+		m_ica_timer->adjust(
+			screen().time_until_pos(m_ica_height * 2, 0));
+}
+
 int mcd212_device::get_screen_width()
 {
 	int width = 768;
@@ -805,7 +842,15 @@ uint16_t mcd212_device::dcr1_r(offs_t offset, uint16_t mem_mask)
 void mcd212_device::dcr1_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 {
 	LOGMASKED(LOG_MAIN_REG_WRITES, "%s: Display Command Register 1 Write: %04x & %08x\n", machine().describe_context(), data, mem_mask);
+
+	const uint16_t timing_mask =
+		(1U << DCR_CF_BIT) | (1U << DCR_FD_BIT);
+	const uint16_t old_timing = m_dcr[0] & timing_mask;
+
 	COMBINE_DATA(&m_dcr[0]);
+
+	if ((m_dcr[0] & timing_mask) != old_timing)
+		update_screen_timing();
 }
 
 uint16_t mcd212_device::vsr1_r(offs_t offset, uint16_t mem_mask)
@@ -975,7 +1020,11 @@ uint32_t mcd212_device::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 		return 0;
 
 	// FIXME this should use the clipping rectangle to determine which lines need drawing
-	int scanline = screen.vpos() / 2;
+	const int scanline = screen.vpos() / 2;
+
+	// The final raster row represents the half-line at the end of the field.
+	if (scanline >= m_total_height)
+		return 0;
 
 	// Process VSR and mix if we're in the visible region
 	if (scanline >= m_ica_height)

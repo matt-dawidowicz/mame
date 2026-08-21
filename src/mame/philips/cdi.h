@@ -35,8 +35,9 @@ public:
 		, m_dmadac(*this, "dac%u", 1U)
 	{ }
 
-	void cdimono1_base(machine_config &config);
+	void cdimono1_base(machine_config &config, uint32_t clock, bool ntsc);
 	void cdimono1(machine_config &config);
+	void cdi200(machine_config &config);
 	void cdimono2(machine_config &config);
 	void cdi910(machine_config &config);
 
