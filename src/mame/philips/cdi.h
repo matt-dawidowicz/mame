@@ -39,6 +39,8 @@ public:
 
 	void cdimono1_base(machine_config &config, uint32_t clock, bool ntsc);
 	void cdimono1(machine_config &config);
+	void cdimono1dvc(machine_config &config);
+	void cdimono1dvc_ntsc(machine_config &config);
 	void cdi200(machine_config &config);
 	void cdimono2(machine_config &config);
 	void cdi910(machine_config &config);
@@ -82,6 +84,7 @@ protected:
 	virtual void machine_reset() override ATTR_COLD;
 
 	void cdimono1_mem(address_map &map) ATTR_COLD;
+	void cdimono1dvc_mem(address_map &map) ATTR_COLD;
 
 	void cdi910_mem(address_map &map) ATTR_COLD;
 	void cdimono2_mem(address_map &map) ATTR_COLD;

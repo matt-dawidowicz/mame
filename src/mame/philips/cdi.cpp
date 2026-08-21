@@ -106,6 +106,26 @@ void cdi_state::cdimono1_mem(address_map &map)
 	// configuration will install the cartridge device in this address space.
 }
 
+// Mono-I with the optional Digital Video Cartridge installed.
+void cdi_state::cdimono1dvc_mem(address_map &map)
+{
+	cdimono1_mem(map);
+
+	map(0xd00000, 0xdfffff).ram(); // DVC RAM block 1
+	map(0xe00000, 0xe3ffff).rw(
+		m_dvc,
+		FUNC(cdi_dvc_device::read),
+		FUNC(cdi_dvc_device::write));
+	map(0xe40000, 0xe7ffff).rw(
+		m_dvc,
+		FUNC(cdi_dvc_device::rom_r),
+		FUNC(cdi_dvc_device::rom_w));
+	map(0xe80000, 0xefffff).rw(
+		m_dvc,
+		FUNC(cdi_dvc_device::mpeg_ram_r),
+		FUNC(cdi_dvc_device::mpeg_ram_w));
+}
+
 void cdi_state::cdimono2_mem(address_map &map)
 {
 	map(0x000000, 0x07ffff).rw(FUNC(cdi_state::plane_r<0>), FUNC(cdi_state::plane_w<0>)).share("plane0");
@@ -712,6 +732,54 @@ void cdi_state::cdi200(machine_config &config)
 	SOFTWARE_LIST(config, "photocd_list").set_compatible("photo_cd");
 }
 
+// CD-i Mono-I PAL with the optional Digital Video Cartridge.
+void cdi_state::cdimono1dvc(machine_config &config)
+{
+	cdimono1_base(config, CLOCK_A_PAL, false);
+	m_maincpu->set_addrmap(AS_PROGRAM, &cdi_state::cdimono1dvc_mem);
+
+	CDI_DVC(config, m_dvc, 0);
+	m_dvc->add_route(0, "speaker", 1.0, 0);
+	m_dvc->add_route(1, "speaker", 1.0, 1);
+
+	// Stage 4 connects DMA only. Shared CDIC/DVC IRQ4 arbitration is
+	// introduced separately in Stage 5.
+	m_dvc->intreq_callback().set_nop();
+	m_dvc->dma_req_callback().set(FUNC(cdi_state::dvc_dma_req_w));
+
+	m_slave_hle->read_mousex().set_ioport("MOUSEX");
+	m_slave_hle->read_mousey().set_ioport("MOUSEY");
+	m_slave_hle->read_mousebtn().set_ioport("MOUSEBTN");
+	m_slave_hle->testplug_callback().set_ioport("TESTPLUG");
+
+	SOFTWARE_LIST(config, "cd_list").set_original("cdi");
+	SOFTWARE_LIST(config, "photocd_list").set_compatible("photo_cd");
+}
+
+// CD-i Mono-I NTSC with the optional Digital Video Cartridge.
+void cdi_state::cdimono1dvc_ntsc(machine_config &config)
+{
+	cdimono1_base(config, CLOCK_A_NTSC, true);
+	m_maincpu->set_addrmap(AS_PROGRAM, &cdi_state::cdimono1dvc_mem);
+
+	CDI_DVC(config, m_dvc, 0);
+	m_dvc->add_route(0, "speaker", 1.0, 0);
+	m_dvc->add_route(1, "speaker", 1.0, 1);
+
+	// Stage 4 connects DMA only. Shared CDIC/DVC IRQ4 arbitration is
+	// introduced separately in Stage 5.
+	m_dvc->intreq_callback().set_nop();
+	m_dvc->dma_req_callback().set(FUNC(cdi_state::dvc_dma_req_w));
+
+	m_slave_hle->read_mousex().set_ioport("MOUSEX");
+	m_slave_hle->read_mousey().set_ioport("MOUSEY");
+	m_slave_hle->read_mousebtn().set_ioport("MOUSEBTN");
+	m_slave_hle->testplug_callback().set_ioport("TESTPLUG");
+
+	SOFTWARE_LIST(config, "cd_list").set_original("cdi");
+	SOFTWARE_LIST(config, "photocd_list").set_compatible("photo_cd");
+}
+
 void quizard_state::quizard(machine_config &config)
 {
 	cdimono1_base(config, CLOCK_A_PAL, false);
@@ -779,6 +847,34 @@ ROM_START( cdi200 )
 
 	CDI_MONO1_COMMON_MCU_ROMS
 ROM_END
+
+
+#define CDI_DVC_22ER9141_ROM \
+	ROM_REGION(0x20000, "dvc_rom", 0) \
+	ROM_LOAD16_BYTE( "fmv ffd9 p7308 r4.1 vmpeg.bin", 0x00000, 0x10000, CRC(30ba9273) SHA1(d8adca0627b356ced6131b9458ac1175e43e6548) ) \
+	ROM_LOAD16_BYTE( "fmv 4ba9 p7307 r4.1 vmpeg.bin", 0x00001, 0x10000, CRC(623edb1f) SHA1(4c6b11e28ad4c2f5c2e439f7910a783e0a79d1a9) )
+
+ROM_START( cdimono1dvc )
+	ROM_REGION(0x80000, "maincpu", 0)
+	ROM_SYSTEM_BIOS( 0, "pcdi220", "Philips CD-i 220 F2" )
+	ROMX_LOAD( "cdi220b.rom", 0x000000, 0x80000, CRC(279683ca) SHA1(53360a1f21ddac952e95306ced64186a3fc0b93e), ROM_BIOS(0) )
+	ROM_SYSTEM_BIOS( 1, "pcdi220_alt", "Philips CD-i 220?" )
+	ROMX_LOAD( "cdi220.rom", 0x000000, 0x80000, CRC(584c0af8) SHA1(5d757ab46b8c8fc36361555d978d7af768342d47), ROM_BIOS(1) )
+
+	CDI_MONO1_COMMON_MCU_ROMS
+	CDI_DVC_22ER9141_ROM
+ROM_END
+
+ROM_START( cdimono1dvcntsc )
+	ROM_REGION(0x80000, "maincpu", 0)
+	ROM_SYSTEM_BIOS( 0, "mcdi200", "Magnavox CD-i 200" )
+	ROMX_LOAD( "cdi200.rom", 0x000000, 0x80000, CRC(40c4e6b9) SHA1(d961de803c89b3d1902d656ceb9ce7c02dccb40a), ROM_BIOS(0) )
+
+	CDI_MONO1_COMMON_MCU_ROMS
+	CDI_DVC_22ER9141_ROM
+ROM_END
+
+#undef CDI_DVC_22ER9141_ROM
 
 #undef CDI_MONO1_COMMON_MCU_ROMS
 
@@ -1059,6 +1155,8 @@ ROM_END
 // BIOS / System
 CONS( 1991, cdimono1, 0,      0,      cdimono1, cdi,      cdi_state, empty_init, "Philips",    "CD-i (Mono-I) (PAL)",   MACHINE_IMPERFECT_GRAPHICS | MACHINE_IMPERFECT_SOUND | MACHINE_SUPPORTS_SAVE )
 CONS( 1991, cdi200, cdimono1, 0,      cdi200, cdi, cdi_state, empty_init, "Magnavox", "CD-i 200 (NTSC)",  MACHINE_IMPERFECT_GRAPHICS | MACHINE_IMPERFECT_SOUND | MACHINE_SUPPORTS_SAVE )
+CONS( 1991, cdimono1dvc, cdimono1, 0, cdimono1dvc, cdi, cdi_state, empty_init, "Philips", "CD-i (Mono-I) (PAL) with Digital Video Cartridge", MACHINE_NOT_WORKING | MACHINE_IMPERFECT_GRAPHICS | MACHINE_IMPERFECT_SOUND )
+CONS( 1991, cdimono1dvcntsc, cdi200, 0, cdimono1dvc_ntsc, cdi, cdi_state, empty_init, "Magnavox", "CD-i 200 (NTSC) with Digital Video Cartridge", MACHINE_NOT_WORKING | MACHINE_IMPERFECT_GRAPHICS | MACHINE_IMPERFECT_SOUND )
 CONS( 1991, cdimono2, 0,      0,      cdimono2, cdimono2, cdi_state, empty_init, "Philips",    "CD-i (Mono-II) (NTSC)",   MACHINE_NOT_WORKING )
 CONS( 1991, cdi910,   0,      0,      cdi910,   cdimono2, cdi_state, empty_init, "Philips",    "CD-i 910-17P Mini-MMC (NTSC)",   MACHINE_NOT_WORKING )
 CONS( 1991, cdi490a,  0,      0,      cdimono1, cdi,      cdi_state, empty_init, "Philips",    "CD-i 490",   MACHINE_NOT_WORKING )
