@@ -1023,92 +1023,121 @@ uint32_t mcd212_device::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 	bool transparent_a[768];
 	bool transparent_b[768];
 
-	// It updates 2 bitmap lines each time
-	if (screen.vpos() & 1)
-		return 0;
+	(void)screen;
 
-	// FIXME this should use the clipping rectangle to determine which lines need drawing
-	const int scanline = screen.vpos() / 2;
+	const int min_x = std::max(cliprect.min_x, 0);
+	const int max_x = std::min(cliprect.max_x, 767);
 
-	// The final raster row represents the half-line at the end of the field.
-	if (scanline >= m_total_height)
-		return 0;
-
-	// Process VSR and mix if we're in the visible region
-	if (scanline >= m_ica_height)
+	auto copy_cached_row = [&](int raster_y, int scanline)
 	{
-		uint32_t *const out = &bitmap.pix(scanline * 2 + BIT(~m_csrr[0], CSR1R_PA_BIT));
-		uint32_t *const out2 = &bitmap.pix(scanline * 2 + BIT(m_csrr[0], CSR1R_PA_BIT));
+		if (m_scanline_cache_scanline != scanline || min_x > max_x)
+			return;
 
-		bool draw_line = true;
-		if (!BIT(m_dcr[0], DCR_FD_BIT) && BIT(m_csrw[0], CSR1W_ST_BIT))
+		uint32_t *const dest = &bitmap.pix(raster_y);
+		std::copy_n(
+				&m_scanline_cache[raster_y & 1][min_x],
+				max_x - min_x + 1,
+				dest + min_x);
+	};
+
+	for (int raster_y = cliprect.min_y; raster_y <= cliprect.max_y; raster_y++)
+	{
+		const int scanline = raster_y / 2;
+
+		// Each MCD212 source line produces two MAME raster rows.  Process the
+		// source line only on the first row; the second scanline callback uses
+		// the cached sibling output without advancing VSR/display state again.
+		if (raster_y & 1)
 		{
-			// If PAL and 'Standard' bit set, insert a 20-line border on the top/bottom
-			if ((scanline - m_ica_height < 20) || (scanline >= (m_total_height - 20)))
+			copy_cached_row(raster_y, scanline);
+			continue;
+		}
+
+		std::fill_n(&m_scanline_cache[0][0], 2 * 768, 0);
+
+		// The final raster row represents the half-line at the end of the field.
+		if (scanline >= m_total_height)
+			return 0;
+
+		// Process VSR and mix if we're in the visible region
+		if (scanline >= m_ica_height)
+		{
+			uint32_t *const out = m_scanline_cache[BIT(~m_csrr[0], CSR1R_PA_BIT)];
+			uint32_t *const out2 = m_scanline_cache[BIT(m_csrr[0], CSR1R_PA_BIT)];
+
+			bool draw_line = true;
+			if (!BIT(m_dcr[0], DCR_FD_BIT) && BIT(m_csrw[0], CSR1W_ST_BIT))
 			{
-				std::fill_n(out, 768, s_4bpp_color[0]);
-				draw_line = false;
+				// If PAL and 'Standard' bit set, insert a 20-line border on the top/bottom
+				if ((scanline - m_ica_height < 20) || (scanline >= (m_total_height - 20)))
+				{
+					std::fill_n(out, 768, s_4bpp_color[0]);
+					draw_line = false;
+				}
+			}
+
+			m_csrr[0] |= CSR1R_DA;
+
+			if (draw_line)
+			{
+				process_vsr<0>(plane_a, transparent_a);
+				process_vsr<1>(plane_b, transparent_b);
+
+				const uint8_t mosaic_enable_a = (m_mosaic_hold[0] & 0x800000) >> 23;
+				const uint8_t mosaic_enable_b = (m_mosaic_hold[1] & 0x800000) >> 22;
+				const uint8_t mixing_mode = (mosaic_enable_a | mosaic_enable_b) | (BIT(m_plane_order, 0) << 2);
+				switch (mixing_mode & 7)
+				{
+					case 0: // No Mosaic A/B, A->B->Backdrop plane ordering
+						mix_lines<false, false, true>(plane_a, transparent_a, plane_b, transparent_b, out);
+						break;
+					case 1: // Mosaic A, No Mosaic B, A->B->Backdrop plane ordering
+						mix_lines<true, false, true>(plane_a, transparent_a, plane_b, transparent_b, out);
+						break;
+					case 2: // No Mosaic A, Mosaic B, A->B->Backdrop plane ordering
+						mix_lines<false, true, true>(plane_a, transparent_a, plane_b, transparent_b, out);
+						break;
+					case 3: // Mosaic A/B, A->B->Backdrop plane ordering
+						mix_lines<true, true, true>(plane_a, transparent_a, plane_b, transparent_b, out);
+						break;
+					case 4: // No Mosaic A/B, B->A->Backdrop plane ordering
+						mix_lines<false, false, false>(plane_a, transparent_a, plane_b, transparent_b, out);
+						break;
+					case 5: // Mosaic A, No Mosaic B, B->A->Backdrop plane ordering
+						mix_lines<true, false, false>(plane_a, transparent_a, plane_b, transparent_b, out);
+						break;
+					case 6: // No Mosaic A, Mosaic B, B->A->Backdrop plane ordering
+						mix_lines<false, true, false>(plane_a, transparent_a, plane_b, transparent_b, out);
+						break;
+					case 7: // Mosaic A/B, B->A->Backdrop plane ordering
+						mix_lines<true, true, false>(plane_a, transparent_a, plane_b, transparent_b, out);
+						break;
+				}
+
+				draw_cursor(out);
+			}
+
+			if (BIT(m_dcr[0], DCR_SM_BIT))
+			{
+				// Interlace Output
+				std::copy_n(m_interlace_field[scanline], 768, out2);
+				std::copy_n(out, 768, m_interlace_field[scanline]);
+			}
+			else
+			{
+				// Single Field Output (duplicate lines)
+				std::copy_n(out, 768, out2);
 			}
 		}
 
-		m_csrr[0] |= CSR1R_DA;
-
-		if (draw_line)
+		// Toggle frame parity at the end of the visible frame (even in non-interlaced mode).
+		if (scanline == (m_total_height - 1))
 		{
-			process_vsr<0>(plane_a, transparent_a);
-			process_vsr<1>(plane_b, transparent_b);
-
-			const uint8_t mosaic_enable_a = (m_mosaic_hold[0] & 0x800000) >> 23;
-			const uint8_t mosaic_enable_b = (m_mosaic_hold[1] & 0x800000) >> 22;
-			const uint8_t mixing_mode = (mosaic_enable_a | mosaic_enable_b) | (BIT(m_plane_order, 0) << 2);
-			switch (mixing_mode & 7)
-			{
-				case 0: // No Mosaic A/B, A->B->Backdrop plane ordering
-					mix_lines<false, false, true>(plane_a, transparent_a, plane_b, transparent_b, out);
-					break;
-				case 1: // Mosaic A, No Mosaic B, A->B->Backdrop plane ordering
-					mix_lines<true, false, true>(plane_a, transparent_a, plane_b, transparent_b, out);
-					break;
-				case 2: // No Mosaic A, Mosaic B, A->B->Backdrop plane ordering
-					mix_lines<false, true, true>(plane_a, transparent_a, plane_b, transparent_b, out);
-					break;
-				case 3: // Mosaic A/B, A->B->Backdrop plane ordering
-					mix_lines<true, true, true>(plane_a, transparent_a, plane_b, transparent_b, out);
-					break;
-				case 4: // No Mosaic A/B, B->A->Backdrop plane ordering
-					mix_lines<false, false, false>(plane_a, transparent_a, plane_b, transparent_b, out);
-					break;
-				case 5: // Mosaic A, No Mosaic B, B->A->Backdrop plane ordering
-					mix_lines<true, false, false>(plane_a, transparent_a, plane_b, transparent_b, out);
-					break;
-				case 6: // No Mosaic A, Mosaic B, B->A->Backdrop plane ordering
-					mix_lines<false, true, false>(plane_a, transparent_a, plane_b, transparent_b, out);
-					break;
-				case 7: // Mosaic A/B, B->A->Backdrop plane ordering
-					mix_lines<true, true, false>(plane_a, transparent_a, plane_b, transparent_b, out);
-					break;
-			}
-
-			draw_cursor(out);
+			m_csrr[0] ^= CSR1R_PA;
 		}
 
-		if (BIT(m_dcr[0], DCR_SM_BIT))
-		{
-			// Interlace Output
-			std::copy_n(m_interlace_field[scanline], 768, out2);
-			std::copy_n(out, 768, m_interlace_field[scanline]);
-		}
-		else
-		{
-			// Single Field Output (duplicate lines)
-			std::copy_n(out, 768, out2);
-		}
-	}
-
-	// Toggle frame parity at the end of the visible frame (even in non-interlaced mode).
-	if (scanline == (m_total_height - 1))
-	{
-		m_csrr[0] ^= CSR1R_PA;
+		m_scanline_cache_scanline = scanline;
+		copy_cached_row(raster_y, scanline);
 	}
 
 	return 0;
@@ -1202,6 +1231,9 @@ void mcd212_device::device_reset()
 
 	m_dca_timer->adjust(screen().time_until_pos(m_ica_height * 2, 784));
 	m_ica_timer->adjust(screen().time_until_pos(m_ica_height * 2, 0));
+
+	std::fill_n(&m_scanline_cache[0][0], 2 * 768, 0);
+	m_scanline_cache_scanline = -1;
 }
 
 //-------------------------------------------------
@@ -1277,6 +1309,8 @@ void mcd212_device::device_start()
 	save_item(NAME(m_blink_active));
 
 	save_item(NAME(m_interlace_field));
+	save_item(NAME(m_scanline_cache));
+	save_item(NAME(m_scanline_cache_scanline));
 
 	m_dca_timer = timer_alloc(FUNC(mcd212_device::dca_tick), this);
 	m_dca_timer->adjust(attotime::never);
