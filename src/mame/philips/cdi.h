@@ -90,6 +90,7 @@ protected:
 	uint64_t m_dvc_dma_request_clock = 0;
 	uint64_t m_dvc_dma_first_clock = 0;
 
+	uint32_t screen_update_cdimono1(screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &cliprect);
 	uint32_t screen_update_cdimono1_lcd(screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &cliprect);
 	virtual void machine_start() override ATTR_COLD;
 	virtual void machine_reset() override ATTR_COLD;
