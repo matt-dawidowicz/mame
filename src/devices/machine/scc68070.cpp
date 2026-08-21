@@ -1568,24 +1568,44 @@ void scc68070_device::timer_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 	}
 }
 
-bool scc68070_device::dma_channel1_active() const
+bool scc68070_device::dma_channel_active(unsigned channel) const
 {
-	const dma_channel_t &dma = m_dma.channel[0];
+	if (channel >= 2)
+		return false;
+
+	const dma_channel_t &dma = m_dma.channel[channel];
 
 	return (dma.channel_status & CSR_CA) && dma.transfer_counter != 0;
 }
 
-bool scc68070_device::dma_channel1_transfer(uint16_t &data)
+bool scc68070_device::dma_channel_transfer(unsigned channel, uint16_t &data)
 {
-	dma_channel_t &dma = m_dma.channel[0];
-
-	if (!dma_channel1_active())
+	if (!dma_channel_active(channel))
 		return false;
 
+	dma_channel_t &dma = m_dma.channel[channel];
 	address_space &memory = space(AS_PROGRAM);
 	const uint32_t memory_address =
 		dma.memory_address_counter & DMA_ADDRESS_MASK;
 	uint32_t operand_size;
+	bool increment_memory = true;
+
+	if (channel == 1)
+	{
+		switch (dma.sequence_control & SCR2_MAC)
+		{
+		case SCR2_MAC_NONE:
+			increment_memory = false;
+			break;
+
+		case SCR2_MAC_INC:
+			increment_memory = true;
+			break;
+
+		default:
+			return false;
+		}
+	}
 
 	switch (dma.operation_control & SCC68070_OCR_OS)
 	{
@@ -1611,9 +1631,13 @@ bool scc68070_device::dma_channel1_transfer(uint16_t &data)
 		return false;
 	}
 
-	dma.memory_address_counter =
-		(dma.memory_address_counter + operand_size)
-		& DMA_ADDRESS_MASK;
+	if (increment_memory)
+	{
+		dma.memory_address_counter =
+			(dma.memory_address_counter + operand_size)
+			& DMA_ADDRESS_MASK;
+	}
+
 	--dma.transfer_counter;
 
 	if (dma.transfer_counter == 0)
