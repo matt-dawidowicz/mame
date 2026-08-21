@@ -406,6 +406,7 @@ void cdi_state::cdimono1_base(machine_config &config, uint32_t clock, bool ntsc)
 	CDI_SLAVE_HLE(config, m_slave_hle);
 	m_slave_hle->set_ntsc(ntsc);
 	m_slave_hle->int_callback().set(m_maincpu, FUNC(scc68070_device::in2_w));
+	m_slave_hle->reset_callback().set_inputline(m_maincpu, INPUT_LINE_RESET);
 	m_slave_hle->atten_callback().set(m_cdic, FUNC(cdicdic_device::atten_w));
 
 	CDROM(config, m_cdrom);
