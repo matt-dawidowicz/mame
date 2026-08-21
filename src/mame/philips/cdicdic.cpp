@@ -528,8 +528,14 @@ void cdicdic_device::process_audio_map()
 	}
 	else
 	{
+		// A 0xff coding byte ends the current sound map, but the
+		// previously decoded buffer still occupies the audio processor
+		// for one playback period.  Keep that countdown running while
+		// allowing a following sound map to be armed immediately.
 		m_decode_addr = 0xffff;
-		m_audio_sector_counter = 0;
+		m_audio_sector_counter = m_audio_format_sectors;
+		m_audio_format_sectors = 0;
+		m_decoding_audio_map = false;
 	}
 
 	if (was_decoding)
@@ -1171,13 +1177,24 @@ void cdicdic_device::regs_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 			COMBINE_DATA(&m_z_buffer);
 			if (!(m_z_buffer & 0x2000))
 			{
+				// Stop accepting buffers for this map immediately.  Do not
+				// discard an outstanding playback countdown: the audio
+				// processor can still be finishing the previous buffer.
 				m_decode_addr = 0xffff;
+				m_audio_format_sectors = 0;
+				m_decoding_audio_map = false;
 			}
 			else if (!m_decoding_audio_map)
 			{
 				m_decode_addr = m_z_buffer & 0x3a00;
 				m_audio_format_sectors = 0;
-				m_audio_sector_counter = 1;
+
+				// An immediately following sound map reuses the remaining
+				// playback interval.  Only an idle processor needs the
+				// initial one-sector startup delay.
+				if (!m_audio_sector_counter)
+					m_audio_sector_counter = 1;
+
 				m_decoding_audio_map = true;
 				std::fill_n(m_xa_last, 4, 0);
 			}
