@@ -160,8 +160,6 @@ public:
 
 		uint32_t device_address_counter;
 
-		uint8_t channel_priority;
-
 		uint8_t reserved3[40];
 	};
 
