@@ -48,6 +48,24 @@ TIMER_CALLBACK_MEMBER( cdislave_hle_device::trigger_readback_int )
 
 	for (auto &channel : m_channel)
 	{
+		if (!cdi_slave_transport::response_window_fits(
+				channel.m_out_index, channel.m_out_count,
+				sizeof(channel.m_out_buf)))
+		{
+			LOGMASKED(LOG_UNKNOWNS,
+				"SLAVE transport: discarding invalid output window index=%u count=%u capacity=%u\n",
+				channel.m_out_index, channel.m_out_count,
+				unsigned(sizeof(channel.m_out_buf)));
+			memset(channel.m_out_buf, 0, sizeof(channel.m_out_buf));
+			channel.m_out_index = 0;
+			channel.m_out_count = 0;
+			channel.m_out_cmd = 0;
+			channel.m_out_ready = false;
+			channel.m_out_irq = false;
+			channel.m_out_deadline = attotime::never;
+			continue;
+		}
+
 		const bool pending = channel.m_out_count != 0;
 
 		if (!pending)
@@ -145,6 +163,17 @@ TIMER_CALLBACK_MEMBER( cdislave_hle_device::poll_inputs )
 
 void cdislave_hle_device::prepare_readback(const attotime &delay, uint8_t channel, uint8_t count, uint8_t data0, uint8_t data1, uint8_t data2, uint8_t data3, uint8_t cmd)
 {
+	constexpr std::size_t channel_count = sizeof(m_channel) / sizeof(m_channel[0]);
+	if (!cdi_slave_transport::channel_index_valid(channel, channel_count)
+			|| !cdi_slave_transport::response_window_fits(
+				0, count, sizeof(m_channel[0].m_out_buf)))
+	{
+		LOGMASKED(LOG_UNKNOWNS,
+			"SLAVE transport: refusing invalid readback channel=%u count=%u\n",
+			unsigned(channel), unsigned(count));
+		return;
+	}
+
 	channel_state &state = m_channel[channel];
 
 	state.m_out_index = 0;
@@ -168,44 +197,63 @@ void cdislave_hle_device::prepare_readback(const attotime &delay, uint8_t channe
 				? machine().time() + delay
 				: attotime::never;
 
-	const attotime current_delay = m_interrupt_timer->remaining();
-
-	const attotime incoming_delay =
-			state.m_out_irq
-				? delay
-				: attotime::never;
-
-	m_interrupt_timer->adjust(
-			cdi_slave_transport::select_interrupt_delay(
-				current_delay,
-				incoming_delay));
+	// Re-evaluate all channels immediately.  This is required not only when a
+	// new response will assert IRQ2, but also when a new response replaces a
+	// previously ready response and therefore needs to de-assert IRQ2.
+	m_interrupt_timer->adjust(attotime::zero);
 }
 
 uint16_t cdislave_hle_device::slave_r(offs_t offset)
 {
-	if (cdi_slave_transport::response_readable(
-		m_channel[offset].m_out_count != 0,
-		m_channel[offset].m_out_ready))
+	constexpr std::size_t channel_count = sizeof(m_channel) / sizeof(m_channel[0]);
+	if (!cdi_slave_transport::channel_index_valid(std::size_t(offset), channel_count))
 	{
-		uint8_t ret = m_channel[offset].m_out_buf[m_channel[offset].m_out_index];
-		LOGMASKED(LOG_READS, "%s: slave_r: Channel %d: %d, %02x\n", machine().describe_context(), offset, m_channel[offset].m_out_index, ret);
-		if (m_channel[offset].m_out_cmd == 0xf7)
+		LOGMASKED(LOG_READS | LOG_UNKNOWNS,
+			"slave_r: invalid channel %u\n", unsigned(offset));
+		return 0xff;
+	}
+
+	channel_state &state = m_channel[offset];
+	if (!cdi_slave_transport::response_window_fits(
+			state.m_out_index, state.m_out_count, sizeof(state.m_out_buf)))
+	{
+		LOGMASKED(LOG_READS | LOG_UNKNOWNS,
+			"slave_r: Channel %u invalid output window index=%u count=%u\n",
+			unsigned(offset), state.m_out_index, state.m_out_count);
+		memset(state.m_out_buf, 0, sizeof(state.m_out_buf));
+		state.m_out_index = 0;
+		state.m_out_count = 0;
+		state.m_out_cmd = 0;
+		state.m_out_ready = false;
+		state.m_out_irq = false;
+		state.m_out_deadline = attotime::never;
+		m_interrupt_timer->adjust(attotime::zero);
+		return 0xff;
+	}
+
+	if (cdi_slave_transport::response_readable(
+		state.m_out_count != 0,
+		state.m_out_ready))
+	{
+		uint8_t ret = state.m_out_buf[state.m_out_index];
+		LOGMASKED(LOG_READS, "%s: slave_r: Channel %d: %d, %02x\n", machine().describe_context(), offset, state.m_out_index, ret);
+		if (state.m_out_cmd == 0xf7)
 			LOGMASKED(LOG_INPUTS,
 				"CDI_INPUT_TRACE guest-read channel=%u index=%u value=%02x remaining=%u ctx=%s\n",
-				unsigned(offset), m_channel[offset].m_out_index, ret,
-				m_channel[offset].m_out_count, machine().describe_context());
+				unsigned(offset), state.m_out_index, ret,
+				state.m_out_count, machine().describe_context());
 
-		m_channel[offset].m_out_index++;
-		m_channel[offset].m_out_count--;
+		state.m_out_index++;
+		state.m_out_count--;
 
-		if (!m_channel[offset].m_out_count)
+		if (!state.m_out_count)
 		{
-			m_channel[offset].m_out_index = 0;
-			m_channel[offset].m_out_cmd = 0;
-			m_channel[offset].m_out_ready = false;
-			m_channel[offset].m_out_irq = false;
-			m_channel[offset].m_out_deadline = attotime::never;
-			memset(m_channel[offset].m_out_buf, 0, 4);
+			state.m_out_index = 0;
+			state.m_out_cmd = 0;
+			state.m_out_ready = false;
+			state.m_out_irq = false;
+			state.m_out_deadline = attotime::never;
+			memset(state.m_out_buf, 0, sizeof(state.m_out_buf));
 		}
 
 		bool output_pending = false;
@@ -229,7 +277,7 @@ uint16_t cdislave_hle_device::slave_r(offs_t offset)
 		return ret;
 	}
 
-	LOGMASKED(LOG_READS, "slave_r: Channel %d: %d (nothing to output)\n", offset, m_channel[offset].m_out_index);
+	LOGMASKED(LOG_READS, "slave_r: Channel %d: %d (nothing to output)\n", offset, state.m_out_index);
 	return 0xff;
 }
 
@@ -323,6 +371,16 @@ void cdislave_hle_device::slave_w_mouse(offs_t offset, uint16_t data)
 void cdislave_hle_device::slave_w(offs_t offset, uint16_t data)
 {
 	LOGMASKED(LOG_WRITES, "slave_w: Channel %d: %d = %02x\n", offset, m_in_index, data & 0x00ff);
+
+	constexpr std::size_t channel_count = sizeof(m_channel) / sizeof(m_channel[0]);
+	if (!cdi_slave_transport::channel_index_valid(std::size_t(offset), channel_count))
+	{
+		LOGMASKED(LOG_WRITES | LOG_UNKNOWNS,
+			"slave_w: invalid channel %u value=%02x\n",
+			unsigned(offset), data & 0x00ff);
+		return;
+	}
+
 	if (!cdi_slave_transport::input_write_fits(m_in_index, sizeof(m_in_buf)))
 	{
 		LOGMASKED(LOG_UNKNOWNS,
@@ -331,6 +389,7 @@ void cdislave_hle_device::slave_w(offs_t offset, uint16_t data)
 		memset(m_in_buf, 0, sizeof(m_in_buf));
 		m_in_index = 0;
 		m_in_count = 0;
+		return;
 	}
 
 	if (offset == 1 && m_in_index == 0)
@@ -474,7 +533,7 @@ void cdislave_hle_device::slave_w(offs_t offset, uint16_t data)
 			{
 				switch (data & 0x00ff)
 				{
-					case 0x80: // TODO: Set some memory. 
+					case 0x80: // TODO: Set some memory.
 						LOGMASKED(LOG_COMMANDS | LOG_WRITES, "slave_w: Channel %d: Set UNKWN memory (0x80). Unimplemented\n", offset);
 						m_in_count = 4;
 						break;
@@ -641,10 +700,7 @@ void cdislave_hle_device::device_reset()
 {
 	for (auto & elem : m_channel)
 	{
-		elem.m_out_buf[0] = 0;
-		elem.m_out_buf[1] = 0;
-		elem.m_out_buf[2] = 0;
-		elem.m_out_buf[3] = 0;
+		memset(elem.m_out_buf, 0, sizeof(elem.m_out_buf));
 		elem.m_out_index = 0;
 		elem.m_out_count = 0;
 		elem.m_out_cmd = 0;
@@ -662,7 +718,7 @@ void cdislave_hle_device::device_reset()
 
 	m_xbus_interrupt_enable = 0;
 
-	memset(m_lcd_state, 0, 16);
+	memset(m_lcd_state, 0, sizeof(m_lcd_state));
 
 	m_input_mouse_x = 0xffff;
 	m_input_mouse_y = 0xffff;
