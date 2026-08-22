@@ -39,6 +39,18 @@ constexpr mpeg1_pes_header_kind classify_mpeg1_pes_header_byte(uint8_t data)
 	return mpeg1_pes_header_kind::payload_fallback;
 }
 
+constexpr bool mpeg1_pes_header_can_continue(
+		mpeg1_pes_header_kind kind, uint16_t packet_bytes_remaining)
+{
+	if (packet_bytes_remaining == 0)
+		return false;
+
+	return kind == mpeg1_pes_header_kind::stuffing
+		|| kind == mpeg1_pes_header_kind::std_buffer
+		|| kind == mpeg1_pes_header_kind::pts
+		|| kind == mpeg1_pes_header_kind::pts_dts;
+}
+
 } // namespace cdi_dvc
 
 #endif // MAME_PHILIPS_CDIDVC_MPEG_FORMAT_H

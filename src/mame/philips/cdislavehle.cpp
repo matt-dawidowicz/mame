@@ -17,15 +17,16 @@ TODO:
 
 #include "emu.h"
 #include "cdislavehle.h"
-
-#include <algorithm>
+#include "cdislavehle_pointer.h"
+#include "cdislavehle_transport.h"
 
 #define LOG_IRQS        (1U << 1)
 #define LOG_COMMANDS    (1U << 2)
 #define LOG_READS       (1U << 3)
 #define LOG_WRITES      (1U << 4)
 #define LOG_UNKNOWNS    (1U << 5)
-#define LOG_ALL         (LOG_IRQS | LOG_COMMANDS | LOG_READS | LOG_WRITES | LOG_UNKNOWNS)
+#define LOG_INPUTS      (1U << 6)
+#define LOG_ALL         (LOG_IRQS | LOG_COMMANDS | LOG_READS | LOG_WRITES | LOG_UNKNOWNS | LOG_INPUTS)
 
 #define VERBOSE         (0)
 #include "logmacro.h"
@@ -40,9 +41,56 @@ DEFINE_DEVICE_TYPE(CDI_SLAVE_HLE, cdislave_hle_device, "cdislavehle", "CD-i Mono
 
 TIMER_CALLBACK_MEMBER( cdislave_hle_device::trigger_readback_int )
 {
-	LOGMASKED(LOG_IRQS, "Asserting IRQ2\n");
-	m_int_callback(ASSERT_LINE);
-	m_interrupt_timer->adjust(attotime::never);
+	const attotime now = machine().time();
+
+	bool irq_pending = false;
+	attotime next_delay = attotime::never;
+
+	for (auto &channel : m_channel)
+	{
+		const bool pending = channel.m_out_count != 0;
+
+		if (!pending)
+			continue;
+
+		if (channel.m_out_irq
+				&& !channel.m_out_ready
+				&& !channel.m_out_deadline.is_never()
+				&& channel.m_out_deadline <= now)
+		{
+			channel.m_out_ready = true;
+		}
+
+		if (cdi_slave_transport::response_holds_irq(
+				pending && channel.m_out_irq,
+				channel.m_out_ready))
+		{
+			irq_pending = true;
+		}
+
+		if (channel.m_out_irq
+				&& !channel.m_out_ready
+				&& !channel.m_out_deadline.is_never())
+		{
+			const attotime remaining =
+					channel.m_out_deadline > now
+						? channel.m_out_deadline - now
+						: attotime::zero;
+
+			next_delay =
+					cdi_slave_transport::select_interrupt_delay(
+						next_delay,
+						remaining);
+		}
+	}
+
+	LOGMASKED(
+			LOG_IRQS,
+			"%s IRQ2\n",
+			irq_pending ? "Asserting" : "De-asserting");
+
+	m_int_callback(irq_pending ? ASSERT_LINE : CLEAR_LINE);
+	m_interrupt_timer->adjust(next_delay);
 }
 
 TIMER_CALLBACK_MEMBER( cdislave_hle_device::poll_inputs )
@@ -51,24 +99,45 @@ TIMER_CALLBACK_MEMBER( cdislave_hle_device::poll_inputs )
 	const uint16_t y = m_read_mousey();
 	const uint8_t btn = m_read_mousebtn();
 
-	if (x == m_input_mouse_x && y == m_input_mouse_y && btn == m_input_mouse_btn)
+	const bool changed = cdi_slave_pointer::host_sample_changed(
+		m_input_mouse_initialized,
+		m_input_mouse_x,
+		m_input_mouse_y,
+		m_input_mouse_btn,
+		x,
+		y,
+		btn);
+	if (!changed)
 		return;
 
-	int16_t deltax = 0;
-	int16_t deltay = 0;
+	LOGMASKED(LOG_INPUTS,
+		"CDI_INPUT_TRACE sample x=%04x y=%04x buttons=%02x initialized=%u enabled=%u ctx=%s\n",
+		x, y, btn, m_input_mouse_initialized ? 1U : 0U,
+		m_pointer_input_enabled ? 1U : 0U, machine().describe_context());
 
-	if (m_input_mouse_x != 0xffff && m_input_mouse_y != 0xffff)
-	{
-		deltax = -(m_input_mouse_x - x);
-		deltay = -(m_input_mouse_y - y);
-	}
+	const auto movement = cdi_slave_pointer::decode_host_movement(
+		m_input_mouse_initialized,
+		m_input_mouse_x,
+		m_input_mouse_y,
+		x,
+		y);
 
 	m_input_mouse_x = x;
 	m_input_mouse_y = y;
 	m_input_mouse_btn = btn;
+	m_input_mouse_initialized = true;
 
-	m_device_mouse_x = std::clamp(m_device_mouse_x + deltax, 0, 767);
-	m_device_mouse_y = std::clamp(m_device_mouse_y + deltay, 0, 559);
+	m_device_mouse_x =
+		cdi_slave_pointer::clamp_x(
+			int32_t(m_device_mouse_x) + movement.x);
+	m_device_mouse_y =
+		cdi_slave_pointer::clamp_y(
+			int32_t(m_device_mouse_y) + movement.y);
+
+	LOGMASKED(LOG_INPUTS,
+		"CDI_INPUT_TRACE applied dx=%d dy=%d device_x=%d device_y=%d buttons=%02x enabled=%u\n",
+		movement.x, movement.y, m_device_mouse_x, m_device_mouse_y, btn,
+		m_pointer_input_enabled ? 1U : 0U);
 
 	if (m_pointer_input_enabled)
 		prepare_pointer_readback();
@@ -76,23 +145,55 @@ TIMER_CALLBACK_MEMBER( cdislave_hle_device::poll_inputs )
 
 void cdislave_hle_device::prepare_readback(const attotime &delay, uint8_t channel, uint8_t count, uint8_t data0, uint8_t data1, uint8_t data2, uint8_t data3, uint8_t cmd)
 {
-	m_channel[channel].m_out_index = 0;
-	m_channel[channel].m_out_count = count;
-	m_channel[channel].m_out_buf[0] = data0;
-	m_channel[channel].m_out_buf[1] = data1;
-	m_channel[channel].m_out_buf[2] = data2;
-	m_channel[channel].m_out_buf[3] = data3;
-	m_channel[channel].m_out_cmd = cmd;
+	channel_state &state = m_channel[channel];
 
-	m_interrupt_timer->adjust(delay);
+	state.m_out_index = 0;
+	state.m_out_count = count;
+	state.m_out_buf[0] = data0;
+	state.m_out_buf[1] = data1;
+	state.m_out_buf[2] = data2;
+	state.m_out_buf[3] = data3;
+	state.m_out_cmd = cmd;
+
+	state.m_out_irq = !delay.is_never();
+
+	const bool immediate =
+			delay == attotime::zero || delay.is_never();
+
+	state.m_out_ready =
+			cdi_slave_transport::response_ready_on_prepare(immediate);
+
+	state.m_out_deadline =
+			state.m_out_irq && !state.m_out_ready
+				? machine().time() + delay
+				: attotime::never;
+
+	const attotime current_delay = m_interrupt_timer->remaining();
+
+	const attotime incoming_delay =
+			state.m_out_irq
+				? delay
+				: attotime::never;
+
+	m_interrupt_timer->adjust(
+			cdi_slave_transport::select_interrupt_delay(
+				current_delay,
+				incoming_delay));
 }
 
 uint16_t cdislave_hle_device::slave_r(offs_t offset)
 {
-	if (m_channel[offset].m_out_count)
+	if (cdi_slave_transport::response_readable(
+		m_channel[offset].m_out_count != 0,
+		m_channel[offset].m_out_ready))
 	{
 		uint8_t ret = m_channel[offset].m_out_buf[m_channel[offset].m_out_index];
 		LOGMASKED(LOG_READS, "%s: slave_r: Channel %d: %d, %02x\n", machine().describe_context(), offset, m_channel[offset].m_out_index, ret);
+		if (m_channel[offset].m_out_cmd == 0xf7)
+			LOGMASKED(LOG_INPUTS,
+				"CDI_INPUT_TRACE guest-read channel=%u index=%u value=%02x remaining=%u ctx=%s\n",
+				unsigned(offset), m_channel[offset].m_out_index, ret,
+				m_channel[offset].m_out_count, machine().describe_context());
 
 		m_channel[offset].m_out_index++;
 		m_channel[offset].m_out_count--;
@@ -101,13 +202,18 @@ uint16_t cdislave_hle_device::slave_r(offs_t offset)
 		{
 			m_channel[offset].m_out_index = 0;
 			m_channel[offset].m_out_cmd = 0;
+			m_channel[offset].m_out_ready = false;
+			m_channel[offset].m_out_irq = false;
+			m_channel[offset].m_out_deadline = attotime::never;
 			memset(m_channel[offset].m_out_buf, 0, 4);
 		}
 
 		bool output_pending = false;
 		for (const auto &channel : m_channel)
 		{
-			if (channel.m_out_count)
+			if (cdi_slave_transport::response_holds_irq(
+				channel.m_out_count != 0 && channel.m_out_irq,
+				channel.m_out_ready))
 			{
 				output_pending = true;
 				break;
@@ -129,25 +235,32 @@ uint16_t cdislave_hle_device::slave_r(offs_t offset)
 
 void cdislave_hle_device::set_mouse_position()
 {
-	m_device_mouse_x = ((m_in_buf[1] & 0x70) << 3) | (m_in_buf[2] & 0x7f);
-	m_device_mouse_y = ((m_in_buf[0] & 0x3f) << 4) | (m_in_buf[1] & 0x0f);
+	const auto position = cdi_slave_pointer::decode_set_position(
+		m_in_buf[0], m_in_buf[1], m_in_buf[2]);
+
+	m_device_mouse_x = position.x;
+	m_device_mouse_y = position.y;
 }
 
 void cdislave_hle_device::prepare_pointer_readback()
 {
-	uint8_t byte3 = ((m_device_mouse_x & 0x380) >> 7) | 0x08;
+	const auto packet = cdi_slave_pointer::encode_readback(
+		m_device_mouse_x, m_device_mouse_y, m_input_mouse_btn);
 
-	if (BIT(m_input_mouse_btn, 0))
-		byte3 |= 0x10;
+	LOGMASKED(LOG_INPUTS,
+		"CDI_INPUT_TRACE packet bytes=%02x,%02x,%02x,%02x device_x=%d device_y=%d buttons=%02x\n",
+		packet[0], packet[1], packet[2], packet[3],
+		m_device_mouse_x, m_device_mouse_y, m_input_mouse_btn);
 
-	if (BIT(m_input_mouse_btn, 1))
-		byte3 |= 0x20;
-
-	const uint8_t byte2 = m_device_mouse_x & 0x7f;
-	const uint8_t byte1 = (m_device_mouse_y & 0x380) >> 7;
-	const uint8_t byte0 = m_device_mouse_y & 0x7f;
-
-	prepare_readback(attotime::zero, 0, 4, byte3, byte2, byte1, byte0, 0xf7);
+	prepare_readback(
+		attotime::zero,
+		0,
+		4,
+		packet[0],
+		packet[1],
+		packet[2],
+		packet[3],
+		0xf7);
 }
 
 void cdislave_hle_device::slave_w_mouse(offs_t offset, uint16_t data)
@@ -159,8 +272,9 @@ void cdislave_hle_device::slave_w_mouse(offs_t offset, uint16_t data)
 			case 0x83: // Enable pointer input
 				LOGMASKED(LOG_COMMANDS, "slave_w: Channel %d: Enable Pointer Input (0x83)\n", offset);
 				m_pointer_input_enabled = true;
+				LOGMASKED(LOG_INPUTS, "CDI_INPUT_TRACE pointer-enable channel=%u\n", unsigned(offset));
 				prepare_pointer_readback();
-				memset(m_in_buf, 0, 17);
+				memset(m_in_buf, 0, sizeof(m_in_buf));
 				m_in_index = 0;
 				m_in_count = 0;
 				return;
@@ -168,7 +282,8 @@ void cdislave_hle_device::slave_w_mouse(offs_t offset, uint16_t data)
 			case 0x84: // Disable pointer input
 				LOGMASKED(LOG_COMMANDS, "slave_w: Channel %d: Disable Pointer Input (0x84)\n", offset);
 				m_pointer_input_enabled = false;
-				memset(m_in_buf, 0, 17);
+				LOGMASKED(LOG_INPUTS, "CDI_INPUT_TRACE pointer-disable channel=%u\n", unsigned(offset));
+				memset(m_in_buf, 0, sizeof(m_in_buf));
 				m_in_index = 0;
 				m_in_count = 0;
 				return;
@@ -187,7 +302,7 @@ void cdislave_hle_device::slave_w_mouse(offs_t offset, uint16_t data)
 		else if (m_in_index == m_in_count)
 		{
 			set_mouse_position();
-			memset(m_in_buf, 0, 17);
+			memset(m_in_buf, 0, sizeof(m_in_buf));
 			m_in_index = 0;
 			m_in_count = 0;
 		}
@@ -198,7 +313,7 @@ void cdislave_hle_device::slave_w_mouse(offs_t offset, uint16_t data)
 
 		if (m_in_index == 1)
 		{
-			memset(m_in_buf, 0, 17);
+			memset(m_in_buf, 0, sizeof(m_in_buf));
 			m_in_index = 0;
 			m_in_count = 0;
 		}
@@ -208,10 +323,20 @@ void cdislave_hle_device::slave_w_mouse(offs_t offset, uint16_t data)
 void cdislave_hle_device::slave_w(offs_t offset, uint16_t data)
 {
 	LOGMASKED(LOG_WRITES, "slave_w: Channel %d: %d = %02x\n", offset, m_in_index, data & 0x00ff);
+	if (!cdi_slave_transport::input_write_fits(m_in_index, sizeof(m_in_buf)))
+	{
+		LOGMASKED(LOG_UNKNOWNS,
+				"slave_w: Channel %d: discarding overlength input command index=%u count=%u\n",
+				offset, m_in_index, m_in_count);
+		memset(m_in_buf, 0, sizeof(m_in_buf));
+		m_in_index = 0;
+		m_in_count = 0;
+	}
+
 	if (offset == 1 && m_in_index == 0)
 	{
 		LOGMASKED(LOG_COMMANDS | LOG_UNKNOWNS, "slave_w: Channel %d: Unknown register: %02x\n", offset, data & 0x00ff);
-		memset(m_in_buf, 0, 17);
+		memset(m_in_buf, 0, sizeof(m_in_buf));
 		m_in_index = 0;
 		m_in_count = 0;
 		return;
@@ -232,12 +357,12 @@ void cdislave_hle_device::slave_w(offs_t offset, uint16_t data)
 					switch (m_in_buf[0])
 					{
 						case 0xf0: // Set Front Panel LCD
-							memcpy(m_lcd_state, m_in_buf + 1, 16);
+							memcpy(m_lcd_state, m_in_buf + 1, sizeof(m_lcd_state));
 							break;
 						default:
 							break;
 					}
-					memset(m_in_buf, 0, 17);
+					memset(m_in_buf, 0, sizeof(m_in_buf));
 					m_in_index = 0;
 					m_in_count = 0;
 				}
@@ -250,13 +375,6 @@ void cdislave_hle_device::slave_w(offs_t offset, uint16_t data)
 				{
 					switch (m_in_buf[0])
 					{
-						case 0x8a: // Reset Main CPU
-						LOGMASKED(LOG_COMMANDS | LOG_WRITES, "slave_w: Channel %d: Reset Main CPU (0x8a)\n", offset);
-						m_reset_callback(ASSERT_LINE);
-						m_reset_callback(CLEAR_LINE);
-						m_in_index = 0;
-						m_in_count = 0;
-						break;
 					case 0xc0: case 0xc1: case 0xc2: case 0xc3: case 0xc4: case 0xc5: case 0xc6: case 0xc7:
 						case 0xc8: case 0xc9: case 0xca: case 0xcb: case 0xcc: case 0xcd: case 0xce: case 0xcf:
 							m_atten_w((((u32)m_in_buf[1]) << 24) | (((u32)m_in_buf[2]) << 16) | (((u32)m_in_buf[3]) << 8) | (((u32)m_in_buf[4])));
@@ -264,11 +382,13 @@ void cdislave_hle_device::slave_w(offs_t offset, uint16_t data)
 							m_in_count = 0;
 							break;
 						case 0xf0: // Set Front Panel LCD
-							memset(m_in_buf + 1, 0, 16);
-							m_in_count = 17;
+							memcpy(m_lcd_state, m_in_buf + 1, sizeof(m_lcd_state));
+							memset(m_in_buf, 0, sizeof(m_in_buf));
+							m_in_index = 0;
+							m_in_count = 0;
 							break;
 						default:
-							memset(m_in_buf, 0, 17);
+							memset(m_in_buf, 0, sizeof(m_in_buf));
 							m_in_index = 0;
 							m_in_count = 0;
 							break;
@@ -279,6 +399,13 @@ void cdislave_hle_device::slave_w(offs_t offset, uint16_t data)
 			{
 				switch (data & 0x00ff)
 				{
+					case 0x8a: // Reset Main CPU
+						LOGMASKED(LOG_COMMANDS | LOG_WRITES, "slave_w: Channel %d: Reset Main CPU (0x8a)\n", offset);
+						m_reset_callback(ASSERT_LINE);
+						m_reset_callback(CLEAR_LINE);
+						m_in_index = 0;
+						m_in_count = 0;
+						break;
 					case 0x80: // Enable Keyboard Events
 						LOGMASKED(LOG_COMMANDS | LOG_WRITES, "slave_w: Channel %d: Enable Keyboard Events (0x80)\n", offset);
 						m_keyboard_events_enabled = true;
@@ -315,7 +442,7 @@ void cdislave_hle_device::slave_w(offs_t offset, uint16_t data)
 						break;
 					default:
 						LOGMASKED(LOG_COMMANDS | LOG_UNKNOWNS, "slave_w: Channel %d: Unknown register: %02x\n", offset, data & 0x00ff);
-						memset(m_in_buf, 0, 17);
+						memset(m_in_buf, 0, sizeof(m_in_buf));
 						m_in_index = 0;
 						m_in_count = 0;
 						break;
@@ -338,7 +465,7 @@ void cdislave_hle_device::slave_w(offs_t offset, uint16_t data)
 						default:
 							break;
 					}
-					memset(m_in_buf, 0, 17);
+					memset(m_in_buf, 0, sizeof(m_in_buf));
 					m_in_index = 0;
 					m_in_count = 0;
 				}
@@ -401,7 +528,7 @@ void cdislave_hle_device::slave_w(offs_t offset, uint16_t data)
 						break;
 					default:
 						LOGMASKED(LOG_COMMANDS | LOG_UNKNOWNS, "slave_w: Channel %d: Unknown register: %02x\n", offset, data & 0x00ff);
-						memset(m_in_buf, 0, 17);
+						memset(m_in_buf, 0, sizeof(m_in_buf));
 						m_in_index = 0;
 						m_in_count = 0;
 						break;
@@ -445,6 +572,9 @@ void cdislave_hle_device::device_start()
 	save_item(NAME(m_channel[0].m_out_index));
 	save_item(NAME(m_channel[0].m_out_count));
 	save_item(NAME(m_channel[0].m_out_cmd));
+	save_item(NAME(m_channel[0].m_out_ready));
+	save_item(NAME(m_channel[0].m_out_irq));
+	save_item(NAME(m_channel[0].m_out_deadline));
 	save_item(NAME(m_channel[1].m_out_buf[0]));
 	save_item(NAME(m_channel[1].m_out_buf[1]));
 	save_item(NAME(m_channel[1].m_out_buf[2]));
@@ -452,6 +582,9 @@ void cdislave_hle_device::device_start()
 	save_item(NAME(m_channel[1].m_out_index));
 	save_item(NAME(m_channel[1].m_out_count));
 	save_item(NAME(m_channel[1].m_out_cmd));
+	save_item(NAME(m_channel[1].m_out_ready));
+	save_item(NAME(m_channel[1].m_out_irq));
+	save_item(NAME(m_channel[1].m_out_deadline));
 	save_item(NAME(m_channel[2].m_out_buf[0]));
 	save_item(NAME(m_channel[2].m_out_buf[1]));
 	save_item(NAME(m_channel[2].m_out_buf[2]));
@@ -459,6 +592,9 @@ void cdislave_hle_device::device_start()
 	save_item(NAME(m_channel[2].m_out_index));
 	save_item(NAME(m_channel[2].m_out_count));
 	save_item(NAME(m_channel[2].m_out_cmd));
+	save_item(NAME(m_channel[2].m_out_ready));
+	save_item(NAME(m_channel[2].m_out_irq));
+	save_item(NAME(m_channel[2].m_out_deadline));
 	save_item(NAME(m_channel[3].m_out_buf[0]));
 	save_item(NAME(m_channel[3].m_out_buf[1]));
 	save_item(NAME(m_channel[3].m_out_buf[2]));
@@ -466,6 +602,9 @@ void cdislave_hle_device::device_start()
 	save_item(NAME(m_channel[3].m_out_index));
 	save_item(NAME(m_channel[3].m_out_count));
 	save_item(NAME(m_channel[3].m_out_cmd));
+	save_item(NAME(m_channel[3].m_out_ready));
+	save_item(NAME(m_channel[3].m_out_irq));
+	save_item(NAME(m_channel[3].m_out_deadline));
 
 	save_item(NAME(m_in_buf));
 	save_item(NAME(m_in_index));
@@ -481,6 +620,7 @@ void cdislave_hle_device::device_start()
 	save_item(NAME(m_input_mouse_x));
 	save_item(NAME(m_input_mouse_y));
 	save_item(NAME(m_input_mouse_btn));
+	save_item(NAME(m_input_mouse_initialized));
 	save_item(NAME(m_pointer_input_enabled));
 
 	save_item(NAME(m_device_mouse_x));
@@ -508,9 +648,12 @@ void cdislave_hle_device::device_reset()
 		elem.m_out_index = 0;
 		elem.m_out_count = 0;
 		elem.m_out_cmd = 0;
+		elem.m_out_ready = false;
+		elem.m_out_irq = false;
+		elem.m_out_deadline = attotime::never;
 	}
 
-	memset(m_in_buf, 0, 17);
+	memset(m_in_buf, 0, sizeof(m_in_buf));
 	m_in_index = 0;
 	m_in_count = 0;
 	m_keyboard_events_enabled = false;
@@ -524,10 +667,16 @@ void cdislave_hle_device::device_reset()
 	m_input_mouse_x = 0xffff;
 	m_input_mouse_y = 0xffff;
 	m_input_mouse_btn = 0;
+	m_input_mouse_initialized = false;
+
+	m_pointer_input_enabled =
+		cdi_slave_transport::reset_pointer_input_enabled(
+			m_pointer_input_enabled);
 
 	m_device_mouse_x = 0;
 	m_device_mouse_y = 0;
 
+	m_interrupt_timer->adjust(attotime::never);
 	m_int_callback(CLEAR_LINE);
 
 	m_input_poll_timer->adjust(attotime::from_hz(60), 0, attotime::from_hz(60));

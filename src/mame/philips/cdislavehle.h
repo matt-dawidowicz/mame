@@ -80,6 +80,9 @@ private:
 		uint8_t m_out_index;
 		uint8_t m_out_count;
 		uint8_t m_out_cmd;
+		bool m_out_ready;
+		bool m_out_irq;
+		attotime m_out_deadline;
 	};
 
 	channel_state m_channel[4];
@@ -102,6 +105,7 @@ private:
 	uint16_t m_input_mouse_x;
 	uint16_t m_input_mouse_y;
 	uint8_t m_input_mouse_btn;
+	bool m_input_mouse_initialized;
 	bool m_pointer_input_enabled = false;
 
 	int16_t m_device_mouse_x;

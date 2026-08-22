@@ -87,13 +87,12 @@ private:
 	void video_presentation_reset();
 	void video_frame_clear();
 	void video_latch_frame();
-	void video_compat_frame_event();
 	void video_latch_geometry(bool at_vblank);
 	void video_overlay_reset();
 	void video_decoder_reset();
 	void video_decoder_destroy();
 	void video_decoder_feed(uint8_t data);
-	void video_decoder_pump();
+	void video_decoder_pump(bool end_signalled = false);
 	void video_decoder_flush();
 	void video_picture_event(uint8_t picture_type);
 	void video_picture_events_flush();
@@ -111,6 +110,7 @@ private:
 	// by replaying elementary-stream bytes on postload.
 	void save_state_presave();
 	void save_state_postload();
+	void save_state_restore_failed();
 	bool save_state_rebuild_audio_decoder();
 	bool save_state_rebuild_video_decoder();
 
@@ -121,7 +121,6 @@ private:
 	static constexpr uint16_t FMA_E03006_COMPAT_READ_VALUE = 0x0900;
 	static constexpr uint16_t FMA_E0300E_COMPAT_READ_VALUE = 0x0042;
 	static constexpr uint16_t FMA_E03024_COMPAT_READ_VALUE = 0x0004;
-	static constexpr uint16_t FMV_STATUS_COMPAT_INPUT_READY = 0x2000;
 	static constexpr uint16_t FMV_TIMER_COMPARE_RESET_COMPAT_VALUE = 55;
 	static constexpr uint8_t IDLE_IACK_COMPAT_VECTOR = 0x3c;
 
@@ -150,6 +149,10 @@ private:
 	uint16_t m_fmv_timer_compare = FMV_TIMER_COMPARE_RESET_COMPAT_VALUE;
 	uint16_t m_fmv_system_command = 0;
 	uint16_t m_fmv_video_command = 0;
+	uint16_t m_fmv_video_data_input_command = 0;
+	bool m_fmv_playback_active = false;
+	bool m_fmv_single_step_pending = false;
+	bool m_fmv_decoder_enabled = false;
 	uint16_t m_fmv_stream = 0;
 	uint16_t m_fmv_interrupt_vector = 0;
 
@@ -297,13 +300,6 @@ private:
 	uint32_t m_video_present_generation = 0;
 	bool m_video_present_valid = false;
 
-	// PROVISIONAL COMPATIBILITY MECHANISM, NOT HARDWARE SPECIFICATION:
-	// preserve the previously validated guest-visible frame-event cadence
-	// while queued pixel presentation is evaluated independently by PTS.
-	uint16_t m_video_compat_interrupts = 0;
-	uint32_t m_video_compat_generation = 0;
-	bool m_video_compat_frame_pending = false;
-
 	// Runtime evidence counters for the queue implementation.  These are
 	// diagnostic only and do not participate in guest-visible behavior.
 	uint64_t m_scheduler_decoded_frames = 0;
@@ -364,6 +360,7 @@ private:
 	uint32_t m_video_framerate_millihz = 0;
 	bool m_video_have_sequence = false;
 	bool m_video_sequence_end_pending = false;
+	bool m_video_decoder_flush_pending = false;
 	uint32_t m_video_sequence_end_events = 0;
 	uint32_t m_video_last_picture_generation = 0;
 	bool m_video_last_picture_pending = false;
@@ -375,7 +372,7 @@ private:
 	// decoded-frame count without replaying guest-visible side effects.
 	std::vector<uint8_t> m_audio_replay_journal;
 	std::vector<uint8_t> m_video_replay_journal;
-	std::vector<uint32_t> m_video_replay_pump_events;
+	std::vector<uint64_t> m_video_replay_pump_events;
 	bool m_audio_replay_overflow = false;
 	bool m_video_replay_overflow = false;
 	bool m_video_replay_pump_overflow = false;
@@ -402,7 +399,7 @@ private:
 	std::array<uint64_t, cdi_dvc::SAVE_VIDEO_QUEUE_FRAMES> m_save_video_queue_timestamp90{};
 	std::array<uint8_t, cdi_dvc::SAVE_VIDEO_QUEUE_FRAMES> m_save_video_queue_timestamp_valid{};
 	std::array<uint16_t, cdi_dvc::SAVE_PICTURE_EVENTS> m_save_picture_events{};
-	std::array<uint32_t, cdi_dvc::SAVE_VIDEO_REPLAY_PUMP_EVENTS> m_save_video_replay_pump_events{};
+	std::array<uint64_t, cdi_dvc::SAVE_VIDEO_REPLAY_PUMP_EVENTS> m_save_video_replay_pump_events{};
 
 	// 512 KiB MPEG/DVC RAM at E80000-EFFFFF.
 	//

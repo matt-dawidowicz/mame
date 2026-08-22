@@ -32,6 +32,19 @@ struct video_command_effects
 	bool show_on_next;
 };
 
+struct system_command_effects
+{
+	bool play;
+	bool pause;
+	bool continue_playback;
+	bool step;
+	bool stop;
+	bool clear_fifo;
+	bool decoder_on;
+	bool decoder_off;
+	bool dma;
+};
+
 struct picture_event_reorder_state
 {
 	uint16_t reference_interrupts;
@@ -91,9 +104,76 @@ enum : uint16_t
 	FMV_IRQ_END_SEQUENCE = 0x0200,
 	FMV_IRQ_END_ISO = 0x0400,
 	FMV_IRQ_VSYNC = 0x0800,
+	FMV_IRQ_PAUSE = 0x1000,
 	FMV_IRQ_CLIP_UPDATE = 0x2000,
 	FMV_IRQ_GEOMETRY_LATCH = FMV_IRQ_DCL | FMV_IRQ_CLIP_UPDATE
 };
+
+enum : uint16_t
+{
+	FMV_VDI_DECODING_TIMESTAMP_UPDATED = 0x4000
+};
+
+constexpr std::size_t FMV_INPUT_FIFO_HIGH_WATER_BYTES = 28'000;
+constexpr std::size_t FMV_OUTPUT_FIFO_PICTURES = 3;
+constexpr uint16_t FMV_STATUS_INPUT_READY = 0x2000;
+
+struct presentation_picture_event
+{
+	uint16_t interrupts;
+	bool end_of_data;
+};
+
+// Guest-visible picture events belong to the picture that reaches the display
+// boundary, not the newest picture decoded ahead of it.
+constexpr presentation_picture_event make_presentation_picture_event(
+		uint16_t marker_interrupts, bool last_picture_pending,
+		uint32_t selected_generation, uint32_t last_picture_generation)
+{
+	bool const end_of_data = last_picture_pending
+		&& selected_generation == last_picture_generation;
+	return {
+		uint16_t(FMV_IRQ_PICTURE | marker_interrupts
+				| (end_of_data ? FMV_IRQ_END_OF_DATA : 0)),
+		end_of_data
+	};
+}
+
+// GEN_PICTURES_IN_FIFO exposes a seven-bit count on VMPEG.  The current MAME
+// implementation has decoded-picture queue visibility, so clamp that queue to
+// the width of the guest-visible register.
+constexpr uint16_t fmv_pictures_in_fifo(std::size_t queued_pictures)
+{
+	return uint16_t(queued_pictures < 0x7fU ? queued_pictures : 0x7fU);
+}
+
+// GEN_DTS exposes bits 21:7 of the 90 kHz MPEG decoding timestamp.  The DVC
+// firmware expands this 703.125 Hz view back into its 45 kHz clock domain.
+constexpr uint16_t fmv_reduced_decoding_timestamp(uint64_t timestamp90)
+{
+	return uint16_t((timestamp90 >> 7) & 0x7fffU);
+}
+
+// VMPEG stops requesting compressed video input only after the high-water
+// mark is exceeded.  This mirrors the strict comparison used by the reference
+// implementation and leaves the boundary byte ready for another DMA slice.
+constexpr uint16_t fmv_input_status(std::size_t buffered_bytes)
+{
+	return buffered_bytes > FMV_INPUT_FIFO_HIGH_WATER_BYTES
+		? uint16_t(0) : FMV_STATUS_INPUT_READY;
+}
+
+// GEN_FRAME_PERIOD is expressed in 90 kHz ticks.  PL_MPEG exposes the parsed
+// frame rate in millihertz, so round the reciprocal to the nearest tick.
+constexpr uint16_t fmv_frame_period_90khz(uint32_t framerate_millihz)
+{
+	if (!framerate_millihz)
+		return 0;
+
+	uint64_t const rounded =
+		(90'000'000ULL + framerate_millihz / 2U) / framerate_millihz;
+	return uint16_t(rounded < 0xffffU ? rounded : 0xffffU);
+}
 
 constexpr uint64_t mpeg_timestamp_normalize(uint64_t value)
 {
@@ -280,6 +360,21 @@ constexpr video_command_effects decode_video_command(uint16_t command)
 		bool(command & 0x0100),
 		bool(command & 0x0200),
 		bool(command & 0x0400)
+	};
+}
+
+constexpr system_command_effects decode_system_command(uint16_t command)
+{
+	return {
+		bool(command & 0x0008),
+		bool(command & 0x0010),
+		bool(command & 0x0020),
+		bool(command & 0x0040),
+		bool(command & 0x0080),
+		bool(command & 0x0100),
+		bool(command & 0x1000),
+		bool(command & 0x2000),
+		bool(command & 0x8000)
 	};
 }
 

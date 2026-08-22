@@ -42,3 +42,27 @@ TEST_CASE("CD-i DVC MPEG-1 PES classifier preserves parser precedence", "[emu][p
 		REQUIRE(cdi_dvc::classify_mpeg1_pes_header_byte(uint8_t(value)) == kind::pts_dts);
 	REQUIRE(cdi_dvc::classify_mpeg1_pes_header_byte(0x0f) == kind::no_timestamp);
 }
+
+TEST_CASE("CD-i DVC MPEG-1 PES headers cannot continue beyond the packet boundary", "[emu][philips][dvc][mpeg]")
+{
+	using kind = cdi_dvc::mpeg1_pes_header_kind;
+
+	for (kind const value :
+			{ kind::stuffing, kind::std_buffer, kind::pts, kind::pts_dts,
+				kind::no_timestamp, kind::payload_fallback })
+	{
+		REQUIRE_FALSE(cdi_dvc::mpeg1_pes_header_can_continue(value, 0));
+	}
+
+	for (kind const value : { kind::stuffing, kind::std_buffer, kind::pts, kind::pts_dts })
+	{
+		REQUIRE(cdi_dvc::mpeg1_pes_header_can_continue(value, 1));
+		REQUIRE(cdi_dvc::mpeg1_pes_header_can_continue(value, 0xffff));
+	}
+
+	for (kind const value : { kind::no_timestamp, kind::payload_fallback })
+	{
+		REQUIRE_FALSE(cdi_dvc::mpeg1_pes_header_can_continue(value, 1));
+		REQUIRE_FALSE(cdi_dvc::mpeg1_pes_header_can_continue(value, 0xffff));
+	}
+}
