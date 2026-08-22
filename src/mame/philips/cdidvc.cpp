@@ -38,10 +38,13 @@
 #define LOG_VIDEO        (1U << 6)
 #define LOG_RAM_GATE     (1U << 7)
 #define LOG_RAM_ACCESS   (1U << 8)
+#define LOG_SEQUENCE     (1U << 9)
 
 // Keep the low-volume gate transition visible for the 12G14 regression.
-// All high-volume diagnostics are opt-in.
-#define VERBOSE          (LOG_RAM_GATE)
+// Keep the low-volume interactive-presentation boundary trace visible while
+// Dragon's Lair scene chaining is under investigation.  Per-frame video and
+// general register diagnostics remain opt-in.
+#define VERBOSE          (LOG_RAM_GATE | LOG_SEQUENCE)
 #include "logmacro.h"
 
 DEFINE_DEVICE_TYPE(CDI_DVC, cdi_dvc_device, "cdidvc", "Philips CD-i Digital Video Cartridge")
@@ -86,6 +89,10 @@ void cdi_dvc_device::device_start()
 	save_item(NAME(m_fmv_timer_compare));
 	save_item(NAME(m_fmv_system_command));
 	save_item(NAME(m_fmv_video_command));
+	save_item(NAME(m_fmv_video_data_input_command));
+	save_item(NAME(m_fmv_playback_active));
+	save_item(NAME(m_fmv_single_step_pending));
+	save_item(NAME(m_fmv_decoder_enabled));
 	save_item(NAME(m_video_output_enabled));
 	save_item(NAME(m_fmv_stream));
 	save_item(NAME(m_fmv_interrupt_vector));
@@ -182,9 +189,6 @@ void cdi_dvc_device::device_start()
 	save_item(NAME(m_video_present_height));
 	save_item(NAME(m_video_present_generation));
 	save_item(NAME(m_video_present_valid));
-	save_item(NAME(m_video_compat_interrupts));
-	save_item(NAME(m_video_compat_generation));
-	save_item(NAME(m_video_compat_frame_pending));
 	save_item(NAME(m_scheduler_decoded_frames));
 	save_item(NAME(m_scheduler_presented_frames));
 	save_item(NAME(m_scheduler_due_superseded));
@@ -232,6 +236,7 @@ void cdi_dvc_device::device_start()
 	save_item(NAME(m_video_framerate_millihz));
 	save_item(NAME(m_video_have_sequence));
 	save_item(NAME(m_video_sequence_end_pending));
+	save_item(NAME(m_video_decoder_flush_pending));
 	save_item(NAME(m_video_sequence_end_events));
 	save_item(NAME(m_video_last_picture_generation));
 	save_item(NAME(m_video_last_picture_pending));
@@ -313,20 +318,24 @@ void cdi_dvc_device::save_state_presave()
 	m_save_snapshot_valid &= cdi_dvc::save_picture_events_fit(m_video_picture_event_queue.size());
 	m_save_snapshot_valid &= cdi_dvc::save_video_replay_pumps_fit(m_video_replay_pump_events.size());
 	std::size_t previous_pump_offset = 0;
-	for (uint32_t const event : m_video_replay_pump_events)
+	uint32_t previous_pump_frames = 0;
+	for (uint64_t const event : m_video_replay_pump_events)
 	{
 		std::size_t const offset = cdi_dvc::save_video_replay_pump_offset(event);
+		uint32_t const frames = cdi_dvc::save_video_replay_pump_frames(event);
 		if (!cdi_dvc::save_video_replay_pump_offset_valid(
-				previous_pump_offset, offset, m_video_replay_journal.size()))
+				previous_pump_offset, offset, m_video_replay_journal.size())
+				|| frames < previous_pump_frames || frames > m_video_decoded_frames)
 		{
 			m_save_snapshot_valid = false;
 			break;
 		}
 		previous_pump_offset = offset;
+		previous_pump_frames = frames;
 	}
-	m_save_snapshot_valid &= cdi_dvc::save_video_frame_fits(
-			m_video_present_width, m_video_present_height, m_video_present_frame.size())
-		|| (!m_video_present_valid && m_video_present_frame.empty());
+	m_save_snapshot_valid &= cdi_dvc::video_present_frame_fits(
+			m_video_present_valid, m_video_present_width,
+			m_video_present_height, m_video_present_frame.size());
 
 	if (m_save_snapshot_valid)
 	{
@@ -366,7 +375,7 @@ void cdi_dvc_device::save_state_presave()
 			m_save_video_present_pixel_count, m_save_picture_event_count,
 			m_audio_replay_overflow ? 1U : 0U, m_video_replay_overflow ? 1U : 0U);
 	unsigned replay_flushes = 0;
-	for (uint32_t const event : m_video_replay_pump_events)
+	for (uint64_t const event : m_video_replay_pump_events)
 		replay_flushes += cdi_dvc::save_video_replay_pump_flush(event) ? 1U : 0U;
 	logerror("DVC_SAVE_STATE_REPLAY_SCHEDULE serial=%u pumps=%u flushes=%u tail_bytes=%u pump_overflow=%u\n",
 			m_save_snapshot_serial, m_save_video_replay_pump_count, replay_flushes,
@@ -419,7 +428,7 @@ bool cdi_dvc_device::save_state_rebuild_video_decoder()
 			replay_have_header = plm_video_has_header(m_video_decoder) != 0;
 	};
 
-	auto pump_backend = [&](bool signal_end, uint32_t event_index) -> bool
+	auto pump_backend = [&](bool signal_end, uint32_t event_index, uint32_t target_frames) -> bool
 	{
 		refresh_header();
 		if (signal_end)
@@ -428,27 +437,34 @@ bool cdi_dvc_device::save_state_rebuild_video_decoder()
 			++replay_flushes;
 		}
 		if (!replay_have_header)
-			return true;
+			return target_frames == rebuilt_frames;
 
-		for (;;)
+		if (target_frames < rebuilt_frames || target_frames > wanted_frames)
+		{
+			logerror("DVC_SAVE_STATE_VIDEO_REPLAY_FAIL serial=%u reason=invalid_frame_target event=%u rebuilt=%u target=%u wanted=%u\n",
+					m_save_snapshot_serial, event_index, rebuilt_frames,
+					target_frames, wanted_frames);
+			return false;
+		}
+
+		while (rebuilt_frames < target_frames)
 		{
 			plm_frame_t *const frame = plm_video_decode(m_video_decoder);
 			if (!frame)
-				break;
-			++rebuilt_frames;
-			if (rebuilt_frames > wanted_frames)
 			{
-				logerror("DVC_SAVE_STATE_VIDEO_REPLAY_FAIL serial=%u reason=frame_overshoot event=%u rebuilt=%u wanted=%u\n",
-						m_save_snapshot_serial, event_index, rebuilt_frames, wanted_frames);
+				logerror("DVC_SAVE_STATE_VIDEO_REPLAY_FAIL serial=%u reason=frame_underrun event=%u rebuilt=%u target=%u wanted=%u\n",
+						m_save_snapshot_serial, event_index, rebuilt_frames,
+						target_frames, wanted_frames);
 				return false;
 			}
+			++rebuilt_frames;
 		}
 		return true;
 	};
 
 	for (uint32_t event_index = 0; event_index < m_save_video_replay_pump_count; ++event_index)
 	{
-		uint32_t const event = m_save_video_replay_pump_events[event_index];
+		uint64_t const event = m_save_video_replay_pump_events[event_index];
 		std::size_t const offset = cdi_dvc::save_video_replay_pump_offset(event);
 		if (!cdi_dvc::save_video_replay_pump_offset_valid(
 				replay_cursor, offset, m_save_video_replay_length))
@@ -466,13 +482,11 @@ bool cdi_dvc_device::save_state_rebuild_video_decoder()
 			replay_cursor = offset;
 		}
 
-		// Live packet completion first pumps normally.  A sequence-end packet
-		// then signals end and pumps a second time to release delayed reference
-		// frames.  Preserve that exact control schedule during reconstruction.
-		if (!pump_backend(false, event_index))
-			return false;
-		if (cdi_dvc::save_video_replay_pump_flush(event)
-				&& !pump_backend(true, event_index))
+		// Every live bounded pump records both its byte offset and exact decoded
+		// frame target.  Reproduce that schedule so refills after presentation do
+		// not collapse into an unbounded replay-time decode.
+		if (!pump_backend(cdi_dvc::save_video_replay_pump_flush(event), event_index,
+				cdi_dvc::save_video_replay_pump_frames(event)))
 			return false;
 	}
 
@@ -517,6 +531,31 @@ bool cdi_dvc_device::save_state_rebuild_video_decoder()
 	return true;
 }
 
+void cdi_dvc_device::save_state_restore_failed()
+{
+	m_save_snapshot_valid = false;
+	m_fmv_playback_active = false;
+	m_fmv_single_step_pending = false;
+	m_fmv_decoder_enabled = false;
+
+	m_dma_active = false;
+	m_dma_for_fma = false;
+	m_dma_transfer_words = 0;
+	m_dma_first_word = 0;
+	m_dma_last_word = 0;
+	m_dma_req_callback(CLEAR_LINE);
+
+	// Recreate both opaque PL_MPEG decoders in a known empty state.  The
+	// parser resets also discard replay journals, PCM, decoded-picture queues,
+	// and picture-event bookkeeping that cannot be trusted after a failed load.
+	mpeg_parser_reset(MPEG_FMA);
+	mpeg_parser_reset(MPEG_FMV);
+	video_presentation_reset();
+
+	update_interrupt_state();
+	update_timer();
+}
+
 void cdi_dvc_device::save_state_postload()
 {
 	bool snapshot_layout_valid =
@@ -530,17 +569,9 @@ void cdi_dvc_device::save_state_postload()
 
 	if (snapshot_layout_valid)
 	{
-		if (m_video_present_valid)
-		{
-			snapshot_layout_valid = cdi_dvc::save_video_frame_fits(
-					m_video_present_width,
-					m_video_present_height,
-					m_save_video_present_pixel_count);
-		}
-		else
-		{
-			snapshot_layout_valid = m_save_video_present_pixel_count == 0;
-		}
+		snapshot_layout_valid = cdi_dvc::video_present_frame_fits(
+				m_video_present_valid, m_video_present_width,
+				m_video_present_height, m_save_video_present_pixel_count);
 	}
 
 	if (snapshot_layout_valid)
@@ -564,23 +595,27 @@ void cdi_dvc_device::save_state_postload()
 	if (snapshot_layout_valid)
 	{
 		std::size_t previous_pump_offset = 0;
+		uint32_t previous_pump_frames = 0;
 		for (uint32_t event_index = 0; event_index < m_save_video_replay_pump_count; ++event_index)
 		{
+			uint64_t const event = m_save_video_replay_pump_events[event_index];
 			std::size_t const offset = cdi_dvc::save_video_replay_pump_offset(
-				m_save_video_replay_pump_events[event_index]);
+				event);
+			uint32_t const frames = cdi_dvc::save_video_replay_pump_frames(event);
 			if (!cdi_dvc::save_video_replay_pump_offset_valid(
-					previous_pump_offset, offset, m_save_video_replay_length))
+					previous_pump_offset, offset, m_save_video_replay_length)
+					|| frames < previous_pump_frames || frames > m_video_decoded_frames)
 			{
 				snapshot_layout_valid = false;
 				break;
 			}
 			previous_pump_offset = offset;
+			previous_pump_frames = frames;
 		}
 	}
 
 	if (!m_save_snapshot_valid || !snapshot_layout_valid)
 	{
-		m_save_snapshot_valid = false;
 		logerror("DVC_SAVE_STATE_RESTORE_UNSUPPORTED serial=%u reason=invalid_snapshot_layout audio_replay=%u video_replay=%u pcm_values=%u queue=%u present_pixels=%u picture_events=%u\n",
 				m_save_snapshot_serial,
 				m_save_audio_replay_length,
@@ -589,12 +624,7 @@ void cdi_dvc_device::save_state_postload()
 				m_save_video_queue_count,
 				m_save_video_present_pixel_count,
 				m_save_picture_event_count);
-		audio_decoder_destroy();
-		video_decoder_destroy();
-		m_audio_pcm_queue.clear();
-		m_video_queue.clear();
-		m_video_present_frame.clear();
-		m_video_picture_event_queue.clear();
+		save_state_restore_failed();
 		return;
 	}
 
@@ -639,10 +669,10 @@ void cdi_dvc_device::save_state_postload()
 	bool const video_ok = save_state_rebuild_video_decoder();
 	if (!audio_ok || !video_ok)
 	{
-		m_save_snapshot_valid = false;
 		logerror("DVC_SAVE_STATE_RESTORE_UNSUPPORTED serial=%u reason=decoder_replay audio_ok=%u video_ok=%u audio_frames=%u video_frames=%u\n",
 				m_save_snapshot_serial, audio_ok ? 1U : 0U, video_ok ? 1U : 0U,
 				m_audio_decoded_frames, m_video_decoded_frames);
+		save_state_restore_failed();
 		return;
 	}
 
@@ -735,6 +765,10 @@ void cdi_dvc_device::device_reset()
 	m_fmv_timer_compare = FMV_TIMER_COMPARE_RESET_COMPAT_VALUE;
 	m_fmv_system_command = 0;
 	m_fmv_video_command = 0;
+	m_fmv_video_data_input_command = 0;
+	m_fmv_playback_active = false;
+	m_fmv_single_step_pending = false;
+	m_fmv_decoder_enabled = false;
 	m_fmv_stream = 0;
 	m_fmv_interrupt_vector = 0;
 
@@ -920,8 +954,22 @@ uint16_t cdi_dvc_device::read(offs_t offset, uint16_t mem_mask)
 		break;
 
 	case 0xe0405e:
-		result = FMV_STATUS_COMPAT_INPUT_READY;
+	{
+		size_t const buffered_video_bytes = m_video_buffer
+				? plm_buffer_get_remaining(m_video_buffer) : 0;
+		result = cdi_dvc::fmv_input_status(buffered_video_bytes);
+		if (!machine().side_effects_disabled())
+		{
+			LOGMASKED(LOG_SEQUENCE,
+					"DVC_FMV_TRACE status-read value=%04x buffered=%u dma=%u words=%u queue=%u decoded=%u presented=%u ctx=%s\n",
+					result, unsigned(buffered_video_bytes),
+					m_dma_active && !m_dma_for_fma ? 1U : 0U,
+					m_dma_transfer_words, unsigned(m_video_queue.size()),
+					m_video_decoded_frames, m_video_present_generation,
+					machine().describe_context());
+		}
 		break;
+	}
 	case 0xe04060:
 		result = m_fmv_interrupt_enable;
 		break;
@@ -929,12 +977,20 @@ uint16_t cdi_dvc_device::read(offs_t offset, uint16_t mem_mask)
 		result = m_fmv_interrupt_status;
 		if (!machine().side_effects_disabled())
 		{
+			LOGMASKED(LOG_SEQUENCE,
+					"DVC_FMV_TRACE irq-read status=%04x enable=%04x queue=%u last_pending=%u last_generation=%u ctx=%s\n",
+					result, m_fmv_interrupt_enable, unsigned(m_video_queue.size()),
+					m_video_last_picture_pending ? 1U : 0U,
+					m_video_last_picture_generation, machine().describe_context());
 			m_fmv_interrupt_status = 0;
 			update_interrupt_state();
 		}
 		break;
 	case 0xe04064:
 		result = m_fmv_timer_compare;
+		break;
+	case 0xe0408c:
+		result = m_fmv_video_data_input_command;
 		break;
 	case 0xe04098:
 		result = uint16_t(current_fmv_dclk() >> 6);
@@ -946,8 +1002,15 @@ uint16_t cdi_dvc_device::read(offs_t offset, uint16_t mem_mask)
 	case 0xe0409e:
 		result = 1;
 		break;
+	case 0xe040a0:
+		result = cdi_dvc::fmv_reduced_decoding_timestamp(
+				m_mpeg_packet_decode_ts[MPEG_FMV]);
+		break;
 	case 0xe040a4:
-		result = 0;
+		result = cdi_dvc::fmv_pictures_in_fifo(m_video_queue.size());
+		break;
+	case 0xe040a8:
+		result = cdi_dvc::fmv_frame_period_90khz(m_video_framerate_millihz);
 		break;
 	case 0xe04074: return m_video_screen_y_shadow;
 	case 0xe04076: return m_video_screen_x_shadow;
@@ -1290,9 +1353,6 @@ void cdi_dvc_device::video_frame_clear()
 	m_video_pts_anchor90 = 0;
 	m_video_backend_anchor90 = 0;
 	m_video_pts_anchor_valid = false;
-	m_video_compat_interrupts = 0;
-	m_video_compat_generation = 0;
-	m_video_compat_frame_pending = false;
 	m_video_present_frame.clear();
 	m_video_present_width = 0;
 	m_video_present_height = 0;
@@ -1325,15 +1385,17 @@ void cdi_dvc_device::video_presentation_reset()
 
 void cdi_dvc_device::video_latch_frame()
 {
-	if (m_video_queue.empty())
+	if ((!m_fmv_playback_active && !m_fmv_single_step_pending)
+			|| m_video_queue.empty())
 		return;
 
+	bool const single_step = m_fmv_single_step_pending;
 	std::size_t selected_index = 0;
 	std::size_t consume_count = 1;
 	bool timestamp_driven = false;
 	uint64_t clock90 = 0;
 
-	if (m_video_queue.front().timestamp_valid && m_mpeg_have_scr[MPEG_FMV])
+	if (!single_step && m_video_queue.front().timestamp_valid && m_mpeg_have_scr[MPEG_FMV])
 	{
 		std::vector<uint64_t> timestamps90;
 		timestamps90.reserve(m_video_queue.size());
@@ -1358,13 +1420,17 @@ void cdi_dvc_device::video_latch_frame()
 		consume_count = selection.consume_count;
 		timestamp_driven = true;
 	}
-	else
+	else if (!single_step)
 	{
 		// Compatibility fallback for streams that have not established both a
 		// frame timestamp and an FMV SCR clock.  Preserve queued order and do not
 		// reintroduce the old single-slot overwrite behavior.
 		++m_scheduler_fallback_presented;
 	}
+
+	uint16_t marker_interrupts = 0;
+	for (std::size_t index = 0; index < consume_count; ++index)
+		marker_interrupts |= m_video_queue[index].interrupts;
 
 	queued_video_frame selected = std::move(m_video_queue[selected_index]);
 	for (std::size_t index = 0; index < consume_count; ++index)
@@ -1395,56 +1461,44 @@ void cdi_dvc_device::video_latch_frame()
 		av_clock_observe();
 	}
 
-	video_overlay_reset();
-
-	LOGMASKED(LOG_VIDEO,
-			"%s: DVC VIDEO presented frame=%u size=%ux%u pts_valid=%u pts=%llu clock=%llu queue=%u superseded=%u\n",
-			machine().describe_context(), m_video_present_generation,
-			m_video_present_width, m_video_present_height,
-			selected.timestamp_valid ? 1U : 0U,
-			(unsigned long long)selected.timestamp90,
-			(unsigned long long)clock90,
-			unsigned(m_video_queue.size()), unsigned(selected_index));
-}
-
-void cdi_dvc_device::video_compat_frame_event()
-{
-	if (!m_video_compat_frame_pending)
-		return;
-
-	++m_scheduler_compat_frame_events;
-
-	// Preserve the previously validated guest-visible event boundary while
-	// frame pixels themselves are selected independently by the PTS queue.
 	video_latch_geometry(false);
 	if (m_video_show_on_next)
 	{
 		m_video_visible = true;
 		m_video_show_on_next = false;
-		LOGMASKED(LOG_VIDEO, "%s: DVC VIDEO compat show-next frame=%u\n",
-				machine().describe_context(), m_video_compat_generation);
+		LOGMASKED(LOG_VIDEO, "%s: DVC VIDEO show-next presented frame=%u\n",
+				machine().describe_context(), m_video_present_generation);
 	}
 
-	video_overlay_reset();
-	uint16_t interrupts = cdi_dvc::FMV_IRQ_PICTURE | m_video_compat_interrupts;
-	if (m_video_last_picture_pending && m_video_compat_generation == m_video_last_picture_generation)
+	cdi_dvc::presentation_picture_event const picture_event =
+		cdi_dvc::make_presentation_picture_event(
+			marker_interrupts, m_video_last_picture_pending,
+			m_video_present_generation, m_video_last_picture_generation);
+	if (picture_event.end_of_data)
 	{
-		interrupts |= cdi_dvc::FMV_IRQ_END_OF_DATA;
 		m_video_last_picture_pending = false;
-		LOGMASKED(LOG_VIDEO, "%s: DVC VIDEO compat last picture frame=%u\n",
-				machine().describe_context(), m_video_compat_generation);
+		LOGMASKED(LOG_VIDEO, "%s: DVC VIDEO presented last picture frame=%u\n",
+				machine().describe_context(), m_video_present_generation);
 	}
-	m_fmv_interrupt_status |= interrupts;
+	++m_scheduler_compat_frame_events;
+	m_fmv_interrupt_status |= picture_event.interrupts;
 	update_interrupt_state();
 
-	LOGMASKED(LOG_VIDEO,
-			"%s: DVC VIDEO compat frame-event generation=%u interrupts=%04x queue=%u\n",
-			machine().describe_context(), m_video_compat_generation,
-			interrupts, unsigned(m_video_queue.size()));
+	video_overlay_reset();
 
-	m_video_compat_interrupts = 0;
-	m_video_compat_generation = 0;
-	m_video_compat_frame_pending = false;
+	LOGMASKED(LOG_VIDEO,
+			"%s: DVC VIDEO presented frame=%u size=%ux%u pts_valid=%u pts=%llu clock=%llu queue=%u superseded=%u interrupts=%04x\n",
+			machine().describe_context(), m_video_present_generation,
+			m_video_present_width, m_video_present_height,
+			selected.timestamp_valid ? 1U : 0U,
+			(unsigned long long)selected.timestamp90,
+			(unsigned long long)clock90,
+			unsigned(m_video_queue.size()), unsigned(selected_index),
+			picture_event.interrupts);
+
+	if (single_step)
+		m_fmv_single_step_pending = false;
+	video_decoder_pump();
 }
 
 void cdi_dvc_device::video_latch_geometry(bool at_vblank)
@@ -1477,7 +1531,6 @@ void cdi_dvc_device::video_vblank()
 	m_fmv_interrupt_status |= cdi_dvc::FMV_IRQ_VSYNC;
 	update_interrupt_state();
 	video_latch_geometry(true);
-	video_compat_frame_event();
 	video_latch_frame();
 }
 
@@ -1485,6 +1538,10 @@ void cdi_dvc_device::video_overlay_scanline(uint32_t *pixels, unsigned pixel_cou
 		int clip_min_x, int clip_max_x, bool const *external_video, unsigned external_count)
 {
 	if (!pixels || !external_video || !m_video_output_enabled || !m_video_visible || !m_video_present_valid)
+		return;
+	if (!cdi_dvc::video_present_frame_fits(
+			true, m_video_present_width, m_video_present_height,
+			m_video_present_frame.size()))
 		return;
 	if (!m_video_window_w || !m_video_window_h)
 		return;
@@ -1569,6 +1626,14 @@ void cdi_dvc_device::video_decoder_destroy()
 
 void cdi_dvc_device::video_decoder_reset()
 {
+	LOGMASKED(LOG_SEQUENCE,
+			"DVC_FMV_TRACE decoder-reset queue=%u decoded=%u presented=%u irq=%04x sequence_ends=%u dma=%u words=%u ctx=%s\n",
+			unsigned(m_video_queue.size()), m_video_decoded_frames,
+			m_video_present_generation, m_fmv_interrupt_status,
+			m_video_sequence_end_events,
+			m_dma_active && !m_dma_for_fma ? 1U : 0U, m_dma_transfer_words,
+			machine().describe_context());
+
 	video_frame_clear();
 	video_decoder_destroy();
 	m_video_replay_journal.clear();
@@ -1592,6 +1657,7 @@ void cdi_dvc_device::video_decoder_reset()
 	m_video_framerate_millihz = 0;
 	m_video_have_sequence = false;
 	m_video_sequence_end_pending = false;
+	m_video_decoder_flush_pending = false;
 	m_video_sequence_end_events = 0;
 	m_video_last_picture_generation = 0;
 	m_video_last_picture_pending = false;
@@ -1636,6 +1702,11 @@ void cdi_dvc_device::video_decoder_feed(uint8_t data)
 		m_video_sequence_end_pending = true;
 		m_fmv_interrupt_status |= cdi_dvc::FMV_IRQ_END_SEQUENCE;
 		update_interrupt_state();
+		LOGMASKED(LOG_SEQUENCE,
+				"DVC_FMV_TRACE sequence-end event=%u queue=%u decoded=%u irq=%04x ctx=%s\n",
+				m_video_sequence_end_events, unsigned(m_video_queue.size()),
+				m_video_decoded_frames, m_fmv_interrupt_status,
+				machine().describe_context());
 		LOGMASKED(LOG_VIDEO, "%s: DVC VIDEO ES sequence end events=%u\n",
 				machine().describe_context(), m_video_sequence_end_events);
 	}
@@ -1721,16 +1792,29 @@ uint16_t cdi_dvc_device::video_picture_events_pop()
 	return interrupts;
 }
 
-void cdi_dvc_device::video_decoder_pump()
+void cdi_dvc_device::video_decoder_pump(bool end_signalled)
 {
-	if (!m_video_decoder || !m_video_have_sequence)
+	uint32_t const decoded_before = m_video_decoded_frames;
+	if (!m_video_decoder || !m_video_have_sequence || !m_fmv_decoder_enabled)
+	{
+		if (end_signalled
+				&& m_video_replay_pump_events.size() < cdi_dvc::SAVE_VIDEO_REPLAY_PUMP_EVENTS)
+		{
+			m_video_replay_pump_events.push_back(cdi_dvc::save_video_replay_pump_event(
+					m_video_replay_journal.size(), true, m_video_decoded_frames));
+		}
 		return;
+	}
 
-	for (;;)
+	bool decoder_exhausted = false;
+	while (m_video_queue.size() < cdi_dvc::FMV_OUTPUT_FIFO_PICTURES)
 	{
 		plm_frame_t *const frame = plm_video_decode(m_video_decoder);
 		if (!frame)
+		{
+			decoder_exhausted = true;
 			break;
+		}
 
 		++m_scheduler_decoded_frames;
 		++m_video_decoded_frames;
@@ -1758,9 +1842,6 @@ void cdi_dvc_device::video_decoder_pump()
 		queued.height = uint16_t(frame->height);
 		queued.generation = m_video_decoded_frames;
 		queued.interrupts = video_picture_events_pop();
-		m_video_compat_interrupts |= queued.interrupts;
-		m_video_compat_generation = queued.generation;
-		m_video_compat_frame_pending = true;
 
 		// PL_MPEG advances its raw-video decoder clock by one coded-frame
 		// duration per returned frame.  Use only that *relative* cadence here,
@@ -1814,6 +1895,34 @@ void cdi_dvc_device::video_decoder_pump()
 				timestamp_valid ? 1U : 0U, (unsigned long long)timestamp90,
 				unsigned(m_video_queue.size()));
 	}
+
+	if (m_video_decoder_flush_pending && decoder_exhausted)
+	{
+		uint32_t const last_generation = !m_video_queue.empty()
+				? m_video_queue.back().generation
+				: (m_video_present_valid ? m_video_present_generation : 0);
+		if (last_generation)
+		{
+			m_video_last_picture_generation = last_generation;
+			m_video_last_picture_pending = true;
+		}
+		m_video_decoder_flush_pending = false;
+	}
+
+	if (decoded_before != m_video_decoded_frames || end_signalled)
+	{
+		if (m_video_replay_pump_events.size() < cdi_dvc::SAVE_VIDEO_REPLAY_PUMP_EVENTS)
+		{
+			m_video_replay_pump_events.push_back(cdi_dvc::save_video_replay_pump_event(
+					m_video_replay_journal.size(), end_signalled, m_video_decoded_frames));
+		}
+		else if (!m_video_replay_pump_overflow)
+		{
+			m_video_replay_pump_overflow = true;
+			logerror("DVC_SAVE_STATE_VIDEO_PUMP_REPLAY_OVERFLOW capacity=%u\n",
+					unsigned(cdi_dvc::SAVE_VIDEO_REPLAY_PUMP_EVENTS));
+		}
+	}
 }
 
 void cdi_dvc_device::video_decoder_flush()
@@ -1822,17 +1931,17 @@ void cdi_dvc_device::video_decoder_flush()
 		return;
 
 	video_picture_events_flush();
+	m_video_decoder_flush_pending = true;
 	plm_buffer_signal_end(m_video_buffer);
-	video_decoder_pump();
+	video_decoder_pump(true);
 
-	uint32_t const last_generation = !m_video_queue.empty()
-			? m_video_queue.back().generation
-			: (m_video_present_valid ? m_video_present_generation : 0);
-	if (last_generation)
-	{
-		m_video_last_picture_generation = last_generation;
-		m_video_last_picture_pending = true;
-	}
+	LOGMASKED(LOG_SEQUENCE,
+			"DVC_FMV_TRACE decoder-flush queue=%u decoded=%u flush_pending=%u last_pending=%u last_generation=%u irq=%04x ctx=%s\n",
+			unsigned(m_video_queue.size()), m_video_decoded_frames,
+			m_video_decoder_flush_pending ? 1U : 0U,
+			m_video_last_picture_pending ? 1U : 0U,
+			m_video_last_picture_generation, m_fmv_interrupt_status,
+			machine().describe_context());
 }
 
 void cdi_dvc_device::mpeg_parser_reset(unsigned target)
@@ -1843,7 +1952,10 @@ void cdi_dvc_device::mpeg_parser_reset(unsigned target)
 	if (target == MPEG_FMA)
 		audio_decoder_reset();
 	else if (target == MPEG_FMV)
+	{
 		video_decoder_reset();
+		m_fmv_video_data_input_command = 0;
+	}
 
 	m_mpeg_prefix[target] = 0;
 	m_mpeg_state[target] = MPEG_SCAN;
@@ -1994,6 +2106,8 @@ void cdi_dvc_device::mpeg_timestamp_commit(unsigned target)
 	m_mpeg_packet_decode_ts[target] = m_mpeg_packet_dts[target];
 	m_mpeg_packet_have_pts[target] = true;
 	m_mpeg_packet_have_dts[target] = explicit_dts;
+	if (target == MPEG_FMV)
+		m_fmv_video_data_input_command |= cdi_dvc::FMV_VDI_DECODING_TIMESTAMP_UPDATED;
 	++m_mpeg_pts_events[target];
 	if (explicit_dts)
 		++m_mpeg_dts_events[target];
@@ -2094,17 +2208,6 @@ void cdi_dvc_device::mpeg_packet_done(unsigned target)
 			m_video_sequence_end_pending = false;
 		}
 
-		if (m_video_replay_pump_events.size() < cdi_dvc::SAVE_VIDEO_REPLAY_PUMP_EVENTS)
-		{
-			m_video_replay_pump_events.push_back(cdi_dvc::save_video_replay_pump_event(
-					m_video_replay_journal.size(), sequence_flush));
-		}
-		else if (!m_video_replay_pump_overflow)
-		{
-			m_video_replay_pump_overflow = true;
-			logerror("DVC_SAVE_STATE_VIDEO_PUMP_REPLAY_OVERFLOW capacity=%u\n",
-					unsigned(cdi_dvc::SAVE_VIDEO_REPLAY_PUMP_EVENTS));
-		}
 	}
 
 	m_mpeg_prefix[target] = 0;
@@ -2220,6 +2323,7 @@ void cdi_dvc_device::mpeg_byte_w(unsigned target, uint8_t data)
 		break;
 
 	case MPEG_PES_HEADER:
+	{
 		if (m_mpeg_packet_remaining[target] == 0)
 		{
 			mpeg_packet_done(target);
@@ -2228,25 +2332,46 @@ void cdi_dvc_device::mpeg_byte_w(unsigned target, uint8_t data)
 
 		--m_mpeg_packet_remaining[target];
 
-		switch (cdi_dvc::classify_mpeg1_pes_header_byte(data))
+		cdi_dvc::mpeg1_pes_header_kind const header_kind =
+				cdi_dvc::classify_mpeg1_pes_header_byte(data);
+		switch (header_kind)
 		{
 		case cdi_dvc::mpeg1_pes_header_kind::stuffing:
+			if (!cdi_dvc::mpeg1_pes_header_can_continue(
+					header_kind, m_mpeg_packet_remaining[target]))
+				mpeg_packet_done(target);
 			break;
 
 		case cdi_dvc::mpeg1_pes_header_kind::std_buffer:
-			m_mpeg_state[target] = MPEG_PES_STD_SECOND;
+			if (cdi_dvc::mpeg1_pes_header_can_continue(
+					header_kind, m_mpeg_packet_remaining[target]))
+				m_mpeg_state[target] = MPEG_PES_STD_SECOND;
+			else
+				mpeg_packet_done(target);
 			break;
 
 		case cdi_dvc::mpeg1_pes_header_kind::pts:
 			mpeg_timestamp_start(target, data, false);
-			m_mpeg_skip_remaining[target] = 4;
-			m_mpeg_state[target] = MPEG_PES_HEADER_SKIP;
+			if (cdi_dvc::mpeg1_pes_header_can_continue(
+					header_kind, m_mpeg_packet_remaining[target]))
+			{
+				m_mpeg_skip_remaining[target] = 4;
+				m_mpeg_state[target] = MPEG_PES_HEADER_SKIP;
+			}
+			else
+				mpeg_packet_done(target);
 			break;
 
 		case cdi_dvc::mpeg1_pes_header_kind::pts_dts:
 			mpeg_timestamp_start(target, data, true);
-			m_mpeg_skip_remaining[target] = 9;
-			m_mpeg_state[target] = MPEG_PES_HEADER_SKIP;
+			if (cdi_dvc::mpeg1_pes_header_can_continue(
+					header_kind, m_mpeg_packet_remaining[target]))
+			{
+				m_mpeg_skip_remaining[target] = 9;
+				m_mpeg_state[target] = MPEG_PES_HEADER_SKIP;
+			}
+			else
+				mpeg_packet_done(target);
 			break;
 
 		case cdi_dvc::mpeg1_pes_header_kind::no_timestamp:
@@ -2266,6 +2391,7 @@ void cdi_dvc_device::mpeg_byte_w(unsigned target, uint8_t data)
 			break;
 		}
 		break;
+	}
 
 	case MPEG_PES_STD_SECOND:
 		if (m_mpeg_packet_remaining[target] != 0)
@@ -2357,6 +2483,14 @@ void cdi_dvc_device::dma_done()
 			m_dma_transfer_words,
 			m_dma_first_word,
 			m_dma_last_word);
+	if (!m_dma_for_fma)
+	{
+		LOGMASKED(LOG_SEQUENCE,
+				"DVC_FMV_TRACE dma-done words=%u first=%04x last=%04x queue=%u decoded=%u irq=%04x ctx=%s\n",
+				m_dma_transfer_words, m_dma_first_word, m_dma_last_word,
+				unsigned(m_video_queue.size()), m_video_decoded_frames,
+				m_fmv_interrupt_status, machine().describe_context());
+	}
 
 	if (m_dma_for_fma)
 		m_fma_command &= ~0x8000;
@@ -2553,6 +2687,10 @@ void cdi_dvc_device::write(offs_t offset, uint16_t data, uint16_t mem_mask)
 
 	case 0xe04060:
 		COMBINE_DATA(&m_fmv_interrupt_enable);
+		LOGMASKED(LOG_SEQUENCE,
+				"DVC_FMV_TRACE irq-enable value=%04x status=%04x ctx=%s\n",
+				m_fmv_interrupt_enable, m_fmv_interrupt_status,
+				machine().describe_context());
 		update_interrupt_state();
 		break;
 	case 0xe04062:
@@ -2598,13 +2736,68 @@ void cdi_dvc_device::write(offs_t offset, uint16_t data, uint16_t mem_mask)
 	case 0xe0407e:
 		COMBINE_DATA(&m_video_crop_x_shadow);
 		break;
+	case 0xe0408c:
+		COMBINE_DATA(&m_fmv_video_data_input_command);
+		break;
 	case 0xe040c0:
+	{
 		COMBINE_DATA(&m_fmv_system_command);
+		cdi_dvc::system_command_effects const effects =
+			cdi_dvc::decode_system_command(m_fmv_system_command);
+		LOGMASKED(LOG_SEQUENCE,
+				"DVC_FMV_TRACE system-command value=%04x mask=%04x stream=%u queue=%u irq=%04x active=%u step=%u decoder=%u ctx=%s\n",
+				m_fmv_system_command, mem_mask, m_fmv_stream,
+				unsigned(m_video_queue.size()), m_fmv_interrupt_status,
+				m_fmv_playback_active ? 1U : 0U,
+				m_fmv_single_step_pending ? 1U : 0U,
+				m_fmv_decoder_enabled ? 1U : 0U,
+				machine().describe_context());
 
-		if (m_fmv_system_command & 0x0100)
+		if (effects.clear_fifo)
+		{
+			m_fmv_playback_active = false;
+			m_fmv_single_step_pending = false;
 			mpeg_parser_reset(MPEG_FMV);
+		}
 
-		if (m_fmv_system_command & 0x8000)
+		if (effects.decoder_on)
+		{
+			m_fmv_decoder_enabled = true;
+			video_decoder_pump();
+		}
+		if (effects.decoder_off)
+		{
+			m_fmv_decoder_enabled = false;
+			m_fmv_playback_active = false;
+			m_fmv_single_step_pending = false;
+		}
+
+		if (effects.play || effects.continue_playback)
+		{
+			m_fmv_playback_active = true;
+			m_fmv_single_step_pending = false;
+			video_decoder_pump();
+		}
+		if (effects.pause)
+		{
+			m_fmv_playback_active = false;
+			m_fmv_single_step_pending = false;
+			m_fmv_interrupt_status |= cdi_dvc::FMV_IRQ_PAUSE;
+			update_interrupt_state();
+		}
+		if (effects.step)
+		{
+			m_fmv_playback_active = false;
+			m_fmv_single_step_pending = true;
+			video_decoder_pump();
+		}
+		if (effects.stop)
+		{
+			m_fmv_playback_active = false;
+			m_fmv_single_step_pending = false;
+		}
+
+		if (effects.dma)
 		{
 			m_dma_active = true;
 			m_dma_for_fma = false;
@@ -2613,13 +2806,19 @@ void cdi_dvc_device::write(offs_t offset, uint16_t data, uint16_t mem_mask)
 			m_dma_last_word = 0;
 			m_dma_req_callback(ASSERT_LINE);
 		}
-		if (m_fmv_system_command & 0x8000)
+		if (effects.dma)
 			LOGMASKED(LOG_DMA, "%s: FMV DMA requested\n", machine().describe_context());
 		break;
+	}
 	case 0xe040c2:
 	{
 		COMBINE_DATA(&m_fmv_video_command);
 		cdi_dvc::video_command_effects const effects = cdi_dvc::decode_video_command(m_fmv_video_command);
+		LOGMASKED(LOG_SEQUENCE,
+				"DVC_FMV_TRACE video-command value=%04x mask=%04x queue=%u visible=%u output=%u ctx=%s\n",
+				m_fmv_video_command, mem_mask, unsigned(m_video_queue.size()),
+				m_video_visible ? 1U : 0U, m_video_output_enabled ? 1U : 0U,
+				machine().describe_context());
 
 		if (effects.register_update && effects.scroll)
 		{
@@ -2667,6 +2866,9 @@ void cdi_dvc_device::write(offs_t offset, uint16_t data, uint16_t mem_mask)
 	case 0xe040c4:
 		COMBINE_DATA(&m_fmv_stream);
 		m_fmv_stream &= 0x000f;
+		LOGMASKED(LOG_SEQUENCE,
+				"DVC_FMV_TRACE stream value=%u mask=%04x ctx=%s\n",
+				m_fmv_stream, mem_mask, machine().describe_context());
 		break;
 	case 0xe040dc:
 		COMBINE_DATA(&m_fmv_interrupt_vector);

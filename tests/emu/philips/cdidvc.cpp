@@ -6,6 +6,7 @@
 
 #include "catch.hpp"
 
+#include "cdidvc_save_state.h"
 #include "cdidvc_utils.h"
 
 #define PLM_NO_STDIO
@@ -156,8 +157,115 @@ TEST_CASE("CD-i DVC FMV interrupt masks match VMPEG status bits", "[emu][philips
 	REQUIRE(cdi_dvc::FMV_IRQ_END_SEQUENCE == 0x0200);
 	REQUIRE(cdi_dvc::FMV_IRQ_END_ISO == 0x0400);
 	REQUIRE(cdi_dvc::FMV_IRQ_VSYNC == 0x0800);
+	REQUIRE(cdi_dvc::FMV_IRQ_PAUSE == 0x1000);
 	REQUIRE(cdi_dvc::FMV_IRQ_CLIP_UPDATE == 0x2000);
 	REQUIRE(cdi_dvc::FMV_IRQ_GEOMETRY_LATCH == 0x2080);
+}
+
+TEST_CASE("CD-i DVC system command bits expose playback and decoder effects", "[emu][philips][dvc]")
+{
+	for (uint32_t command = 0; command <= 0xffff; ++command)
+	{
+		cdi_dvc::system_command_effects const effects =
+			cdi_dvc::decode_system_command(uint16_t(command));
+		REQUIRE(effects.play == bool(command & 0x0008));
+		REQUIRE(effects.pause == bool(command & 0x0010));
+		REQUIRE(effects.continue_playback == bool(command & 0x0020));
+		REQUIRE(effects.step == bool(command & 0x0040));
+		REQUIRE(effects.stop == bool(command & 0x0080));
+		REQUIRE(effects.clear_fifo == bool(command & 0x0100));
+		REQUIRE(effects.decoder_on == bool(command & 0x1000));
+		REQUIRE(effects.decoder_off == bool(command & 0x2000));
+		REQUIRE(effects.dma == bool(command & 0x8000));
+	}
+}
+
+TEST_CASE("CD-i DVC compressed input status honors the VMPEG high-water boundary", "[emu][philips][dvc]")
+{
+	REQUIRE(cdi_dvc::FMV_INPUT_FIFO_HIGH_WATER_BYTES == 28'000);
+	REQUIRE(cdi_dvc::FMV_OUTPUT_FIFO_PICTURES == 3);
+	REQUIRE(cdi_dvc::fmv_input_status(0) == cdi_dvc::FMV_STATUS_INPUT_READY);
+	REQUIRE(cdi_dvc::fmv_input_status(27'999) == cdi_dvc::FMV_STATUS_INPUT_READY);
+	REQUIRE(cdi_dvc::fmv_input_status(28'000) == cdi_dvc::FMV_STATUS_INPUT_READY);
+	REQUIRE(cdi_dvc::fmv_input_status(28'001) == 0);
+}
+
+TEST_CASE("CD-i DVC frame-period register converts millihertz to 90 kHz ticks", "[emu][philips][dvc]")
+{
+	REQUIRE(cdi_dvc::fmv_frame_period_90khz(0) == 0);
+	REQUIRE(cdi_dvc::fmv_frame_period_90khz(25'000) == 3'600);
+	REQUIRE(cdi_dvc::fmv_frame_period_90khz(29'970) == 3'003);
+	REQUIRE(cdi_dvc::fmv_frame_period_90khz(30'000) == 3'000);
+}
+
+TEST_CASE("CD-i DVC video replay pump events preserve offset flush and frame target", "[emu][philips][dvc]")
+{
+	uint64_t const event = cdi_dvc::save_video_replay_pump_event(0x0123456, true, 0x12345678);
+	REQUIRE(cdi_dvc::save_video_replay_pump_offset(event) == 0x0123456);
+	REQUIRE(cdi_dvc::save_video_replay_pump_flush(event));
+	REQUIRE(cdi_dvc::save_video_replay_pump_frames(event) == 0x12345678);
+
+	uint64_t const plain = cdi_dvc::save_video_replay_pump_event(
+			cdi_dvc::SAVE_VIDEO_REPLAY_CAPACITY, false, 3);
+	REQUIRE(cdi_dvc::save_video_replay_pump_offset(plain)
+			== cdi_dvc::SAVE_VIDEO_REPLAY_CAPACITY);
+	REQUIRE_FALSE(cdi_dvc::save_video_replay_pump_flush(plain));
+	REQUIRE(cdi_dvc::save_video_replay_pump_frames(plain) == 3);
+}
+
+TEST_CASE("CD-i DVC presentation storage rejects unsafe restored states", "[emu][philips][dvc]")
+{
+	REQUIRE(cdi_dvc::video_present_frame_fits(false, 0, 0, 0));
+	REQUIRE(cdi_dvc::video_present_frame_fits(true, 1, 1, 1));
+	REQUIRE(cdi_dvc::video_present_frame_fits(
+			true, cdi_dvc::SAVE_VIDEO_MAX_WIDTH, cdi_dvc::SAVE_VIDEO_MAX_HEIGHT,
+			cdi_dvc::SAVE_VIDEO_PIXELS_PER_FRAME));
+
+	REQUIRE_FALSE(cdi_dvc::video_present_frame_fits(true, 0, 0, 0));
+	REQUIRE_FALSE(cdi_dvc::video_present_frame_fits(true, 320, 240, 0));
+	REQUIRE_FALSE(cdi_dvc::video_present_frame_fits(true, 320, 240, 320 * 240 - 1));
+	REQUIRE_FALSE(cdi_dvc::video_present_frame_fits(false, 320, 240, 0));
+	REQUIRE_FALSE(cdi_dvc::video_present_frame_fits(false, 0, 0, 1));
+	REQUIRE_FALSE(cdi_dvc::video_present_frame_fits(
+			true, cdi_dvc::SAVE_VIDEO_MAX_WIDTH + 1, 1,
+			cdi_dvc::SAVE_VIDEO_MAX_WIDTH + 1));
+}
+
+TEST_CASE("CD-i DVC picture interrupts follow the presented generation", "[emu][philips][dvc]")
+{
+	cdi_dvc::presentation_picture_event event = cdi_dvc::make_presentation_picture_event(
+			cdi_dvc::FMV_IRQ_SEQUENCE | cdi_dvc::FMV_IRQ_GOP,
+			true, 41, 42);
+	REQUIRE(event.interrupts ==
+			(cdi_dvc::FMV_IRQ_PICTURE | cdi_dvc::FMV_IRQ_SEQUENCE | cdi_dvc::FMV_IRQ_GOP));
+	REQUIRE_FALSE(event.end_of_data);
+
+	event = cdi_dvc::make_presentation_picture_event(
+			cdi_dvc::FMV_IRQ_SEQUENCE | cdi_dvc::FMV_IRQ_GOP,
+			true, 42, 42);
+	REQUIRE(event.interrupts ==
+			(cdi_dvc::FMV_IRQ_PICTURE | cdi_dvc::FMV_IRQ_SEQUENCE
+				| cdi_dvc::FMV_IRQ_GOP | cdi_dvc::FMV_IRQ_END_OF_DATA));
+	REQUIRE(event.end_of_data);
+}
+
+TEST_CASE("CD-i DVC picture FIFO count saturates to the VMPEG register width", "[emu][philips][dvc]")
+{
+	REQUIRE(cdi_dvc::fmv_pictures_in_fifo(0) == 0);
+	REQUIRE(cdi_dvc::fmv_pictures_in_fifo(1) == 1);
+	REQUIRE(cdi_dvc::fmv_pictures_in_fifo(0x7e) == 0x7e);
+	REQUIRE(cdi_dvc::fmv_pictures_in_fifo(0x7f) == 0x7f);
+	REQUIRE(cdi_dvc::fmv_pictures_in_fifo(0x10000) == 0x7f);
+}
+
+TEST_CASE("CD-i DVC decoding timestamp status exposes the VMPEG reduced view", "[emu][philips][dvc]")
+{
+	REQUIRE(cdi_dvc::FMV_VDI_DECODING_TIMESTAMP_UPDATED == 0x4000);
+	REQUIRE(cdi_dvc::fmv_reduced_decoding_timestamp(0) == 0);
+	REQUIRE(cdi_dvc::fmv_reduced_decoding_timestamp(0x7f) == 0);
+	REQUIRE(cdi_dvc::fmv_reduced_decoding_timestamp(0x80) == 1);
+	REQUIRE(cdi_dvc::fmv_reduced_decoding_timestamp(uint64_t(0x7fff) << 7) == 0x7fff);
+	REQUIRE(cdi_dvc::fmv_reduced_decoding_timestamp(uint64_t(0x8000) << 7) == 0);
 }
 
 TEST_CASE("CD-i DVC picture events follow MPEG reference-frame reordering", "[emu][philips][dvc]")
