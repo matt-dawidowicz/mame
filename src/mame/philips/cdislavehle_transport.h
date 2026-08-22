@@ -30,15 +30,35 @@ constexpr bool reset_pointer_input_enabled(bool previous) noexcept
 	return false;
 }
 
-// A response may exist in a channel before its interrupt deadline expires.
-// Stage-10E behavior effectively made every prepared response immediately
-// readable and allowed every pending response to hold IRQ asserted.
-// These helpers keep queued response data separate from response readiness.
+// Keep every externally supplied channel/index/count value inside the fixed
+// transport storage before the device indexes a channel or response byte.
+constexpr bool channel_index_valid(std::size_t index, std::size_t channel_count) noexcept
+{
+	return index < channel_count;
+}
+
 constexpr bool input_write_fits(std::size_t index, std::size_t capacity) noexcept
 {
 	return index < capacity;
 }
 
+constexpr bool response_window_fits(
+	std::size_t index,
+	std::size_t count,
+	std::size_t capacity) noexcept
+{
+	// Empty responses are normalized to index zero.  A non-empty response must
+	// keep the complete unread window within the fixed output buffer.
+	if (count == 0)
+		return index == 0;
+
+	return index < capacity && count <= capacity - index;
+}
+
+// A response may exist in a channel before its interrupt deadline expires.
+// Stage-10E behavior effectively made every prepared response immediately
+// readable and allowed every pending response to hold IRQ asserted.
+// These helpers keep queued response data separate from response readiness.
 constexpr bool response_ready_on_prepare(bool immediate) noexcept
 {
 	return immediate;
