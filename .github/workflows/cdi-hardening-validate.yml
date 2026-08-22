@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - cdi-hardening-slave-100
+  pull_request:
   workflow_dispatch:
 
 permissions:
