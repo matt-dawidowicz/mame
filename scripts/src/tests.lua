@@ -70,6 +70,7 @@ project("mametests")
 		MAME_DIR .. "tests/emu/philips/cdislavehle_pointer.cpp",
 		MAME_DIR .. "tests/emu/philips/cdislavehle_transport.cpp",
 		MAME_DIR .. "tests/emu/philips/cdislavehle_response_ready.cpp",
+		MAME_DIR .. "tests/emu/philips/cdi_hardening.cpp",
 		MAME_DIR .. "tests/emu/philips/cdidvc_timestamp_format.cpp",
 		MAME_DIR .. "tests/emu/philips/cdidvc_pes_format.cpp",
 		MAME_DIR .. "tests/emu/philips/cdidvc_dclk_wrap.cpp",
@@ -78,4 +79,3 @@ project("mametests")
 		MAME_DIR .. "tests/emu/attotime.cpp",
 		MAME_DIR .. "tests/emu/video/rgbutil.cpp",
 	}
-
