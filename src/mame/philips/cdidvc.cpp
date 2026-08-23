@@ -88,6 +88,7 @@ void cdi_dvc_device::device_start()
 	save_item(NAME(m_fmv_interrupt_status));
 	save_item(NAME(m_fmv_timer_compare));
 	save_item(NAME(m_fmv_system_command));
+	save_item(NAME(m_fmv_system_control));
 	save_item(NAME(m_fmv_video_command));
 	save_item(NAME(m_fmv_video_data_input_command));
 	save_item(NAME(m_fmv_playback_active));
@@ -765,6 +766,7 @@ void cdi_dvc_device::device_reset()
 	m_fmv_interrupt_status = 0;
 	m_fmv_timer_compare = FMV_TIMER_COMPARE_RESET_COMPAT_VALUE;
 	m_fmv_system_command = 0;
+	m_fmv_system_control = 0;
 	m_fmv_video_command = 0;
 	m_fmv_video_data_input_command = 0;
 	m_fmv_playback_active = false;
@@ -2879,6 +2881,10 @@ void cdi_dvc_device::write(offs_t offset, uint16_t data, uint16_t mem_mask)
 		}
 		break;
 	}
+	case 0xe040c6:
+		COMBINE_DATA(&m_fmv_system_control);
+		break;
+
 	case 0xe040c4:
 		COMBINE_DATA(&m_fmv_stream);
 		m_fmv_stream &= 0x000f;

@@ -148,6 +148,7 @@ private:
 	uint16_t m_fmv_interrupt_status = 0;
 	uint16_t m_fmv_timer_compare = FMV_TIMER_COMPARE_RESET_COMPAT_VALUE;
 	uint16_t m_fmv_system_command = 0;
+	uint16_t m_fmv_system_control = 0;
 	uint16_t m_fmv_video_command = 0;
 	uint16_t m_fmv_video_data_input_command = 0;
 	bool m_fmv_playback_active = false;
