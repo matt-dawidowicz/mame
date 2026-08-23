@@ -237,6 +237,7 @@ void cdi_dvc_device::device_start()
 	save_item(NAME(m_video_have_sequence));
 	save_item(NAME(m_video_sequence_end_pending));
 	save_item(NAME(m_video_decoder_flush_pending));
+	save_item(NAME(m_video_decoder_waiting_for_input));
 	save_item(NAME(m_video_sequence_end_events));
 	save_item(NAME(m_video_last_picture_generation));
 	save_item(NAME(m_video_last_picture_pending));
@@ -957,7 +958,9 @@ uint16_t cdi_dvc_device::read(offs_t offset, uint16_t mem_mask)
 	{
 		size_t const buffered_video_bytes = m_video_buffer
 				? plm_buffer_get_remaining(m_video_buffer) : 0;
-		result = cdi_dvc::fmv_input_status(buffered_video_bytes);
+		result = cdi_dvc::fmv_input_status_from_backend(
+				buffered_video_bytes,
+				m_video_decoder_waiting_for_input);
 		if (!machine().side_effects_disabled())
 		{
 			LOGMASKED(LOG_SEQUENCE,
@@ -1658,6 +1661,7 @@ void cdi_dvc_device::video_decoder_reset()
 	m_video_have_sequence = false;
 	m_video_sequence_end_pending = false;
 	m_video_decoder_flush_pending = false;
+	m_video_decoder_waiting_for_input = false;
 	m_video_sequence_end_events = 0;
 	m_video_last_picture_generation = 0;
 	m_video_last_picture_pending = false;
@@ -1797,6 +1801,7 @@ void cdi_dvc_device::video_decoder_pump(bool end_signalled)
 	uint32_t const decoded_before = m_video_decoded_frames;
 	if (!m_video_decoder || !m_video_have_sequence || !m_fmv_decoder_enabled)
 	{
+		m_video_decoder_waiting_for_input = false;
 		if (end_signalled
 				&& m_video_replay_pump_events.size() < cdi_dvc::SAVE_VIDEO_REPLAY_PUMP_EVENTS)
 		{
@@ -1806,13 +1811,23 @@ void cdi_dvc_device::video_decoder_pump(bool end_signalled)
 		return;
 	}
 
+	m_video_decoder_waiting_for_input = false;
 	bool decoder_exhausted = false;
-	while (m_video_queue.size() < cdi_dvc::FMV_OUTPUT_FIFO_PICTURES)
+
+	// Host-decoder adaptation, not a guest-visible VMPEG FIFO rule:
+	// Decouple host MPEG decode-ahead depth from the nominal three-picture
+	// VMPEG presentation/FIFO model.  MiSTer's PL_MPEG backend is allowed
+	// to decode ahead into a substantially deeper host queue so compressed
+	// input consumption is not artificially stalled by presentation depth.
+	constexpr std::size_t backend_decode_ahead_pictures = 26;
+
+	while (m_video_queue.size() < backend_decode_ahead_pictures)
 	{
 		plm_frame_t *const frame = plm_video_decode(m_video_decoder);
 		if (!frame)
 		{
 			decoder_exhausted = true;
+			m_video_decoder_waiting_for_input = !end_signalled;
 			break;
 		}
 
@@ -1923,6 +1938,7 @@ void cdi_dvc_device::video_decoder_pump(bool end_signalled)
 					unsigned(cdi_dvc::SAVE_VIDEO_REPLAY_PUMP_EVENTS));
 		}
 	}
+
 }
 
 void cdi_dvc_device::video_decoder_flush()

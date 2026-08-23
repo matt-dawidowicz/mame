@@ -344,6 +344,11 @@ private:
 
 	plm_buffer_t *m_video_buffer = nullptr;
 	plm_video_t *m_video_decoder = nullptr;
+
+	// Host-decoder adaptation state.  Stock PL_MPEG requires the next
+	// picture start code before consuming the current incomplete picture.
+	// This must not be confused with physical VMPEG input FIFO occupancy.
+	bool m_video_decoder_waiting_for_input = false;
 	uint32_t m_video_es_prefix = 0;
 	uint32_t m_video_sequence_headers = 0;
 	uint32_t m_video_gop_headers = 0;

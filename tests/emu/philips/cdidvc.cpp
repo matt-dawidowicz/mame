@@ -190,6 +190,22 @@ TEST_CASE("CD-i DVC compressed input status honors the VMPEG high-water boundary
 	REQUIRE(cdi_dvc::fmv_input_status(28'001) == 0);
 }
 
+TEST_CASE("CD-i DVC incomplete MPEG pictures cannot deadlock compressed input", "[emu][philips][dvc]")
+{
+	// Dragon's Lair reached this exact state: stock PL_MPEG retained
+	// 28,380 bytes while waiting for the next picture start code.
+	// Treating those retained bytes as physical FIFO occupancy prevents
+	// the firmware from supplying the data PL_MPEG itself requires.
+	REQUIRE(cdi_dvc::fmv_input_status_from_backend(28'380, false) == 0);
+	REQUIRE(cdi_dvc::fmv_input_status_from_backend(
+			28'380, true) == cdi_dvc::FMV_STATUS_INPUT_READY);
+
+	// The underlying hardware high-water rule remains unchanged.
+	REQUIRE(cdi_dvc::fmv_input_status_from_backend(
+			28'000, false) == cdi_dvc::FMV_STATUS_INPUT_READY);
+	REQUIRE(cdi_dvc::fmv_input_status_from_backend(28'001, false) == 0);
+}
+
 TEST_CASE("CD-i DVC frame-period register converts millihertz to 90 kHz ticks", "[emu][philips][dvc]")
 {
 	REQUIRE(cdi_dvc::fmv_frame_period_90khz(0) == 0);

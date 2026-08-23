@@ -163,6 +163,21 @@ constexpr uint16_t fmv_input_status(std::size_t buffered_bytes)
 		? uint16_t(0) : FMV_STATUS_INPUT_READY;
 }
 
+// Backend adaptation, not a hardware FIFO rule.
+//
+// Stock PL_MPEG retains the bytes of an incomplete picture until the next
+// picture start code arrives.  A streaming MPEG decoder can consume those
+// bytes progressively, so PL_MPEG's retained-byte count cannot be exposed
+// directly as guest-visible VMPEG FIFO occupancy while the decoder is
+// explicitly waiting for more picture data.
+constexpr uint16_t fmv_input_status_from_backend(
+		std::size_t retained_bytes, bool decoder_waiting_for_input)
+{
+	return decoder_waiting_for_input
+		? FMV_STATUS_INPUT_READY
+		: fmv_input_status(retained_bytes);
+}
+
 // GEN_FRAME_PERIOD is expressed in 90 kHz ticks.  PL_MPEG exposes the parsed
 // frame rate in millihertz, so round the reciprocal to the nearest tick.
 constexpr uint16_t fmv_frame_period_90khz(uint32_t framerate_millihz)
