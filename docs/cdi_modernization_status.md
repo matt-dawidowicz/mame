@@ -1,6 +1,6 @@
 # Philips CD-i modernization status
 
-Last reviewed: 2026-08-23
+Last reviewed: 2026-08-24
 
 Branch: `cdi-dvc-modernization`
 
@@ -51,6 +51,78 @@ Implemented in this checkpoint:
 - deterministic reset/save coverage for QHY line state and an explicit cursor-blink reset;
 - focused tests for timing profiles, ICA/DCA/IRQ control, QHY stream vectors, 2-D interpolation, 8-bit quantizer deltas, and external-video eligibility.
 
+## Phase C checkpoint
+
+Scope: make the Mono-I CDIC HLE an explicit, auditable command/sector/buffer/audio/IRQ state model without attempting an unsupported MCU LLE rewrite. No title-, LBA-, BIOS-, or checksum-specific path was added.
+
+Evidence boundary: no public IMS66490 data sheet was found. Board-level interrupt, DMA, clock, SRAM, and audio-DSP topology is supported by the Philips CD-i 210/20/25 service manual. Register observations, first-buffer order, command traces, and AUDCTL/IRQ behavior are independently recorded in the MiSTer CD-i core at revision `8894b795f0b85956127372e5172b73278aea3655`; those are **R/S**, not a substitute for a chip specification. The six-sector seek delay and synthesized TOC remain explicit **C** behavior.
+
+Implemented in this checkpoint:
+
+- a testable command descriptor separating start, immediate stop, and stop-after-next-physical-sector effects;
+- explicit idle/seeking/reading transport state with save/reset coverage;
+- Mode 2 file/channel/message/EOF/EOR/TRIG filtering as a pure decision, separate from physical LBA advancement;
+- independent data and audio double-buffer selectors: first data delivery uses buffer 1, while first audio delivery uses buffer 0;
+- CPU-visible buffer completion separated from audio decode/playback;
+- XBUF IRQ gated by DBUF enable, ABUF IRQ gated by AUDCTL bit 13, and read-to-clear source acknowledgements;
+- AUDCTL bit 0 changed from a synthetic read toggle to decoder-termination read-to-clear status;
+- failed sector reads terminate the HLE command instead of delivering a fabricated zero sector;
+- XA predictor arithmetic and supported coding duration moved to tested pure helpers without changing the established coefficient model;
+- DSEL and new transport/buffer selectors receive deterministic reset values.
+
+### CDIC command audit
+
+| Command | Implementation | Timing / completion / IRQ | Evidence and remaining boundary |
+| --- | --- | --- | --- |
+| `0x23` Reset Mode 1 | Partial: does not start a read; while active, the live command stops after the next physical sector. | Stop is checked after physical arrival even when filtering suppresses delivery. | R, S, T (`[cdic][command]`, `[cdic][reset]`). Exact command-complete status and idle behavior are **U**. |
+| `0x24` Reset Mode 2 | Same modeled stop semantics as `0x23`. | Same physical-sector boundary. | R, S, T. Exact distinction from `0x23` outside an active read is **U**. |
+| `0x27` Fetch TOC | Partial: enters TOC operation and synthesizes Q packets from MAME TOC metadata. | Uses the compatibility seek delay; XBUF follows visible buffer completion. | S, C. Packet ordering, lead-in cadence, mixed-mode descriptors, and stored subcode use are not hardware-proven. |
+| `0x28` Play CDDA | Partial: reads raw sectors, decodes CDDA each sector, exposes a CPU buffer once per second. | 75 Hz physical scheduling; visible XBUF at fraction zero. | R, S. Exact CDDA start/stop and subcode timing remain **U/C**. |
+| `0x29` Read Mode 1 | Implemented HLE read at BCD MSF, with data double buffering. | Six-sector startup delay is **C**; each successful physical read advances LBA. | S, T. Error/status and servo seek completion are **U**. |
+| `0x2a` Read Mode 2 | Implemented HLE read with file/channel filtering and separate audio-buffer selection. | Filtered sectors advance physically without a visible buffer or IRQ; EOF stops after accepted delivery. | R, S, T (`[cdic][sector]`, `[cdic][buffer]`). Filter edge behavior lacks an IMS66490 specification. |
+| `0x2b` Stop CDDA | Cancels the current disc operation immediately. | No modeled completion IRQ. | S. Whether it also flushes all audio pipeline state is **U**. |
+| `0x2c` Seek | Compatibility behavior: starts the same Mode 1 read path as `0x29`. | Same fixed delay and visible sector completion as Mode 1. | C. A true seek-only command-complete state is **U**. |
+| `0x2e` Update | Accepted and command-strobe bit cleared; no other effect. | No timing or IRQ. | U/C fixed no-op. |
+| Other values | Bounded unknown command; no fabricated response or transport mutation. | DBUF command-strobe bit still self-clears. | U, T. |
+
+### CDIC register audit
+
+| Register | Read/write and reset | Side effects / IRQ / timing | Evidence and remaining boundary |
+| --- | --- | --- | --- |
+| COMMAND `0x3c00` | 16-bit R/W; reset zero. | DBUF bit 15 accepts the command; reset commands are also observed live at the physical-sector boundary. | R, S, T. Unsupported commands are logged/ignored. |
+| TIME `0x3c02-05` | 32-bit word-lane R/W; reset zero. | BCD MSF converts to logical LBA; fraction bit 7 requests whole-second positioning. | S, T (`[cdic][command]`). Invalid BCD handling is **U**. |
+| FILE `0x3c06` | 16-bit R/W; reset zero. | High byte filters Mode 2 file number. | R, S, T (`[cdic][filter]`). Low byte is retained but unexplained. |
+| CHANNEL `0x3c08-0b` | 32-bit word-lane R/W; reset all ones. | Safely selects Mode 2 channels 0-31. | R, S, T. Reset mask is existing **C** behavior. |
+| AUDIO CHANNEL `0x3c0c` | 16-bit R/W; reset all ones. | Selects audio channels 0-15 after the data-channel filter. | R, S, T. Reset mask is existing **C** behavior. |
+| DSEL `0x3c80` | 16-bit R/W; now deterministic zero reset. | No modeled effect. | U/C fixed storage. |
+| ABUF `0x3ff4` | 16-bit R/W; reset zero; bit 15 read-to-clear. | IRQ source only when AUDCTL bit 13 enables it. | R, S, T (`[cdic][irq]`). Remaining low bits are unexplained storage. |
+| XBUF `0x3ff6` | 16-bit R/W; reset zero; bit 15 read-to-clear. | Set on CPU-visible sector completion; IRQ requires DBUF bit 14. | R, S, T (`[cdic][irq]`). Remaining low bits are unexplained storage. |
+| DMACTL `0x3ff8` | 16-bit R/W; reset zero. | Address selects CDIC SRAM operand; SCC68070 channel 1 owns memory cycles and completion. | H, S, prior SCC tests. Address masks and request-edge timing remain incomplete. |
+| AUDCTL `0x3ffa` | 16-bit R/W; reset zero; bit 0 read-to-clear. | Bit 13 gates ABUF IRQ in this HLE; bit 0 reports `0xff` sound-map termination. Existing sound-map arm/address interpretation is retained. | R, S, T. Bit 11/13 playback ownership and low-bit read behavior still need direct traces. |
+| IVEC `0x3ffc` | 16-bit R/W; compatibility reset `0x000f`. | Low byte is returned on IACK; no acknowledge side effect. | H for daisy-chain topology, S. Reset value and IACK edge timing are **C/U**. |
+| DBUF `0x3ffe` | 16-bit R/W; reset zero. | Bit 15 accepts a command then clears; bit 14 enables reading/XBUF IRQ; bits 2/0 identify audio/data and buffer; clearing bit 14 cancels transport and resets selectors. | R, S, T (`[cdic][command]`, `[cdic][buffer]`, `[cdic][irq]`, `[cdic][reset]`). Other bits are unexplained storage. |
+
+### CDIC sector, audio, and state audit
+
+| Area | Current result | Evidence and tests | Remaining boundary |
+| --- | --- | --- | --- |
+| Physical versus visible progress | Physical 75 Hz reads and LBA advancement are owned by the transport; filters decide only CPU-visible delivery. Reset-after-sector is outside the delivery path. | S, T (`[cdic][sector][filter]`). | Servo seek/track-loss timing and command-complete pins are not modeled. |
+| Mode 1 | Raw sector is copied without Mode 2 filters into alternating data buffers. | S, T (`[cdic][buffer]`). | Mode mismatch, EDC/ECC status, and error flags are not modeled. |
+| Mode 2 filters | File must match; EOF/EOR/TRIG bypass applicability/channel checks after file match; message sectors are skipped; otherwise channel mask selects. | R, S, T (`[cdic][filter]`). | Conflicts need hardware traces rather than title exceptions. |
+| Buffer completion | Data and audio each alternate independently and report the just-completed buffer through DBUF. XBUF asserts only for delivered sectors. | R, S, T (`[cdic][buffer]`, `[cdic][irq]`). | CPU/DSP/SRAM contention is not cycle-accurate. |
+| XA ADPCM | 4/8-bit, mono/stereo, 18.9/37.8 kHz supported combinations retain the established predictor; reserved encodings are rejected. | S, T (`[cdic][xa]`). | De-emphasis, malformed-group signaling, and silicon rounding captures are missing. |
+| CDDA/XA transitions | A new disc audio sector stops sound-map decoding; sound-map termination status is explicit. | S, T. | DAC queue flush/mute edges and exact AUDCTL playback gating remain **U**. |
+| TOC/subcode | Existing Q synthesis is retained and audited as **C**. | S, C. | No claim of exact lead-in packet order, P-W delivery, CRC polynomial initialization, or multi-session behavior. |
+| End of disc | Failed image reads stop the operation without delivering zero data. | S, T at helper/state boundary. | Hardware error/status/IRQ response is **U**. |
+| Attenuation | Four cross-mix attenuation bytes remain logarithmic float scaling. | S. | Quantization, mute timing, and DSP saturation are not hardware-captured. |
+
+CDIC confidence after this checkpoint:
+
+- Functional: `[#######---] 70%`
+- Hardware fidelity: `[#####-----] 50%`
+- Evidence: service-manual topology, third-party hardware observations, independent RTL, source history, synthetic tests, and compatibility models explicitly marked above.
+- Remaining: authoritative register documentation; seek/command completion; TOC/subcode; EDC/ECC/error status; exact AUDCTL/audio timing; cycle-level DMA/IRQ behavior.
+
 ## MCD212 display-pipeline audit
 
 | Area | Current result | Evidence and tests | Remaining boundary |
@@ -94,7 +166,7 @@ Implemented in this checkpoint:
 | --- | ---: | --- | --- |
 | SCC68070 internal peripherals | `[######----] 60%` | Register audit plus focused DMA/IRQ/I2C/UART/MMU tests. | Implement Timer 1/2 only after input routing is identified; trace MMU-enabled firmware before translation. |
 | MCD212 video | `[#######---] 70%` | Primary-document audit, QHY vectors, timing/control tests, and linked CD-i validation target. | Capture QHY, cursor, transparency, region, and interlace field output from Extended Case hardware. |
-| CDIC | `[######----] 60%` | Existing CD-i peripheral tests and SCC-owned channel-1 DMA client. | Trace command/sector/DMA completion order under real firmware. |
+| CDIC | `[#######---] 70%` functional / `[#####-----] 50%` fidelity | Command/register audit, independent state/filter/buffer/IRQ/XA tests, and SCC-owned DMA client. | Capture seek completion, AUDCTL, TOC/subcode, and error/IRQ behavior on hardware. |
 | SLAVE/HLE | `[#####-----] 50%` | Pointer, transport, response-ready, and hardening tests. | Replace HLE behavior only with MCU/firmware trace evidence. |
 | SERVO/MCU | `[###-------] 30%` | Mostly existing HLE/integration behavior. | Capture command/response timing from a known firmware/disc pair. |
 | DVC | `[#####-----] 50%` | Broad native DVC tests and SCC-owned DMA path; prior runtime vertical-slice evidence. | Compare PES/DMA/status/IRQ traces at the first failing scene; no title-specific bypasses. |
@@ -119,6 +191,12 @@ Implemented in this checkpoint:
 - QHY first-even-field boundary reuse and interpolation rounding for odd sums remain explicit unknowns pending hardware/full-frame evidence.
 - The native overlay regression covers MCD212 eligibility and the DVC suite independently; it is not a live combined-device or gameplay proof.
 - DCP/DDR reset retention of the six pointer MSBs is ambiguous in the MCD212 wording; this checkpoint retains deterministic zero reset.
+- No IMS66490 data sheet is available in the reviewed sources. CDIC command/register semantics beyond board topology are classified from firmware, hardware observations, independent implementations, tests, or compatibility behavior rather than promoted to hardware fact.
+- CDIC seek uses a six-sector fixed delay because the HLE has no servo position/feedback model. This is a compatibility value, not a hardware timing claim.
+- CDIC `0x2c` Seek remains equivalent to starting Mode 1 delivery. A seek-only completion state must not be invented without firmware/hardware evidence.
+- CDIC Fetch TOC remains synthesized from image metadata. Packet order, mixed-mode/multi-session behavior, P-W subcode, and exact completion signaling are unresolved.
+- CDIC end-of-disc now terminates without a fabricated sector, but the hardware error/status/IRQ response is unknown.
+- CDIC DSEL, IVEC reset, unused ABUF/XBUF/DBUF bits, and some AUDCTL fields remain stored or fixed compatibility values.
 
 ## Phase A validation gates
 
@@ -166,3 +244,27 @@ Latest result (2026-08-23):
 No commercial title was required or run for this phase. There is no post-change QHY hardware capture, no post-change DVC gameplay result, and no direct combined MCD212-to-DVC overlay fixture. These are follow-up evidence requirements, not passed gates.
 
 Phase C requires separate authorization and must begin from the unresolved evidence items above.
+
+## Phase C validation gates
+
+The checkpoint may be committed only when all of the following pass from the same tree:
+
+1. focused CDIC command/state and BCD-position tests;
+2. sector filtering and independent buffer tests;
+3. XA predictor/coding tests;
+4. IRQ acknowledgement/gating and reset tests;
+5. complete Philips and native `mametests` suites;
+6. warnings-enabled CD-i validation/emulator build with `-j2`;
+7. `cdivalidate -validate`;
+8. `git diff --check` and exact-path/hunk staging that excludes pre-existing traces.
+
+Latest result (2026-08-24):
+
+- focused CDIC: **PASS**, 69 assertions in 8 cases;
+- all Philips tests: **PASS**, 1,283,794 assertions in 88 cases;
+- complete native suite: **PASS**, 1,284,876 assertions in 105 cases;
+- regenerated warnings-enabled `cdivalidate` build (`TESTS=1`, `-j2`): **PASS**;
+- `cdivalidate -validate`: **PASS** (exit zero, no diagnostics);
+- exact-path `git diff --check`: **PASS**.
+
+No commercial title is required for this phase. BrainDead 13 and other title-specific regressions remain parked. The gates establish deterministic HLE behavior and regression safety; they do not establish cycle-accurate IMS66490 behavior.

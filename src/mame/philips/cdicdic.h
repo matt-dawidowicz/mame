@@ -26,6 +26,8 @@ TODO:
 
 #pragma once
 
+#include "cdicdic_state.h"
+
 #include "imagedev/cdromimg.h"
 #include "machine/scc68070.h"
 #include "sound/cdda.h"
@@ -177,9 +179,12 @@ private:
 
 	emu_timer *m_sector_timer;
 	uint8_t m_disc_command;
+	uint8_t m_disc_state;
 	uint8_t m_disc_mode;
 	uint8_t m_disc_spinup_counter;
 	uint32_t m_curr_lba;
+	uint8_t m_next_data_buffer;
+	uint8_t m_next_audio_buffer;
 
 	emu_timer *m_audio_timer;
 	uint8_t m_audio_sector_counter;
@@ -204,11 +209,10 @@ private:
 
 	void descramble_sector(uint8_t *buffer);
 	bool is_valid_sector(const uint8_t *buffer);
-	bool is_mode2_sector_selected(const uint8_t *buffer);
-	bool is_mode2_audio_selected(const uint8_t *buffer);
+	cdic_hle::sector_decision mode2_sector_decision(const uint8_t *buffer) const;
 
 	void process_disc_sector();
-	void process_sector_data(const uint8_t *buffer, const uint8_t *subcode_buffer);
+	void process_sector_data(const uint8_t *buffer, const uint8_t *subcode_buffer, bool audio_sector);
 	void init_disc_read(uint8_t disc_mode);
 	void cancel_disc_read();
 	void handle_cdic_command();
@@ -219,7 +223,6 @@ private:
 
 	static uint8_t get_sector_count_for_coding(uint8_t coding);
 
-	static const int16_t s_xa_filter_coef[4][2];
 	static const int32_t s_samples_per_sector;
 	static const uint16_t s_crc_ccitt_table[256];
 	static const uint8_t s_sector_scramble[2448];
