@@ -11,7 +11,7 @@
 
 TEST_CASE(
 	"CD-i SLAVE delayed responses are not readable before their deadline",
-	"[emu][philips][cdi][pointer][transport][readiness]")
+	"[emu][philips][cdi][slave][pointer][transport][readiness][irq2]")
 {
 	REQUIRE(cdi_slave_transport::response_ready_on_prepare(true));
 	REQUIRE_FALSE(cdi_slave_transport::response_ready_on_prepare(false));
@@ -20,7 +20,7 @@ TEST_CASE(
 
 TEST_CASE(
 	"CD-i SLAVE response readability requires both pending data and readiness",
-	"[emu][philips][cdi][pointer][transport][readiness]")
+	"[emu][philips][cdi][slave][pointer][transport][readiness][irq2]")
 {
 	REQUIRE_FALSE(cdi_slave_transport::response_readable(false, false));
 	REQUIRE_FALSE(cdi_slave_transport::response_readable(false, true));
@@ -31,7 +31,7 @@ TEST_CASE(
 
 TEST_CASE(
 	"CD-i SLAVE only ready responses keep the interrupt asserted",
-	"[emu][philips][cdi][pointer][transport][readiness]")
+	"[emu][philips][cdi][slave][pointer][transport][readiness][irq2]")
 {
 	REQUIRE_FALSE(cdi_slave_transport::response_holds_irq(false, false));
 	REQUIRE_FALSE(cdi_slave_transport::response_holds_irq(false, true));
@@ -42,7 +42,7 @@ TEST_CASE(
 
 TEST_CASE(
 	"CD-i SLAVE four-channel IRQ arbitration ignores pending but unready responses",
-	"[emu][philips][cdi][pointer][transport][readiness]")
+	"[emu][philips][cdi][slave][pointer][transport][readiness][irq2]")
 {
 	// State:
 	// 0 = empty
@@ -90,7 +90,7 @@ TEST_CASE(
 
 TEST_CASE(
 	"CD-i SLAVE delayed disc response cannot hold IRQ after immediate pointer response is consumed",
-	"[emu][philips][cdi][pointer][transport][readiness]")
+	"[emu][philips][cdi][slave][pointer][transport][readiness][irq2]")
 {
 	// Pointer packet has just been fully consumed.
 	const bool pointer_pending = false;

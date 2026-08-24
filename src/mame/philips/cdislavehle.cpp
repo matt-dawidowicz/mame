@@ -8,16 +8,20 @@
 *******************************************************************************
 
 STATUS:
-- Just enough for the Mono-I CD-i board to work somewhat properly.
+- Functional Mono-I command, pointer, response, and IRQ transport HLE.
 
 TODO:
-- Proper LLE.
+- Keep the HLE until SCC68070 /DTACK and the MCU bus wiring can support a
+  trustworthy LLE implementation.
+- Implement currently classified unknown/unimplemented commands only from
+  firmware, hardware documentation, or bus traces.
 
 *******************************************************************************/
 
 #include "emu.h"
 #include "cdislavehle.h"
 #include "cdislavehle_pointer.h"
+#include "cdislavehle_state.h"
 #include "cdislavehle_transport.h"
 
 #define LOG_IRQS        (1U << 1)
@@ -311,290 +315,221 @@ void cdislave_hle_device::prepare_pointer_readback()
 		0xf7);
 }
 
-void cdislave_hle_device::slave_w_mouse(offs_t offset, uint16_t data)
+void cdislave_hle_device::clear_input()
 {
-	if (m_in_index == 1)
+	memset(m_in_buf, 0, sizeof(m_in_buf));
+	m_in_channel = cdi_slave_hle::NO_CHANNEL;
+	m_in_index = 0;
+	m_in_count = 0;
+}
+
+void cdislave_hle_device::execute_command(cdi_slave_hle::command_descriptor descriptor)
+{
+	switch (descriptor.kind)
 	{
-		switch (m_in_buf[0])
-		{
-			case 0x83: // Enable pointer input
-				LOGMASKED(LOG_COMMANDS, "slave_w: Channel %d: Enable Pointer Input (0x83)\n", offset);
-				m_pointer_input_enabled = true;
-				LOGMASKED(LOG_INPUTS, "CDI_INPUT_TRACE pointer-enable channel=%u\n", unsigned(offset));
-				prepare_pointer_readback();
-				memset(m_in_buf, 0, sizeof(m_in_buf));
-				m_in_index = 0;
-				m_in_count = 0;
-				return;
+	case cdi_slave_hle::command::pointer_enable:
+		LOGMASKED(LOG_COMMANDS, "slave_w: Enable Pointer Input (0x83)\n");
+		m_pointer_input_enabled = true;
+		LOGMASKED(LOG_INPUTS, "CDI_INPUT_TRACE pointer-enable channel=0\n");
+		prepare_pointer_readback();
+		break;
 
-			case 0x84: // Disable pointer input
-				LOGMASKED(LOG_COMMANDS, "slave_w: Channel %d: Disable Pointer Input (0x84)\n", offset);
-				m_pointer_input_enabled = false;
-				LOGMASKED(LOG_INPUTS, "CDI_INPUT_TRACE pointer-disable channel=%u\n", unsigned(offset));
-				memset(m_in_buf, 0, sizeof(m_in_buf));
-				m_in_index = 0;
-				m_in_count = 0;
-				return;
-		}
-	}
+	case cdi_slave_hle::command::pointer_disable:
+		LOGMASKED(LOG_COMMANDS, "slave_w: Disable Pointer Input (0x84)\n");
+		m_pointer_input_enabled = false;
+		LOGMASKED(LOG_INPUTS, "CDI_INPUT_TRACE pointer-disable channel=0\n");
+		break;
 
-	const bool set_mouse = m_in_buf[0] >= 0xc0;
+	case cdi_slave_hle::command::pointer_position:
+		LOGMASKED(LOG_COMMANDS, "slave_w: Update Mouse Position (0x%02x)\n", m_in_buf[0]);
+		set_mouse_position();
+		break;
 
-	if (set_mouse)
-	{
-		if (m_in_index == 1)
-		{
-			LOGMASKED(LOG_COMMANDS, "slave_w: Channel %d: Update Mouse Position (0x%02x)\n", offset, data & 0x00ff);
-			m_in_count = 3;
-		}
-		else if (m_in_index == m_in_count)
-		{
-			set_mouse_position();
-			memset(m_in_buf, 0, sizeof(m_in_buf));
-			m_in_index = 0;
-			m_in_count = 0;
-		}
-	}
-	else
-	{
-		LOGMASKED(LOG_COMMANDS | LOG_UNKNOWNS, "slave_w: Channel %d: Unknown register: %02x\n", offset, data & 0x00ff);
+	case cdi_slave_hle::command::keyboard_enable:
+		LOGMASKED(LOG_COMMANDS | LOG_WRITES, "slave_w: Enable Keyboard Events (0x80); event delivery unimplemented\n");
+		m_keyboard_events_enabled = true;
+		break;
 
-		if (m_in_index == 1)
-		{
-			memset(m_in_buf, 0, sizeof(m_in_buf));
-			m_in_index = 0;
-			m_in_count = 0;
-		}
+	case cdi_slave_hle::command::audio_mute:
+		LOGMASKED(LOG_COMMANDS, "slave_w: Mute Audio (0x82)\n");
+		m_dmadac[0]->set_volume(0);
+		m_dmadac[1]->set_volume(0);
+		break;
+
+	case cdi_slave_hle::command::audio_unmute:
+		LOGMASKED(LOG_COMMANDS, "slave_w: Unmute Audio (0x83)\n");
+		m_dmadac[0]->set_volume(0x100);
+		m_dmadac[1]->set_volume(0x100);
+		break;
+
+	case cdi_slave_hle::command::cpu_reset:
+		LOGMASKED(LOG_COMMANDS | LOG_WRITES, "slave_w: Reset Main CPU (0x8a)\n");
+		// The SLAVE owns system reset in the board documentation.  Pulse width
+		// is not documented here, so retain the existing compatibility pulse.
+		m_reset_callback(ASSERT_LINE);
+		m_reset_callback(CLEAR_LINE);
+		break;
+
+	case cdi_slave_hle::command::audio_attenuation:
+		LOGMASKED(LOG_COMMANDS, "slave_w: Set Attenuation Audio (0x%02x)\n", m_in_buf[0]);
+		m_atten_w(
+			(uint32_t(m_in_buf[1]) << 24) |
+			(uint32_t(m_in_buf[2]) << 16) |
+			(uint32_t(m_in_buf[3]) << 8) |
+			uint32_t(m_in_buf[4]));
+		break;
+
+	case cdi_slave_hle::command::lcd_write:
+		LOGMASKED(LOG_COMMANDS, "slave_w: Set Front Panel LCD (0xf0)\n");
+		memcpy(m_lcd_state, m_in_buf + 1, sizeof(m_lcd_state));
+		break;
+
+	case cdi_slave_hle::command::memory_set:
+		LOGMASKED(LOG_COMMANDS | LOG_UNKNOWNS, "slave_w: Set unknown memory (0x80); unimplemented\n");
+		break;
+
+	case cdi_slave_hle::command::memory_clear:
+		LOGMASKED(LOG_COMMANDS | LOG_UNKNOWNS, "slave_w: Clear unknown memory (0x81); unimplemented\n");
+		break;
+
+	case cdi_slave_hle::command::disc_status:
+		LOGMASKED(LOG_COMMANDS | LOG_WRITES, "slave_w: Request Disc Status (0xb0)\n");
+		// Payload and 250 ms delay are retained compatibility values.  There is
+		// no live SERVO/CD-processor interface from which to derive them yet.
+		prepare_readback(
+			attotime::from_hz(4),
+			descriptor.response_channel,
+			descriptor.response_length,
+			0xb0, 0x00, 0x02, 0x15, 0xb0);
+		break;
+
+	case cdi_slave_hle::command::disc_base:
+		LOGMASKED(LOG_COMMANDS | LOG_UNKNOWNS, "slave_w: Request Disc Base (0xb1); unimplemented\n");
+		// Do not fabricate a response without a known disc-base definition.
+		break;
+
+	case cdi_slave_hle::command::revision:
+		LOGMASKED(LOG_COMMANDS | LOG_WRITES, "slave_w: Request SLAVE Revision (0xf0)\n");
+		// The service low-level test reads the echo, SLAVE release, and CD
+		// processor release.  The fixed release values are compatibility data.
+		prepare_readback(
+			attotime::from_hz(10000),
+			descriptor.response_channel,
+			descriptor.response_length,
+			0xf0, 0x32, 0x31, 0, 0xf0);
+		break;
+
+	case cdi_slave_hle::command::pointer_type:
+		LOGMASKED(LOG_COMMANDS | LOG_WRITES, "slave_w: Request Pointer Type (0xf3)\n");
+		prepare_readback(
+			attotime::from_hz(10000),
+			descriptor.response_channel,
+			descriptor.response_length,
+			0xf3, 1, 0, 0, 0xf3);
+		break;
+
+	case cdi_slave_hle::command::test_plug:
+		LOGMASKED(LOG_COMMANDS | LOG_WRITES, "slave_w: Request Test Plug Status (0xf4)\n");
+		prepare_readback(
+			attotime::from_hz(10000),
+			descriptor.response_channel,
+			descriptor.response_length,
+			0xf4, m_testplug_cb() ? 1 : 0, 0, 0, 0xf4);
+		break;
+
+	case cdi_slave_hle::command::video_standard:
+		LOGMASKED(LOG_COMMANDS | LOG_WRITES, "slave_w: Request NTSC/PAL Status (0xf6)\n");
+		// Real observations establish F6 01 for NTSC and F6 02 for PAL.  The
+		// immediately readable, non-IRQ timing remains an HLE compatibility rule.
+		prepare_readback(
+			attotime::never,
+			descriptor.response_channel,
+			descriptor.response_length,
+			0xf6, m_ntsc ? 1 : 2, 0, 0, 0xf6);
+		break;
+
+	case cdi_slave_hle::command::developer_enable:
+		LOGMASKED(LOG_COMMANDS | LOG_WRITES, "slave_w: Arm Developer Mode (0xf7); side effects unimplemented\n");
+		m_debug_mode = 1;
+		break;
+
+	case cdi_slave_hle::command::xbus_interrupt_enable:
+		LOGMASKED(LOG_COMMANDS | LOG_WRITES, "slave_w: X-Bus Interrupt Enable (0xfa); routing unimplemented\n");
+		m_xbus_interrupt_enable = 1;
+		break;
+
+	case cdi_slave_hle::command::developer_disable:
+		LOGMASKED(LOG_COMMANDS | LOG_WRITES, "slave_w: Disarm Developer Mode (0xfe); side effects unimplemented\n");
+		m_debug_mode = 0;
+		break;
+
+	case cdi_slave_hle::command::unknown:
+		LOGMASKED(LOG_COMMANDS | LOG_UNKNOWNS, "slave_w: Refusing unknown command\n");
+		break;
 	}
 }
 
 void cdislave_hle_device::slave_w(offs_t offset, uint16_t data)
 {
-	LOGMASKED(LOG_WRITES, "slave_w: Channel %d: %d = %02x\n", offset, m_in_index, data & 0x00ff);
+	const uint8_t value = data & 0x00ff;
+	LOGMASKED(LOG_WRITES, "slave_w: Channel %d: %d = %02x\n", offset, m_in_index, value);
 
 	constexpr std::size_t channel_count = sizeof(m_channel) / sizeof(m_channel[0]);
 	if (!cdi_slave_transport::channel_index_valid(std::size_t(offset), channel_count))
 	{
 		LOGMASKED(LOG_WRITES | LOG_UNKNOWNS,
 			"slave_w: invalid channel %u value=%02x\n",
-			unsigned(offset), data & 0x00ff);
+			unsigned(offset), value);
 		return;
 	}
 
 	if (!cdi_slave_transport::input_write_fits(m_in_index, sizeof(m_in_buf)))
 	{
 		LOGMASKED(LOG_UNKNOWNS,
-				"slave_w: Channel %d: discarding overlength input command index=%u count=%u\n",
-				offset, m_in_index, m_in_count);
-		memset(m_in_buf, 0, sizeof(m_in_buf));
-		m_in_index = 0;
-		m_in_count = 0;
+			"slave_w: Channel %d: discarding overlength input command index=%u count=%u\n",
+			offset, m_in_index, m_in_count);
+		clear_input();
 		return;
 	}
 
-	if (offset == 1 && m_in_index == 0)
+	const cdi_slave_hle::parser_state parser =
 	{
-		LOGMASKED(LOG_COMMANDS | LOG_UNKNOWNS, "slave_w: Channel %d: Unknown register: %02x\n", offset, data & 0x00ff);
-		memset(m_in_buf, 0, sizeof(m_in_buf));
-		m_in_index = 0;
-		m_in_count = 0;
+		m_in_channel,
+		m_in_index ? m_in_buf[0] : uint8_t(0),
+		m_in_index,
+		m_in_count
+	};
+	const cdi_slave_hle::parser_transition transition =
+		cdi_slave_hle::parse_byte(parser, uint8_t(offset), value, sizeof(m_in_buf));
+
+	if (transition.result == cdi_slave_hle::parse_result::rejected)
+	{
+		if (m_in_index == 0)
+		{
+			LOGMASKED(LOG_COMMANDS | LOG_UNKNOWNS,
+				"slave_w: Channel %d: Unknown command %02x\n", offset, value);
+		}
+		else
+		{
+			LOGMASKED(LOG_COMMANDS | LOG_UNKNOWNS,
+				"slave_w: Channel %d: Rejecting malformed continuation %02x for channel %u command %02x\n",
+				offset, value, m_in_channel, m_in_buf[0]);
+		}
+		clear_input();
 		return;
 	}
 
-	m_in_buf[m_in_index] = data & 0x00ff;
-	m_in_index++;
-	switch (offset)
+	m_in_buf[transition.write_index] = value;
+	if (transition.result == cdi_slave_hle::parse_result::collecting)
 	{
-		case 0:
-			slave_w_mouse(offset, data);
-			break;
-		case 1:
-			if (m_in_index > 1)
-			{
-				if (m_in_index == m_in_count)
-				{
-					switch (m_in_buf[0])
-					{
-						case 0xf0: // Set Front Panel LCD
-							memcpy(m_lcd_state, m_in_buf + 1, sizeof(m_lcd_state));
-							break;
-						default:
-							break;
-					}
-					memset(m_in_buf, 0, sizeof(m_in_buf));
-					m_in_index = 0;
-					m_in_count = 0;
-				}
-			}
-			break;
-		case 2:
-			if (m_in_index > 1)
-			{
-				if (m_in_index == m_in_count)
-				{
-					switch (m_in_buf[0])
-					{
-					case 0xc0: case 0xc1: case 0xc2: case 0xc3: case 0xc4: case 0xc5: case 0xc6: case 0xc7:
-						case 0xc8: case 0xc9: case 0xca: case 0xcb: case 0xcc: case 0xcd: case 0xce: case 0xcf:
-							m_atten_w((((u32)m_in_buf[1]) << 24) | (((u32)m_in_buf[2]) << 16) | (((u32)m_in_buf[3]) << 8) | (((u32)m_in_buf[4])));
-							m_in_index = 0;
-							m_in_count = 0;
-							break;
-						case 0xf0: // Set Front Panel LCD
-							memcpy(m_lcd_state, m_in_buf + 1, sizeof(m_lcd_state));
-							memset(m_in_buf, 0, sizeof(m_in_buf));
-							m_in_index = 0;
-							m_in_count = 0;
-							break;
-						default:
-							memset(m_in_buf, 0, sizeof(m_in_buf));
-							m_in_index = 0;
-							m_in_count = 0;
-							break;
-					}
-				}
-			}
-			else
-			{
-				switch (data & 0x00ff)
-				{
-					case 0x8a: // Reset Main CPU
-						LOGMASKED(LOG_COMMANDS | LOG_WRITES, "slave_w: Channel %d: Reset Main CPU (0x8a)\n", offset);
-						m_reset_callback(ASSERT_LINE);
-						m_reset_callback(CLEAR_LINE);
-						m_in_index = 0;
-						m_in_count = 0;
-						break;
-					case 0x80: // Enable Keyboard Events
-						LOGMASKED(LOG_COMMANDS | LOG_WRITES, "slave_w: Channel %d: Enable Keyboard Events (0x80)\n", offset);
-						m_keyboard_events_enabled = true;
-						m_in_index = 0;
-						m_in_count = 0;
-						break;
-					case 0x82: // Mute Audio
-					{
-						LOGMASKED(LOG_COMMANDS, "slave_w: Channel %d: Mute Audio (0x82)\n", offset);
-						m_dmadac[0]->set_volume(0);
-						m_dmadac[1]->set_volume(0);
-						m_in_index = 0;
-						m_in_count = 0;
-						//cdic->audio_sample_timer->adjust(attotime::never);
-						break;
-					}
-					case 0x83: // Unmute Audio
-					{
-						LOGMASKED(LOG_COMMANDS, "slave_w: Channel %d: Unmute Audio (0x83)\n", offset);
-						m_dmadac[0]->set_volume(0x100);
-						m_dmadac[1]->set_volume(0x100);
-						m_in_index = 0;
-						m_in_count = 0;
-						break;
-					}
-					case 0xc0: case 0xc1: case 0xc2: case 0xc3: case 0xc4: case 0xc5: case 0xc6: case 0xc7:
-					case 0xc8: case 0xc9: case 0xca: case 0xcb: case 0xcc: case 0xcd: case 0xce: case 0xcf:
-						LOGMASKED(LOG_COMMANDS, "slave_w: Channel %d: Set Attenuation Audio\n", offset);
-						m_in_count = 5;
-						break;
-					case 0xf0: // Set Front Panel LCD
-						LOGMASKED(LOG_COMMANDS, "slave_w: Channel %d: Set Front Panel LCD (0xf0)\n", offset);
-						m_in_count = 17;
-						break;
-					default:
-						LOGMASKED(LOG_COMMANDS | LOG_UNKNOWNS, "slave_w: Channel %d: Unknown register: %02x\n", offset, data & 0x00ff);
-						memset(m_in_buf, 0, sizeof(m_in_buf));
-						m_in_index = 0;
-						m_in_count = 0;
-						break;
-				}
-			}
-			break;
-		case 3:
-			if (m_in_index > 1)
-			{
-				if (m_in_index == m_in_count)
-				{
-					switch (m_in_buf[0])
-					{
-						case 0xb0: // Request Disc Status
-							prepare_readback(attotime::from_hz(4), 3, 4, 0xb0, 0x00, 0x02, 0x15, 0xb0);
-							break;
-						//case 0xb1: // Request Disc Base
-							//prepare_readback(attotime::from_hz(10000), 3, 4, 0xb1, 0x00, 0x00, 0x00, 0xb1);
-							//break;
-						default:
-							break;
-					}
-					memset(m_in_buf, 0, sizeof(m_in_buf));
-					m_in_index = 0;
-					m_in_count = 0;
-				}
-			}
-			else
-			{
-				switch (data & 0x00ff)
-				{
-					case 0x80: // TODO: Set some memory.
-						LOGMASKED(LOG_COMMANDS | LOG_WRITES, "slave_w: Channel %d: Set UNKWN memory (0x80). Unimplemented\n", offset);
-						m_in_count = 4;
-						break;
-					case 0x81: // TODO: Unset some memory.
-						LOGMASKED(LOG_COMMANDS | LOG_WRITES, "slave_w: Channel %d: Unset UNKWN memory (0x81). Unimplemented\n", offset);
-						m_in_count = 4;
-						break;
-					case 0xb0: // Request Disc Status
-						LOGMASKED(LOG_COMMANDS | LOG_WRITES, "slave_w: Channel %d: Request Disc Status (0xb0)\n", offset);
-						m_in_count = 4;
-						break;
-					case 0xb1: // Request Disc Base
-						LOGMASKED(LOG_COMMANDS | LOG_WRITES, "slave_w: Channel %d: Request Disc Base (0xb1)\n", offset);
-						m_in_count = 4;
-						break;
-					case 0xf0: // Request SLAVE Revision
-						LOGMASKED(LOG_COMMANDS | LOG_WRITES, "slave_w: Channel %d: Request SLAVE Revision (0xf0)\n", offset);
-						prepare_readback(attotime::from_hz(10000), 2, 2, 0xf0, 0x32, 0x31, 0, 0xf0);
-						m_in_index = 0;
-						break;
-					case 0xf3: // Request Pointer Type
-						LOGMASKED(LOG_COMMANDS | LOG_WRITES, "slave_w: Channel %d: Request Pointer Type (0xf3)\n", offset);
-						m_in_index = 0;
-						prepare_readback(attotime::from_hz(10000), 2, 2, 0xf3, 1, 0, 0, 0xf3);
-						break;
-					case 0xf4: // Request Test Plug Status
-						LOGMASKED(LOG_COMMANDS | LOG_WRITES, "slave_w: Channel %d: Request Test Plug Status (0xf4)\n", offset);
-						m_in_index = 0;
-						prepare_readback(attotime::from_hz(10000), 2, 2, 0xf4, m_testplug_cb() ? 1 : 0, 0, 0, 0xf4);
-						break;
-					case 0xf6: // Request NTSC/PAL Status
-						LOGMASKED(LOG_COMMANDS | LOG_WRITES, "slave_w: Channel %d: Request NTSC/PAL Status (0xf6)\n", offset);
-						// Real SLAVE responses are F6 02 for PAL and F6 01 for NTSC.
-						prepare_readback(attotime::never, 2, 2, 0xf6, m_ntsc ? 1 : 2, 0, 0, 0xf6);
-						m_in_index = 0;
-						break;
-					case 0xf7: // Arm Developer Mode
-						LOGMASKED(LOG_COMMANDS | LOG_WRITES, "slave_w: Channel %d: Arm Developer Mode (0xf7)\n", offset);
-						m_debug_mode = 1;
-						m_in_index = 0;
-						break;
-					case 0xfa: // Enable X-Bus Interrupts
-						LOGMASKED(LOG_COMMANDS | LOG_WRITES, "slave_w: Channel %d: X-Bus Interrupt Enable (0xfa)\n", offset);
-						m_xbus_interrupt_enable = 1;
-						m_in_index = 0;
-						break;
-					case 0xfe: // Disarm Developer Mode
-						LOGMASKED(LOG_COMMANDS | LOG_WRITES, "slave_w: Channel %d: Disarm Developer Mode (0xfe)\n", offset);
-						m_debug_mode = 0;
-						m_in_index = 0;
-						break;
-					default:
-						LOGMASKED(LOG_COMMANDS | LOG_UNKNOWNS, "slave_w: Channel %d: Unknown register: %02x\n", offset, data & 0x00ff);
-						memset(m_in_buf, 0, sizeof(m_in_buf));
-						m_in_index = 0;
-						m_in_count = 0;
-						break;
-				}
-			}
-			break;
+		m_in_channel = transition.next.origin_channel;
+		m_in_index = transition.next.index;
+		m_in_count = transition.next.count;
+		return;
 	}
+
+	execute_command(transition.descriptor);
+	clear_input();
 }
 
 //**************************************************************************
@@ -666,6 +601,7 @@ void cdislave_hle_device::device_start()
 	save_item(NAME(m_channel[3].m_out_deadline));
 
 	save_item(NAME(m_in_buf));
+	save_item(NAME(m_in_channel));
 	save_item(NAME(m_in_index));
 	save_item(NAME(m_in_count));
 	save_item(NAME(m_keyboard_events_enabled));
@@ -709,9 +645,7 @@ void cdislave_hle_device::device_reset()
 		elem.m_out_deadline = attotime::never;
 	}
 
-	memset(m_in_buf, 0, sizeof(m_in_buf));
-	m_in_index = 0;
-	m_in_count = 0;
+	clear_input();
 	m_keyboard_events_enabled = false;
 
 	m_debug_mode = 0;

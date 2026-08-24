@@ -5,6 +5,8 @@ Last reviewed: 2026-08-24
 Branch: `cdi-dvc-modernization`
 
 Phase-A checkpoint: `63fbd31f6934cbd60956b1a0899d75ea5c31a871`
+Phase-B checkpoint: `2b05d1314a3fd2de2c5d03216b9a732f376ba6c9`
+Phase-C checkpoint: `a639c7135ddb9ef1b2bdc770e759fe2ef4d6576e`
 
 This is a living engineering record. Percentages are conservative implementation-confidence estimates derived from the current source, focused tests, and available runtime evidence. They are not compatibility ratings and do not imply that every title or firmware path has been exercised.
 
@@ -123,6 +125,66 @@ CDIC confidence after this checkpoint:
 - Evidence: service-manual topology, third-party hardware observations, independent RTL, source history, synthetic tests, and compatibility models explicitly marked above.
 - Remaining: authoritative register documentation; seek/command completion; TOC/subcode; EDC/ECC/error status; exact AUDCTL/audio timing; cycle-level DMA/IRQ behavior.
 
+## Phase D checkpoint
+
+Scope: retain the Mono-I SLAVE HLE while replacing ad-hoc nested parsing with an explicit, bounded command model. This checkpoint preserves the established response-readiness, replacement, pointer, IRQ2, and reset behavior. It does not attempt MCU LLE, add title-specific paths, or invent responses for commands whose protocol is unknown.
+
+Evidence boundary: the Philips CD-i 210/20/25 service manual verifies that revision command `0xf0` returns the command echo, the SLAVE firmware release, and the CD-processor firmware release before a dummy read. It also identifies the SLAVE as the owner of system reset and audio-control signals. The supplied Mono-I SLAVE dump has SHA-1 `56d0acd7caad51c7de703247cd6d842b36173079`, but the current SCC68070 `/DTACK` limitation prevents using it as a live LLE oracle. Command names and mailbox paths inherited only from source history remain **S**, **C**, or **U** rather than hardware facts.
+
+Implemented in this checkpoint:
+
+- a pure command descriptor covering every accepted opcode, request length, response channel/length, timing class, and evidence classification;
+- a bounded shared-mailbox parser with explicit collecting, complete, and rejected transitions;
+- exact rejection of unknown initiating opcodes, invalid channels, wrong-channel continuations, corrupt parser state, and requests larger than the 17-byte transport buffer;
+- retention of the historical channel-2-to-channel-1/2 LCD continuation path while other multi-byte commands require their initiating channel;
+- one centralized command executor rather than four nested channel/index switches;
+- the documented three-byte `0xf0` revision response, exposing both firmware-release bytes already present in the HLE;
+- parser-origin save/reset state and reuse of the existing response, delayed-IRQ, output-bounds, input-bounds, pointer-wrap, and reset helpers;
+- explicit no-response behavior for unknown commands and the unimplemented disc-base request.
+
+### SLAVE command map
+
+| Input channel | Command | Length | Classification | Modeled behavior and boundary |
+| --- | --- | ---: | --- | --- |
+| 0 | `0x83` pointer enable | 1 | **STRONGLY INFERRED** | Enables asynchronous pointer packets and immediately queues the current four-byte position packet on channel 0. Exact enable acknowledgement is not hardware-captured. |
+| 0 | `0x84` pointer disable | 1 | **STRONGLY INFERRED** | Disables asynchronous pointer packets; no response is fabricated. |
+| 0 | `0xc0-0xff` pointer position | 3 | **STRONGLY INFERRED** | Decodes the established packed 10-bit X/Y representation. Pointer arithmetic and wrapped host deltas have exhaustive synthetic coverage. |
+| 1 | none | — | **UNKNOWN** | No command may start on channel 1. It is retained only as an accepted continuation channel for a channel-2 LCD write. Exact mailbox wiring is unknown. |
+| 2 | `0x80` keyboard events | 1 | **UNIMPLEMENTED** | Records enable state, but no keyboard input source or event packet generator exists. |
+| 2 | `0x82` / `0x83` mute / unmute | 1 | **STRONGLY INFERRED** | Controls both DMADAC volumes. Reset persistence and transition timing are not hardware-proven. |
+| 2 | `0x8a` CPU reset | 1 | **STRONGLY INFERRED** | Pulses the main-CPU reset callback. SLAVE reset ownership is documented; pulse width remains **C**. |
+| 2 | `0xc0-0xcf` attenuation | 5 | **STRONGLY INFERRED** | Forwards four attenuation bytes to the CDIC mixer callback. Opcode-low-nibble meaning and serial-DAC timing remain unknown. |
+| 2 | `0xf0` LCD write | 17 | **STRONGLY INFERRED** | Copies 16 panel bytes after the opcode; completion may arrive through channel 1 or 2 as retained source behavior. |
+| 3 | `0x80` / `0x81` memory set / clear | 4 | **UNIMPLEMENTED** | Consumes the known request footprint and performs no effect or reply. Memory target and semantics are unknown. |
+| 3 | `0xb0` disc status | 4 | **COMPATIBILITY** | Returns fixed `b0 00 02 15` on channel 3 after 250 ms. Payload and delay are not connected to the SERVO/CD processor. |
+| 3 | `0xb1` disc base | 4 | **UNIMPLEMENTED** | Consumes the request and deliberately emits no response. The former zero-response idea remains disabled. |
+| 3 | `0xf0` revision | 1 | **VERIFIED** structure | Returns `f0`, SLAVE release, and CD-processor release on channel 2. The three-byte structure is service-manual-backed; fixed `32 31` values and 100 us IRQ delay are **C/S**. |
+| 3 | `0xf3` pointer type | 1 | **COMPATIBILITY** | Returns fixed `f3 01` on channel 2 after 100 us. Device-discovery wiring is not modeled. |
+| 3 | `0xf4` test plug | 1 | **STRONGLY INFERRED** | Returns `f4` plus the configured test-plug input on channel 2 after 100 us. |
+| 3 | `0xf6` video standard | 1 | **STRONGLY INFERRED** | Returns `f6 01` for NTSC or `f6 02` for PAL on channel 2. Immediate readability without IRQ remains **C**. |
+| 3 | `0xf7` / `0xfe` developer mode | 1 | **UNIMPLEMENTED** | Stores armed/disarmed state only; no developer/test protocol is invented. |
+| 3 | `0xfa` X-bus IRQ enable | 1 | **UNIMPLEMENTED** | Stores enable state only; X-bus-to-SERVO routing and event generation are absent. |
+| any | all other opcodes | — | **UNKNOWN** | Rejected immediately, parser reset, no response or side effect. |
+
+### SLAVE transport and state audit
+
+| Area | Current result | Evidence and tests | Remaining boundary |
+| --- | --- | --- | --- |
+| Command assembly | One shared parser records origin channel, opcode, byte index, and exact command length. LCD retains its historical cross-channel continuation; all other continuations are origin-channel-local. | S, T (`[slave][command]`, `[slave][malformed]`). | Exact 68070-to-SLAVE mailbox channel wiring needs firmware/bus traces. |
+| Input bounds | Writes are checked before indexing the 17-byte buffer; descriptor lengths are bounded; malformed state resets atomically. | S, T (`[transport]`, `[malformed]`). | Hardware behavior on abandoned partial commands is unknown. |
+| Response replacement | Each of four output channels owns one pending response. A newly prepared response replaces that channel only and forces immediate IRQ re-evaluation. | S, T (`[readiness]`, `[irq2]`). | Hardware queue depth and overwrite/overrun status are unknown. |
+| Readiness and IRQ2 | Delayed data is unreadable and cannot assert IRQ2 before its deadline. Ready interrupting responses arbitrate across channels; consuming the final ready source clears IRQ2. | S, T (`[readiness]`, `[irq2]`). | The 100 us and 250 ms delays are compatibility values; IACK/bus-edge timing is not modeled. |
+| Pointer input | Host counters use signed modular deltas; device coordinates clamp to the established 768x560 doubled-raster range; asynchronous packets replace channel-0 output. | S, T (`[pointer]`). | 60 Hz host polling is **C** and not a serial-bit timing model. Keyboard packets remain unimplemented. |
+| Reset | Cancels delayed IRQ, clears all input/output/parser state, disables pointer events, and resets stored developer/X-bus/LCD/input state. | S, T (`[transport]`, `[irq2]`). | DMADAC mute/attenuation reset state and physical reset pulse width remain unknown. |
+| Save state | Output deadlines, readiness/IRQ flags, parser origin/index/count, command bytes, and retained protocol flags are registered. | S, build validation. | No active-partial-command round-trip fixture exists yet. |
+
+SLAVE confidence after this checkpoint:
+
+- Functional: `[#######---] 65%`
+- Hardware fidelity: `[####------] 45%`
+- Evidence: Philips service/manual behavior, board-level signal ownership, current source/history, supplied firmware identity, firmware-only boot smoke test, and synthetic command/transport/pointer tests.
+- Remaining: keyboard event source/format; live SERVO disc status/base; developer and X-bus protocols; hardware mailbox timing; response queue depth; reset/mute/attenuation timing; SCC68070 `/DTACK` support needed for trustworthy LLE experiments.
+
 ## MCD212 display-pipeline audit
 
 | Area | Current result | Evidence and tests | Remaining boundary |
@@ -167,7 +229,7 @@ CDIC confidence after this checkpoint:
 | SCC68070 internal peripherals | `[######----] 60%` | Register audit plus focused DMA/IRQ/I2C/UART/MMU tests. | Implement Timer 1/2 only after input routing is identified; trace MMU-enabled firmware before translation. |
 | MCD212 video | `[#######---] 70%` | Primary-document audit, QHY vectors, timing/control tests, and linked CD-i validation target. | Capture QHY, cursor, transparency, region, and interlace field output from Extended Case hardware. |
 | CDIC | `[#######---] 70%` functional / `[#####-----] 50%` fidelity | Command/register audit, independent state/filter/buffer/IRQ/XA tests, and SCC-owned DMA client. | Capture seek completion, AUDCTL, TOC/subcode, and error/IRQ behavior on hardware. |
-| SLAVE/HLE | `[#####-----] 50%` | Pointer, transport, response-ready, and hardening tests. | Replace HLE behavior only with MCU/firmware trace evidence. |
+| SLAVE/HLE | `[#######---] 65%` functional / `[####------] 45%` fidelity | Complete classified command map, bounded parser, documented revision response, and pointer/transport/readiness/IRQ2 tests. | Add keyboard and SERVO/X-bus behavior only from MCU, firmware, or bus-trace evidence. |
 | SERVO/MCU | `[###-------] 30%` | Mostly existing HLE/integration behavior. | Capture command/response timing from a known firmware/disc pair. |
 | DVC | `[#####-----] 50%` | Broad native DVC tests and SCC-owned DMA path; prior runtime vertical-slice evidence. | Compare PES/DMA/status/IRQ traces at the first failing scene; no title-specific bypasses. |
 | Mono-I / Mono-II glue | `[######----] 60%` | Machine configurations and validation build. | Add clean-boot checkpoints for representative firmware revisions. |
@@ -243,8 +305,6 @@ Latest result (2026-08-23):
 
 No commercial title was required or run for this phase. There is no post-change QHY hardware capture, no post-change DVC gameplay result, and no direct combined MCD212-to-DVC overlay fixture. These are follow-up evidence requirements, not passed gates.
 
-Phase C requires separate authorization and must begin from the unresolved evidence items above.
-
 ## Phase C validation gates
 
 The checkpoint may be committed only when all of the following pass from the same tree:
@@ -268,3 +328,33 @@ Latest result (2026-08-24):
 - exact-path `git diff --check`: **PASS**.
 
 No commercial title is required for this phase. BrainDead 13 and other title-specific regressions remain parked. The gates establish deterministic HLE behavior and regression safety; they do not establish cycle-accurate IMS66490 behavior.
+
+## Phase D validation gates
+
+The checkpoint may be committed only when all of the following pass from the same tree:
+
+1. classified SLAVE command-map and parser tests;
+2. response-readiness and IRQ2 arbitration tests;
+3. transport bounds and response-replacement tests;
+4. pointer encoding, wrap, movement, and clamping tests;
+5. malformed/wrong-channel/overlength command tests;
+6. complete Philips and native `mametests` suites;
+7. warnings-enabled CD-i validation/emulator build with `-j2`;
+8. `cdivalidate -validate`;
+9. `git diff --check` and exact-path/hunk staging that excludes pre-existing input tracing.
+
+Latest result (2026-08-24):
+
+- focused SLAVE command/parser: **PASS**, 3,262 assertions in 5 cases;
+- response-readiness/IRQ2: **PASS**, 13 assertions in 5 cases;
+- transport selection: **PASS**, 183 assertions in 18 cases;
+- pointer selection: **PASS**, 3,903 assertions in 21 cases;
+- malformed command selection: **PASS**, 11 assertions in 1 case;
+- all Philips tests: **PASS**, 1,287,056 assertions in 93 cases;
+- complete native suite: **PASS**, 1,288,138 assertions in 110 cases;
+- regenerated warnings-enabled `cdivalidate` build (`TESTS=1`, `-j2`): **PASS**;
+- `cdivalidate -validate`: **PASS** (exit zero, no diagnostics);
+- five-second `cdimono1 -bios pcdi220` firmware-only smoke test: **PASS**; expected REDUMP warnings remain;
+- exact-path `git diff --check`: **PASS**.
+
+No commercial title was required or run. The gates prove deterministic parser, transport, response, pointer, IRQ2, and reset behavior in this HLE; they do not prove complete SLAVE firmware semantics, exact mailbox timing, or LLE equivalence.
