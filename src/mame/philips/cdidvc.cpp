@@ -995,8 +995,18 @@ uint16_t cdi_dvc_device::read(offs_t offset, uint16_t mem_mask)
 		result = m_fmv_timer_compare;
 		break;
 	case 0xe0408c:
+	{
 		result = m_fmv_video_data_input_command;
+		if (!machine().side_effects_disabled())
+		{
+			LOGMASKED(LOG_SEQUENCE,
+					"DVC_FMV_TRACE vdi-read value=%04x bit14=%u ctx=%s\n",
+					result,
+					(result & cdi_dvc::FMV_VDI_DECODING_TIMESTAMP_UPDATED) ? 1U : 0U,
+					machine().describe_context());
+		}
 		break;
+	}
 	case 0xe04098:
 		result = uint16_t(current_fmv_dclk() >> 6);
 		break;
@@ -1008,12 +1018,95 @@ uint16_t cdi_dvc_device::read(offs_t offset, uint16_t mem_mask)
 		result = 1;
 		break;
 	case 0xe040a0:
+	{
 		result = cdi_dvc::fmv_reduced_decoding_timestamp(
 				m_mpeg_packet_decode_ts[MPEG_FMV]);
+
+		if (!machine().side_effects_disabled())
+		{
+			LOGMASKED(LOG_SEQUENCE,
+					"DVC_FMV_TRACE a0-read value=%04x ts90=%llu vdi=%04x presented=%u hostq=%u ctx=%s\n",
+					result,
+					(unsigned long long)m_mpeg_packet_decode_ts[MPEG_FMV],
+					m_fmv_video_data_input_command,
+					m_video_present_generation,
+					unsigned(m_video_queue.size()),
+					machine().describe_context());
+		}
 		break;
+	}
 	case 0xe040a4:
-		result = cdi_dvc::fmv_pictures_in_fifo(m_video_queue.size());
+	{
+		/*
+		 * Guest-visible GEN_PICTURES_IN_FIFO must not expose the host
+		 * decode-ahead queue directly.
+		 *
+		 * MiSTer's VMPEG model counts:
+		 *
+		 *   input pictures + output-FIFO pictures
+		 *
+		 * while deliberately excluding pictures held inside the MPEG
+		 * decoder for reference-frame reordering.
+		 *
+		 * Stock PL_MPEG has the same distinction.  A decoded reference
+		 * picture can be held internally without yet being returned by
+		 * plm_video_decode(), so picture_headers - decoded_frames alone
+		 * over-counts the compressed-input backlog.
+		 *
+		 * MAME also keeps a larger host presentation queue so PL_MPEG can
+		 * decode ahead without deadlocking at the VMPEG compressed-input
+		 * high-water mark.  That host staging depth is not guest-visible
+		 * VMPEG output-FIFO capacity.
+		 */
+		std::size_t const decoder_held_pictures =
+				(m_video_decoder && m_video_decoder->has_reference_frame)
+						? 1U
+						: 0U;
+
+		std::size_t const decoder_consumed_pictures =
+				std::size_t(m_video_decoded_frames) + decoder_held_pictures;
+
+		std::size_t const input_pictures =
+				std::size_t(m_video_picture_headers) > decoder_consumed_pictures
+						? std::size_t(m_video_picture_headers) - decoder_consumed_pictures
+						: 0U;
+
+		std::size_t const output_pictures =
+				std::min<std::size_t>(
+						m_video_queue.size(),
+						cdi_dvc::FMV_OUTPUT_FIFO_PICTURES);
+
+		/*
+		 * Before PLAY, retain the existing predecode approximation for
+		 * this A/B.  MiSTer uses its per-picture DTS FIFO here; MAME does
+		 * not yet maintain an equivalent independent queue.
+		 *
+		 * During PLAY, use the separated guest-visible model.
+		 */
+		std::size_t const guest_pictures = m_fmv_playback_active
+				? input_pictures + output_pictures
+				: std::size_t(m_video_picture_headers);
+
+		result = cdi_dvc::fmv_pictures_in_fifo(guest_pictures);
+
+		if (!machine().side_effects_disabled())
+		{
+			LOGMASKED(LOG_SEQUENCE,
+					"DVC_FMV_TRACE a4-read value=%04x guest=%u input=%u held=%u headers=%u decoded=%u hostq=%u output=%u presented=%u active=%u ctx=%s\n",
+					result,
+					unsigned(guest_pictures),
+					unsigned(input_pictures),
+					unsigned(decoder_held_pictures),
+					m_video_picture_headers,
+					m_video_decoded_frames,
+					unsigned(m_video_queue.size()),
+					unsigned(output_pictures),
+					m_video_present_generation,
+					m_fmv_playback_active ? 1U : 0U,
+					machine().describe_context());
+		}
 		break;
+	}
 	case 0xe040a8:
 		result = cdi_dvc::fmv_frame_period_90khz(m_video_framerate_millihz);
 		break;
@@ -1400,7 +1493,10 @@ void cdi_dvc_device::video_latch_frame()
 	bool timestamp_driven = false;
 	uint64_t clock90 = 0;
 
-	if (!single_step && m_video_queue.front().timestamp_valid && m_mpeg_have_scr[MPEG_FMV])
+	if (!single_step
+			&& (m_fmv_system_control & 0x0004U)
+			&& m_video_queue.front().timestamp_valid
+			&& m_mpeg_have_scr[MPEG_FMV])
 	{
 		std::vector<uint64_t> timestamps90;
 		timestamps90.reserve(m_video_queue.size());
@@ -1801,6 +1897,9 @@ uint16_t cdi_dvc_device::video_picture_events_pop()
 void cdi_dvc_device::video_decoder_pump(bool end_signalled)
 {
 	uint32_t const decoded_before = m_video_decoded_frames;
+	std::size_t const queue_before = m_video_queue.size();
+	std::size_t const buffered_before = m_video_buffer
+			? plm_buffer_get_remaining(m_video_buffer) : 0;
 	if (!m_video_decoder || !m_video_have_sequence || !m_fmv_decoder_enabled)
 	{
 		m_video_decoder_waiting_for_input = false;
@@ -1816,7 +1915,7 @@ void cdi_dvc_device::video_decoder_pump(bool end_signalled)
 	m_video_decoder_waiting_for_input = false;
 	bool decoder_exhausted = false;
 
-	// Host-decoder adaptation, not a guest-visible VMPEG FIFO rule:
+	// TEMPORARY DVC A/B PROBE:
 	// Decouple host MPEG decode-ahead depth from the nominal three-picture
 	// VMPEG presentation/FIFO model.  MiSTer's PL_MPEG backend is allowed
 	// to decode ahead into a substantially deeper host queue so compressed
@@ -1940,6 +2039,23 @@ void cdi_dvc_device::video_decoder_pump(bool end_signalled)
 					unsigned(cdi_dvc::SAVE_VIDEO_REPLAY_PUMP_EVENTS));
 		}
 	}
+	std::size_t const buffered_after = m_video_buffer
+			? plm_buffer_get_remaining(m_video_buffer) : 0;
+
+	LOGMASKED(LOG_SEQUENCE,
+			"DVC_FMV_TRACE pump end=%u active=%u decoder=%u queue=%u->%u buffered=%u->%u ready=%04x->%04x decoded=%u->%u exhausted=%u irq=%04x enable=%04x ctx=%s\n",
+			end_signalled ? 1U : 0U,
+			m_fmv_playback_active ? 1U : 0U,
+			m_fmv_decoder_enabled ? 1U : 0U,
+			unsigned(queue_before), unsigned(m_video_queue.size()),
+			unsigned(buffered_before), unsigned(buffered_after),
+			unsigned(cdi_dvc::fmv_input_status(buffered_before)),
+			unsigned(cdi_dvc::fmv_input_status(buffered_after)),
+			unsigned(decoded_before), unsigned(m_video_decoded_frames),
+			decoder_exhausted ? 1U : 0U,
+			unsigned(m_fmv_interrupt_status),
+			unsigned(m_fmv_interrupt_enable),
+			machine().describe_context());
 
 }
 
@@ -2125,7 +2241,18 @@ void cdi_dvc_device::mpeg_timestamp_commit(unsigned target)
 	m_mpeg_packet_have_pts[target] = true;
 	m_mpeg_packet_have_dts[target] = explicit_dts;
 	if (target == MPEG_FMV)
-		m_fmv_video_data_input_command |= cdi_dvc::FMV_VDI_DECODING_TIMESTAMP_UPDATED;
+	{
+		m_fmv_video_data_input_command |=
+				cdi_dvc::FMV_VDI_DECODING_TIMESTAMP_UPDATED;
+
+		LOGMASKED(LOG_SEQUENCE,
+				"DVC_FMV_TRACE dts-update value=%04x ts90=%llu vdi=%04x ctx=%s\n",
+				cdi_dvc::fmv_reduced_decoding_timestamp(
+						m_mpeg_packet_decode_ts[MPEG_FMV]),
+				(unsigned long long)m_mpeg_packet_decode_ts[MPEG_FMV],
+				m_fmv_video_data_input_command,
+				machine().describe_context());
+	}
 	++m_mpeg_pts_events[target];
 	if (explicit_dts)
 		++m_mpeg_dts_events[target];
@@ -2755,8 +2882,21 @@ void cdi_dvc_device::write(offs_t offset, uint16_t data, uint16_t mem_mask)
 		COMBINE_DATA(&m_video_crop_x_shadow);
 		break;
 	case 0xe0408c:
+	{
+		uint16_t const old_value = m_fmv_video_data_input_command;
 		COMBINE_DATA(&m_fmv_video_data_input_command);
+
+		LOGMASKED(LOG_SEQUENCE,
+				"DVC_FMV_TRACE vdi-write old=%04x data=%04x mask=%04x new=%04x bit14=%u ctx=%s\n",
+				old_value,
+				data,
+				mem_mask,
+				m_fmv_video_data_input_command,
+				(m_fmv_video_data_input_command
+						& cdi_dvc::FMV_VDI_DECODING_TIMESTAMP_UPDATED) ? 1U : 0U,
+				machine().describe_context());
 		break;
+	}
 	case 0xe040c0:
 	{
 		COMBINE_DATA(&m_fmv_system_command);
@@ -2883,6 +3023,11 @@ void cdi_dvc_device::write(offs_t offset, uint16_t data, uint16_t mem_mask)
 	}
 	case 0xe040c6:
 		COMBINE_DATA(&m_fmv_system_control);
+		LOGMASKED(LOG_SEQUENCE,
+				"DVC_FMV_TRACE system-control value=%04x mask=%04x sync=%u ctx=%s\n",
+				m_fmv_system_control, mem_mask,
+				(m_fmv_system_control & 0x0004U) ? 1U : 0U,
+				machine().describe_context());
 		break;
 
 	case 0xe040c4:
