@@ -11,18 +11,15 @@
 
 *******************************************************************************
 
-STATUS:
-
-- Just enough for the Mono-I CD-i board to work somewhat properly.
-
 TODO:
 
-- QHY DYUV Image Decoder
+- Validate QHY first-field edge handling and full-frame output against Extended Case hardware.
 
 *******************************************************************************/
 
 #include "emu.h"
 #include "mcd212.h"
+#include "mcd212_video.h"
 #include "screen.h"
 
 #define LOG_UNKNOWNS        (1U << 1)
@@ -123,13 +120,15 @@ void mcd212_device::set_register(uint8_t reg, uint32_t value)
 				const uint8_t clut_index = m_clut_bank[Path] * 0x40 + (reg - 0x80);
 				LOGMASKED(LOG_CLUT, "%s: Path %d: CLUT[%d] = %08x\n", machine().describe_context(), Path, clut_index, value);
 				m_clut[clut_index] = value & 0x00fcfcfc;
+				if (clut_index >= 0x80 && clut_index < 0x88)
+					m_qhy_levels[clut_index - 0x80] = value & 0x00ffffff;
 			}
 			break;
 		case 0xc0: // Image Coding Method
 			if (Path == 0)
 			{
 				LOGMASKED(LOG_REGISTERS, "%s: Path 0: Image Coding Method = %08x\n", machine().describe_context(), value);
-				m_image_coding_method = value;
+				m_image_coding_method = value & 0x004c0f0f;
 				update_matte_arrays();
 			}
 			break;
@@ -137,14 +136,14 @@ void mcd212_device::set_register(uint8_t reg, uint32_t value)
 			if (Path == 0)
 			{
 				LOGMASKED(LOG_REGISTERS, "%s: Scanline %d, Path 0: Transparency Control = %08x\n", machine().describe_context(), screen().vpos(), value);
-				m_transparency_control = value;
+				m_transparency_control = value & 0x00800f0f;
 			}
 			break;
 		case 0xc2: // Plane Order
 			if (Path == 0)
 			{
 				LOGMASKED(LOG_REGISTERS, "%s: Scanline %d, Path 0: Plane Order = %08x\n", machine().describe_context(), screen().vpos(), value & 7);
-				m_plane_order = value & 0x00000007;
+				m_plane_order = value & 0x00000001;
 			}
 			break;
 		case 0xc3: // CLUT Bank Register
@@ -197,14 +196,14 @@ void mcd212_device::set_register(uint8_t reg, uint32_t value)
 			if (Path == 0)
 			{
 				LOGMASKED(LOG_REGISTERS, "%s: Scanline %d, Path 0: Cursor Position = %08x\n", machine().describe_context(), screen().vpos(), value);
-				m_cursor_position = value;
+				m_cursor_position = value & 0x003ff3ff;
 			}
 			break;
 		case 0xce: // Cursor Control
 			if (Path == 0)
 			{
 				LOGMASKED(LOG_REGISTERS, "%s: Scanline %d, Path 0: Cursor Control = %08x\n", machine().describe_context(), screen().vpos(), value);
-				m_cursor_control = value;
+				m_cursor_control = value & 0x00ff800f;
 			}
 			break;
 		case 0xcf: // Cursor Pattern
@@ -223,35 +222,35 @@ void mcd212_device::set_register(uint8_t reg, uint32_t value)
 		case 0xd6:
 		case 0xd7:
 			LOGMASKED(LOG_REGISTERS, "%s: Scanline %d, Path %d: matte Control %d = %08x\n", machine().describe_context(), screen().vpos(), Path, reg & 7, value);
-			m_matte_control[reg & 7] = value;
+			m_matte_control[reg & 7] = value & 0x00f1ffff;
 			update_matte_arrays();
 			break;
 		case 0xd8: // Backdrop Color
 			if (Path == 0)
 			{
 				LOGMASKED(LOG_REGISTERS, "%s: Scanline %d, Path 0: Backdrop Color = %08x\n", machine().describe_context(), screen().vpos(), value);
-				m_backdrop_color = value;
+				m_backdrop_color = value & 0x0000000f;
 			}
 			break;
 		case 0xd9: // Mosaic Pixel Hold Factor A
 			if (Path == 0)
 			{
 				LOGMASKED(LOG_REGISTERS, "%s: Scanline %d, Path 0: Mosaic Pixel Hold Factor A = %08x\n", machine().describe_context(), screen().vpos(), value);
-				m_mosaic_hold[0] = value;
+				m_mosaic_hold[0] = value & 0x008000ff;
 			}
 			break;
 		case 0xda: // Mosaic Pixel Hold Factor B
 			if (Path == 1)
 			{
 				LOGMASKED(LOG_REGISTERS, "%s: Scanline %d, Path 1: Mosaic Pixel Hold Factor B = %08x\n", machine().describe_context(), screen().vpos(), value);
-				m_mosaic_hold[1] = value;
+				m_mosaic_hold[1] = value & 0x008000ff;
 			}
 			break;
 		case 0xdb: // Weight Factor A
 			if (Path == 0)
 			{
 				LOGMASKED(LOG_REGISTERS, "%s: Scanline %d, Path 0: Weight Factor A = %08x\n", machine().describe_context(), screen().vpos(), value);
-				m_weight_factor[0][0] = (uint8_t)value;
+				m_weight_factor[0][0] = value & 0x3f;
 				update_matte_arrays();
 			}
 			break;
@@ -259,7 +258,7 @@ void mcd212_device::set_register(uint8_t reg, uint32_t value)
 			if (Path == 1)
 			{
 				LOGMASKED(LOG_REGISTERS, "%s: Scanline %d, Path 1: Weight Factor B = %08x\n", machine().describe_context(), screen().vpos(), value);
-				m_weight_factor[1][0] = (uint8_t)value;
+				m_weight_factor[1][0] = value & 0x3f;
 				update_matte_arrays();
 			}
 			break;
@@ -283,7 +282,7 @@ inline ATTR_FORCE_INLINE void mcd212_device::set_vsr(uint32_t value)
 template <int Path>
 inline ATTR_FORCE_INLINE void mcd212_device::set_dcp(uint32_t value)
 {
-	m_dcp[Path] = value & 0x0000ffff;
+	m_dcp[Path] = value & 0x0000fffc;
 	m_ddr[Path] &= 0xffc0;
 	m_ddr[Path] |= (value >> 16) & 0x003f;
 }
@@ -305,39 +304,43 @@ inline ATTR_FORCE_INLINE void mcd212_device::set_display_parameters(uint8_t valu
 
 void mcd212_device::update_screen_timing()
 {
-	// One MAME raster row represents one half-line.  This allows the
-	// 312.5-line PAL and 262.5-line NTSC fields to be represented exactly.
-	const bool sixty_hz = BIT(m_dcr[0], DCR_FD_BIT);
-	const int horizontal_total = BIT(m_dcr[0], DCR_CF_BIT) ? 960 : 896;
+	// One MAME raster row represents one half-line.  Interlaced fields
+	// therefore retain the documented trailing half-line, while single-field
+	// output uses the integral totals from MCD212 tables 5-6 and 5-7.
+	const auto timing = mcd212_video::make_timing_profile(
+		BIT(m_dcr[0], DCR_CF_BIT),
+		BIT(m_dcr[0], DCR_FD_BIT),
+		BIT(m_dcr[0], DCR_SM_BIT),
+		BIT(m_csrw[0], CSR1W_ST_BIT));
 
-	// MAME begins active rendering after the complete vertical blanking/ICA interval.
-	// MCD212 table 5-6 gives 18+4 = 22 lines at 60 Hz and 26+6 = 32 at 50 Hz.
-	m_ica_height = sixty_hz ? 22 : 32;
-	m_total_height = sixty_hz ? 262 : 312;
+	m_active_start = timing.active_start_lines;
+	m_active_height = timing.active_lines;
+	m_total_height = timing.total_lines;
+	m_ica_lines = timing.blank_lines;
 
-	const int vertical_total = m_total_height * 2 + 1;
 	const rectangle visarea(
 		0, 767,
-		m_ica_height * 2,
-		m_total_height * 2 - 1);
+		m_active_start * 2,
+		(m_active_start + m_active_height) * 2 - 1);
 
 	const attotime frame_period = attotime::from_ticks(
-		uint64_t(horizontal_total) * vertical_total, clock());
+		uint64_t(timing.horizontal_total) * timing.total_half_lines, clock());
 
 	screen().configure(
-		horizontal_total,
-		vertical_total,
+		timing.horizontal_total,
+		timing.total_half_lines,
 		visarea,
 		frame_period);
 
 	// Timing changes alter the positions of the ICA and DCA windows.
 	if (m_dca_timer)
-		m_dca_timer->adjust(
-			screen().time_until_pos(m_ica_height * 2, 784));
+	{
+		const int field_offset = timing.field_halfline_offset(BIT(m_csrr[0], CSR1R_PA_BIT));
+		m_dca_timer->adjust(screen().time_until_pos(m_active_start * 2 + field_offset, 784));
+	}
 
 	if (m_ica_timer)
-		m_ica_timer->adjust(
-			screen().time_until_pos(m_ica_height * 2, 0));
+		m_ica_timer->adjust(screen().time_until_pos(0, 0));
 }
 
 int mcd212_device::get_screen_width()
@@ -364,13 +367,32 @@ uint32_t mcd212_device::get_backdrop_plane()
 		return s_4bpp_color[m_backdrop_color];
 }
 
+uint32_t mcd212_device::dyuv_to_rgb(uint32_t yuv) const
+{
+	const uint8_t y = mcd212_video::yuv_y(yuv);
+	const uint8_t u = mcd212_video::yuv_u(yuv);
+	const uint8_t v = mcd212_video::yuv_v(yuv);
+	const uint32_t *const limit_rgb = m_dyuv_limit_lut + y + 0x100;
+	return
+		(limit_rgb[m_dyuv_v_to_r[v]] << 16) |
+		(limit_rgb[m_dyuv_u_to_g[u] + m_dyuv_v_to_g[v]] << 8) |
+		limit_rgb[m_dyuv_u_to_b[u]];
+}
+
+void mcd212_device::update_interrupt_state()
+{
+	const bool asserted = mcd212_video::interrupt_line_asserted(
+		m_csrr[1], BIT(m_csrw[0], CSR1W_DI1_BIT), BIT(m_csrw[1], CSR1W_DI1_BIT));
+	m_int_callback(asserted ? ASSERT_LINE : CLEAR_LINE);
+}
+
 template <int Path>
 void mcd212_device::process_ica()
 {
 	uint16_t *ica = Path ? m_planeb.target() : m_planea.target();
-	const int max_to_process = m_ica_height * 120;
+	const int max_to_process = m_ica_lines * 120;
 	// LCT depends on the current frame parity
-	uint32_t addr = !BIT(m_csrr[0], CSR1R_PA_BIT) ? 0x200 : 0x202;
+	uint32_t addr = mcd212_video::ica_pointer_word_offset(BIT(m_csrr[0], CSR1R_PA_BIT));
 
 	for (int i = 0; i < max_to_process; i++)
 	{
@@ -410,8 +432,7 @@ void mcd212_device::process_ica()
 			case 0x68: case 0x69: case 0x6a: case 0x6b: case 0x6c: case 0x6d: case 0x6e: case 0x6f:
 				LOGMASKED(LOG_ICA, "%08x: %08x: ICA %d: INTERRUPT\n", (addr - 2) * 2 + Path * 0x200000, cmd, Path);
 				m_csrr[1] |= 1 << (2 - Path);
-				if (m_csrr[1] & (CSR2R_IT1 | CSR2R_IT2))
-					m_int_callback(ASSERT_LINE);
+				update_interrupt_state();
 				break;
 			case 0x78: case 0x79: case 0x7a: case 0x7b: case 0x7c: case 0x7d: case 0x7e: case 0x7f: // RELOAD DISPLAY PARAMETERS
 				LOGMASKED(LOG_ICA, "%08x: %08x: ICA %d: RELOAD DISPLAY PARAMETERS\n", (addr - 2) * 2 + Path * 0x200000, cmd, Path);
@@ -432,7 +453,7 @@ void mcd212_device::process_dca()
 	uint32_t addr = (m_dca[Path] & 0x0007ffff) / 2;
 	uint32_t cmd = 0;
 	uint32_t count = 0;
-	uint32_t max = 64;
+	const uint32_t max = mcd212_video::dca_bytes_per_line(BIT(m_dcr[0], DCR_CF_BIT));
 	bool addr_changed = false;
 	bool processing = true;
 
@@ -479,8 +500,7 @@ void mcd212_device::process_dca()
 			case 0x68: case 0x69: case 0x6a: case 0x6b: case 0x6c: case 0x6d: case 0x6e: case 0x6f:
 				LOGMASKED(LOG_DCA, "%08x: %08x: DCA %d: INTERRUPT\n", (addr - 2) * 2 + Path * 0x200000, cmd, Path);
 				m_csrr[1] |= 1 << (2 - Path);
-				if (m_csrr[1] & (CSR2R_IT1 | CSR2R_IT2))
-					m_int_callback(ASSERT_LINE);
+				update_interrupt_state();
 				break;
 			case 0x78: case 0x79: case 0x7a: case 0x7b: case 0x7c: case 0x7d: case 0x7e: case 0x7f: // RELOAD DISPLAY PARAMETERS
 				LOGMASKED(LOG_DCA, "%08x: %08x: DCA %d: RELOAD DISPLAY PARAMETERS\n", (addr - 2) * 2 + Path * 0x200000, cmd, Path);
@@ -550,7 +570,7 @@ inline ATTR_FORCE_INLINE uint8_t mcd212_device::get_mosaic_factor()
 }
 
 template <int Path>
-void mcd212_device::process_vsr(uint32_t *pixels, bool *transparent)
+void mcd212_device::process_vsr(int active_line, uint32_t *pixels, bool *transparent)
 {
 	const uint8_t *data = reinterpret_cast<uint8_t *>(Path ? m_planeb.target() : m_planea.target());
 	const uint8_t *data2 = reinterpret_cast<uint8_t*>(!Path ? m_planeb.target() : m_planea.target());
@@ -558,10 +578,18 @@ void mcd212_device::process_vsr(uint32_t *pixels, bool *transparent)
 	const uint8_t tp_ctrl = get_transparency_control<Path>();
 	const int width = get_screen_width();
 
+	if constexpr (Path == 0)
+	{
+		if (active_line >= 0 && active_line < int(std::size(m_qhy_dyuv_valid)))
+			m_qhy_dyuv_valid[active_line] = false;
+	}
+
 	uint32_t vsr = get_vsr<Path>();
 	uint32_t vsr2 = get_vsr<!Path>();
+	const bool qhy_base =
+		Path == 0 && icm == ICM_DYUV && get_icm<1>() == ICM_QHY;
 
-	if (tp_ctrl == TCR_ALWAYS || !icm || !vsr)
+	if ((tp_ctrl == TCR_ALWAYS && !qhy_base) || !icm || !vsr)
 	{
 		std::fill_n(pixels, get_screen_width(), s_4bpp_color[0]);
 		std::fill_n(transparent, get_screen_width(), (tp_ctrl == TCR_ALWAYS));
@@ -588,10 +616,69 @@ void mcd212_device::process_vsr(uint32_t *pixels, bool *transparent)
 	const int matte_flag_index = BIT(~tp_ctrl_type, 0);
 	const bool *const matte_flags = m_matte_flag[matte_flag_index];
 	const bool use_matte_flag = (tp_ctrl_type >= TCR_MF0 && tp_ctrl_type <= TCR_MF1_KEY1);
-	const bool is_dyuv_rgb = (icm == ICM_DYUV) || ((icm == ICM_RGB555) && (Path == 1)); // DYUV and RGB do not have access to color key.
+	const bool is_dyuv_rgb = (icm == ICM_DYUV) || (icm == ICM_QHY) || ((icm == ICM_RGB555) && (Path == 1)); // DYUV, QHY, and RGB do not have access to color key.
 	const bool use_color_key = !is_dyuv_rgb && ((tp_ctrl_type == TCR_KEY) || (tp_ctrl_type == TCR_MF0_KEY1) || (tp_ctrl_type == TCR_MF1_KEY1));
 
 	LOGMASKED(LOG_VSR, "Scanline %d: VSR Path %d, ICM (%02x), VSR (%08x)\n", screen().vpos(), Path, icm, vsr);
+
+	if constexpr (Path == 1)
+	{
+		if (icm == ICM_QHY)
+		{
+			uint8_t qhy_codes[768];
+			std::fill_n(qhy_codes, width, 0);
+			const auto decoded = mcd212_video::decode_qhy_line(
+				[data, vsr](std::size_t offset)
+				{
+					return data[((vsr + offset) & 0x0007ffff) ^ 1];
+				},
+				width + 2, qhy_codes, width);
+			vsr += decoded.bytes;
+			set_vsr<Path>(vsr);
+
+			if (!decoded.valid)
+				LOGMASKED(LOG_UNKNOWNS, "Scanline %d: Malformed QHY line (%d pixels, %d bytes)\n", screen().vpos(), int(decoded.pixels), int(decoded.bytes));
+
+			const bool row_valid =
+				active_line >= 0 &&
+				active_line < m_active_height &&
+				active_line < int(std::size(m_qhy_dyuv_valid)) &&
+				m_qhy_dyuv_valid[active_line];
+			const int next_line = std::min(active_line + 1, m_active_height - 1);
+			const bool next_valid =
+				next_line >= 0 &&
+				next_line < int(std::size(m_qhy_dyuv_valid)) &&
+				m_qhy_dyuv_valid[next_line];
+			const bool vertical_half =
+				BIT(m_dcr[0], DCR_SM_BIT) && !BIT(m_csrr[0], CSR1R_PA_BIT);
+			const int normal_width = width / 2;
+
+			for (int x = 0; x < width; ++x)
+			{
+				const int column = x / 2;
+				const int next_column = std::min(column + 1, normal_width - 1);
+				const uint32_t fallback = mcd212_video::pack_yuv(16, 128, 128);
+				const uint32_t p00 = row_valid ? m_qhy_dyuv_field[active_line][column] : fallback;
+				const uint32_t p10 = row_valid ? m_qhy_dyuv_field[active_line][next_column] : p00;
+				const uint32_t p01 = next_valid ? m_qhy_dyuv_field[next_line][column] : p00;
+				const uint32_t p11 = next_valid ? m_qhy_dyuv_field[next_line][next_column] : p10;
+				const uint32_t filtered = mcd212_video::interpolate_yuv(
+					p00, p10, p01, p11, BIT(x, 0), vertical_half);
+				pixels[x] = mcd212_video::add_qhy_level(
+					dyuv_to_rgb(filtered), m_qhy_levels[qhy_codes[x]]);
+				transparent[x] =
+					tp_always ||
+					(use_matte_flag && (matte_flags[x] == tp_check_parity));
+			}
+			return;
+		}
+	}
+
+	if constexpr (Path == 0)
+	{
+		if (icm == ICM_DYUV && active_line >= 0 && active_line < int(std::size(m_qhy_dyuv_valid)))
+			m_qhy_dyuv_valid[active_line] = true;
+	}
 
 	for (uint32_t x = 0; x < width; )
 	{
@@ -621,7 +708,14 @@ void mcd212_device::process_vsr(uint32_t *pixels, bool *transparent)
 
 			color1 = (limit_rgb2[m_dyuv_v_to_r[v6]] << 16) | (limit_rgb2[m_dyuv_u_to_g[u6] + m_dyuv_v_to_g[v6]] << 8) | limit_rgb2[m_dyuv_u_to_b[u6]];
 
-			// TODO: Does not support QHY
+			if constexpr (Path == 0)
+			{
+				if (active_line >= 0 && active_line < int(std::size(m_qhy_dyuv_valid)))
+				{
+					m_qhy_dyuv_field[active_line][x / 2] = mcd212_video::pack_yuv(y2, u, v);
+					m_qhy_dyuv_field[active_line][x / 2 + 1] = mcd212_video::pack_yuv(y, u6, v6);
+				}
+			}
 			pixels[x] = color0;
 			pixels[x + 1] = color0;
 			pixels[x + 2] = color1;
@@ -716,7 +810,8 @@ void mcd212_device::mix_lines(uint32_t *plane_a, bool *transparent_a, uint32_t *
 		if (transparent_a[x] && transparent_b[x])
 		{
 			out[x] = get_backdrop_plane();
-			external_video[x + border_width] = BIT(m_image_coding_method, ICM_EV_BIT);
+			external_video[x + border_width] = mcd212_video::external_video_eligible(
+				BIT(m_image_coding_method, ICM_EV_BIT), true, true);
 			continue;
 		}
 		uint32_t plane_a_cur = MosaicA ? plane_a[x - (x % mosaic_count_a)] : plane_a[x];
@@ -783,7 +878,7 @@ void mcd212_device::draw_cursor(uint32_t *scanline, bool *external_video)
 	}
 
 	const uint16_t cursor_x = m_cursor_position & 0x3ff;
-	const uint16_t cursor_y = ((m_cursor_position >> 12) & 0x3ff) + m_ica_height;
+	const uint16_t cursor_y = ((m_cursor_position >> 12) & 0x3ff) + m_active_start;
 	const int32_t y = screen().vpos() / 2 - cursor_y;
 	const int width = get_screen_width();
 
@@ -837,9 +932,14 @@ void mcd212_device::csr1_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 	LOGMASKED(LOG_MAIN_REG_WRITES, "%s: Control/Status Register 1 Write: %04x & %08x\n", machine().describe_context(), data, mem_mask);
 	const uint16_t old_value = m_csrw[0];
 	COMBINE_DATA(&m_csrw[0]);
+	m_csrw[0] &= CSR1W_WRITE_MASK;
 
 	if (BIT(m_csrw[0], CSR1W_ST_BIT) != BIT(old_value, CSR1W_ST_BIT))
+	{
+		update_screen_timing();
 		update_matte_arrays();
+	}
+	update_interrupt_state();
 }
 
 uint16_t mcd212_device::dcr1_r(offs_t offset, uint16_t mem_mask)
@@ -853,10 +953,11 @@ void mcd212_device::dcr1_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 	LOGMASKED(LOG_MAIN_REG_WRITES, "%s: Display Command Register 1 Write: %04x & %08x\n", machine().describe_context(), data, mem_mask);
 
 	const uint16_t timing_mask =
-		(1U << DCR_CF_BIT) | (1U << DCR_FD_BIT);
+		(1U << DCR_CF_BIT) | (1U << DCR_FD_BIT) | (1U << DCR_SM_BIT);
 	const uint16_t old_value = m_dcr[0];
 
 	COMBINE_DATA(&m_dcr[0]);
+	m_dcr[0] &= DCR1_WRITE_MASK;
 
 	if (((m_dcr[0] ^ old_value) & timing_mask) != 0)
 		update_screen_timing();
@@ -887,18 +988,20 @@ void mcd212_device::ddr1_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 {
 	LOGMASKED(LOG_MAIN_REG_WRITES, "%s: Display Decoder Register 1 Write: %04x & %08x\n", machine().describe_context(), data, mem_mask);
 	COMBINE_DATA(&m_ddr[0]);
+	m_ddr[0] &= DDR_WRITE_MASK;
 }
 
 uint16_t mcd212_device::dca1_r(offs_t offset, uint16_t mem_mask)
 {
-	LOGMASKED(LOG_MAIN_REG_READS, "%s: DCA Pointer 1 Read: %04x & %08x\n", machine().describe_context(), m_dca[0], mem_mask);
-	return m_dca[0];
+	LOGMASKED(LOG_MAIN_REG_READS, "%s: DCA Pointer 1 Read: %04x & %08x\n", machine().describe_context(), m_dcp[0], mem_mask);
+	return m_dcp[0];
 }
 
 void mcd212_device::dca1_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 {
-	LOGMASKED(LOG_MAIN_REG_WRITES, "%s: DCA Pointer 1 Write: %04x & %08x\n", machine().describe_context(), data, mem_mask);
-	COMBINE_DATA(&m_dca[0]);
+	LOGMASKED(LOG_MAIN_REG_WRITES, "%s: DCA Pointer 1 Write: %04x & %08x\n", machine().describe_context(), data & 0xfffc, mem_mask);
+	COMBINE_DATA(&m_dcp[0]);
+	m_dcp[0] &= 0xfffc;
 }
 
 uint8_t mcd212_device::csr2_r()
@@ -912,8 +1015,7 @@ uint8_t mcd212_device::csr2_r()
 	LOGMASKED(LOG_STATUS, "%s: Status Register 2: %02x\n", machine().describe_context(), data);
 
 	m_csrr[1] &= ~(CSR2R_IT1 | CSR2R_IT2);
-	if (data & (CSR2R_IT1 | CSR2R_IT2))
-		m_int_callback(CLEAR_LINE);
+	update_interrupt_state();
 
 	return data;
 }
@@ -922,6 +1024,8 @@ void mcd212_device::csr2_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 {
 	LOGMASKED(LOG_MAIN_REG_WRITES, "%s: Control/Status Register 2 Write: %04x & %08x\n", machine().describe_context(), data, mem_mask);
 	COMBINE_DATA(&m_csrw[1]);
+	m_csrw[1] &= CSR2W_WRITE_MASK;
+	update_interrupt_state();
 }
 
 uint16_t mcd212_device::dcr2_r(offs_t offset, uint16_t mem_mask)
@@ -934,6 +1038,7 @@ void mcd212_device::dcr2_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 {
 	LOGMASKED(LOG_MAIN_REG_WRITES, "%s: Display Command Register 2 Write: %04x & %08x\n", machine().describe_context(), data, mem_mask);
 	COMBINE_DATA(&m_dcr[1]);
+	m_dcr[1] &= DCR2_WRITE_MASK;
 }
 
 uint16_t mcd212_device::vsr2_r(offs_t offset, uint16_t mem_mask)
@@ -958,18 +1063,20 @@ void mcd212_device::ddr2_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 {
 	LOGMASKED(LOG_MAIN_REG_WRITES, "%s: Display Decoder Register 2 Write: %04x & %08x\n", machine().describe_context(), data, mem_mask);
 	COMBINE_DATA(&m_ddr[1]);
+	m_ddr[1] &= DDR_WRITE_MASK;
 }
 
 uint16_t mcd212_device::dca2_r(offs_t offset, uint16_t mem_mask)
 {
-	LOGMASKED(LOG_MAIN_REG_READS, "%s: DCA Pointer 2 Read: %04x & %08x\n", machine().describe_context(), m_dca[1], mem_mask);
-	return m_dca[1];
+	LOGMASKED(LOG_MAIN_REG_READS, "%s: DCA Pointer 2 Read: %04x & %08x\n", machine().describe_context(), m_dcp[1], mem_mask);
+	return m_dcp[1];
 }
 
 void mcd212_device::dca2_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 {
-	LOGMASKED(LOG_MAIN_REG_WRITES, "%s: DCA Pointer 2 Write: %04x & %08x\n", machine().describe_context(), data, mem_mask);
-	COMBINE_DATA(&m_dca[1]);
+	LOGMASKED(LOG_MAIN_REG_WRITES, "%s: DCA Pointer 2 Write: %04x & %08x\n", machine().describe_context(), data & 0xfffc, mem_mask);
+	COMBINE_DATA(&m_dcp[1]);
+	m_dcp[1] &= 0xfffc;
 }
 
 TIMER_CALLBACK_MEMBER(mcd212_device::ica_tick)
@@ -1013,11 +1120,21 @@ TIMER_CALLBACK_MEMBER(mcd212_device::dca_tick)
 	if (BIT(m_dcr[1], DCR_DCA_BIT))
 		process_dca<1>();
 
-	int scanline = screen().vpos() / 2;
-	if (scanline == m_total_height - 1)
-		m_dca_timer->adjust(screen().time_until_pos(m_ica_height * 2, 784));
+	const int scanline = screen().vpos() / 2;
+	const bool interlace = BIT(m_dcr[0], DCR_SM_BIT);
+	const bool odd_field = BIT(m_csrr[0], CSR1R_PA_BIT);
+	if (scanline == m_active_start + m_active_height - 1)
+	{
+		// The following field has the opposite PA and therefore the opposite
+		// half-line phase.
+		const int next_field_offset = interlace && odd_field ? 1 : 0;
+		m_dca_timer->adjust(screen().time_until_pos(m_active_start * 2 + next_field_offset, 784));
+	}
 	else
-		m_dca_timer->adjust(screen().time_until_pos((scanline + 1) * 2, 784));
+	{
+		const int field_offset = interlace && !odd_field ? 1 : 0;
+		m_dca_timer->adjust(screen().time_until_pos((scanline + 1) * 2 + field_offset, 784));
+	}
 }
 
 uint32_t mcd212_device::screen_update(screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &cliprect)
@@ -1065,30 +1182,19 @@ uint32_t mcd212_device::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 			return 0;
 
 		// Process VSR and mix if we're in the visible region
-		if (scanline >= m_ica_height)
+		if (scanline >= m_active_start && scanline < m_active_start + m_active_height)
 		{
 			uint32_t *const out = m_scanline_cache[BIT(~m_csrr[0], CSR1R_PA_BIT)];
 			uint32_t *const out2 = m_scanline_cache[BIT(m_csrr[0], CSR1R_PA_BIT)];
 			bool *const external_video = m_external_video_cache[BIT(~m_csrr[0], CSR1R_PA_BIT)];
 			bool *const external_video2 = m_external_video_cache[BIT(m_csrr[0], CSR1R_PA_BIT)];
-
-			bool draw_line = true;
-			if (!BIT(m_dcr[0], DCR_FD_BIT) && BIT(m_csrw[0], CSR1W_ST_BIT))
-			{
-				// If PAL and 'Standard' bit set, insert a 20-line border on the top/bottom
-				if ((scanline - m_ica_height < 20) || (scanline >= (m_total_height - 20)))
-				{
-					std::fill_n(out, 768, s_4bpp_color[0]);
-					draw_line = false;
-				}
-			}
+			const int active_line = scanline - m_active_start;
 
 			m_csrr[0] |= CSR1R_DA;
 
-			if (draw_line)
 			{
-				process_vsr<0>(plane_a, transparent_a);
-				process_vsr<1>(plane_b, transparent_b);
+				process_vsr<0>(active_line, plane_a, transparent_a);
+				process_vsr<1>(active_line, plane_b, transparent_b);
 
 				const uint8_t mosaic_enable_a = (m_mosaic_hold[0] & 0x800000) >> 23;
 				const uint8_t mosaic_enable_b = (m_mosaic_hold[1] & 0x800000) >> 22;
@@ -1179,8 +1285,8 @@ int mcd212_device::ram_dtack_cycle_count()
 	if (x >= 472)
 		return 2;
 
-	// No contending for Ch.1/Ch.2 timing slots during the free-run area of ICA lines
-	if (y < m_ica_height && x_outside_active_display)
+	// No contention in the free-run area during either part of vertical blanking.
+	if ((y < m_active_start || y >= m_active_start + m_active_height) && x_outside_active_display)
 		return 2;
 
 	// No contending for Ch.1/Ch.2 timing slots during the free-run area of DCA lines if DCA is disabled
@@ -1213,6 +1319,7 @@ void mcd212_device::device_reset()
 	std::fill_n(m_dcp, 2, 0);
 	std::fill_n(m_dca, 2, 0);
 	std::fill_n(m_clut, 256, 0);
+	std::fill_n(m_qhy_levels, 8, 0);
 	m_image_coding_method = 0;
 	m_transparency_control = 0;
 	m_plane_order = 0;
@@ -1231,23 +1338,20 @@ void mcd212_device::device_reset()
 	std::fill_n(m_matte_flag[0], std::size(m_matte_flag[0]), false);
 	std::fill_n(m_matte_flag[1], std::size(m_matte_flag[1]), false);
 
-	m_ica_height = 32;
-	m_total_height = 312;
 	m_blink_time = 0;
-	for (int i = 0; i < m_total_height; i++)
-	{
-		std::fill_n(m_interlace_field[i], 768, 0);
-	}
+	m_blink_active = false;
+	std::fill_n(&m_interlace_field[0][0], 312 * 768, 0);
+	std::fill_n(&m_qhy_dyuv_field[0][0], 280 * 384, 0);
+	std::fill_n(m_qhy_dyuv_valid, 280, false);
 
 	m_int_callback(CLEAR_LINE);
-
-	m_dca_timer->adjust(screen().time_until_pos(m_ica_height * 2, 784));
-	m_ica_timer->adjust(screen().time_until_pos(m_ica_height * 2, 0));
 
 	std::fill_n(&m_scanline_cache[0][0], 2 * 768, 0);
 	std::fill_n(&m_external_video_cache[0][0], 2 * 768, false);
 	std::fill_n(&m_external_video_field[0][0], 312 * 768, false);
 	m_scanline_cache_scanline = -1;
+
+	update_screen_timing();
 }
 
 //-------------------------------------------------
@@ -1299,6 +1403,7 @@ void mcd212_device::device_start()
 	save_item(NAME(m_dcp));
 	save_item(NAME(m_dca));
 	save_item(NAME(m_clut));
+	save_item(NAME(m_qhy_levels));
 	save_item(NAME(m_image_coding_method));
 	save_item(NAME(m_transparency_control));
 	save_item(NAME(m_plane_order));
@@ -1316,9 +1421,13 @@ void mcd212_device::device_start()
 	save_item(NAME(m_weight_factor[1]));
 
 	save_item(NAME(m_matte_flag));
-	save_item(NAME(m_ica_height));
+	save_item(NAME(m_active_start));
+	save_item(NAME(m_active_height));
 	save_item(NAME(m_total_height));
+	save_item(NAME(m_ica_lines));
 
+	save_item(NAME(m_qhy_dyuv_field));
+	save_item(NAME(m_qhy_dyuv_valid));
 	save_item(NAME(m_blink_time));
 	save_item(NAME(m_blink_active));
 
