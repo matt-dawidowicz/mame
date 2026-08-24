@@ -32,7 +32,7 @@ TODO:
 #define LOG_INPUTS      (1U << 6)
 #define LOG_ALL         (LOG_IRQS | LOG_COMMANDS | LOG_READS | LOG_WRITES | LOG_UNKNOWNS | LOG_INPUTS)
 
-#define VERBOSE         (0)
+#define VERBOSE         (LOG_INPUTS)
 #include "logmacro.h"
 
 // device type definition
