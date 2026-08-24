@@ -7,6 +7,7 @@ Branch: `cdi-dvc-modernization`
 Phase-A checkpoint: `63fbd31f6934cbd60956b1a0899d75ea5c31a871`
 Phase-B checkpoint: `2b05d1314a3fd2de2c5d03216b9a732f376ba6c9`
 Phase-C checkpoint: `a639c7135ddb9ef1b2bdc770e759fe2ef4d6576e`
+Phase-D checkpoint: `eff3cd54b38b0db6023ea488d0908f254a802d13`
 
 This is a living engineering record. Percentages are conservative implementation-confidence estimates derived from the current source, focused tests, and available runtime evidence. They are not compatibility ratings and do not imply that every title or firmware path has been exercised.
 
@@ -185,6 +186,53 @@ SLAVE confidence after this checkpoint:
 - Evidence: Philips service/manual behavior, board-level signal ownership, current source/history, supplied firmware identity, firmware-only boot smoke test, and synthetic command/transport/pointer tests.
 - Remaining: keyboard event source/format; live SERVO disc status/base; developer and X-bus protocols; hardware mailbox timing; response queue depth; reset/mute/attenuation timing; SCC68070 `/DTACK` support needed for trustworthy LLE experiments.
 
+## Phase E Mono-II foundation
+
+Scope: establish an auditable `cdimono2` board skeleton without reviving the historical asynchronous `/DTACK` shortcut or fabricating a DSP command/register HLE. Phase E uses the roadmap labels **A** (primary hardware/service evidence), **B** (firmware, source history, or independent inference), **C** (compatibility model), and **D** (unknown or blocked).
+
+Implemented in this checkpoint:
+
+- one shared header for the Mono-II clocks, mapped/blocked address regions, DRVDSP host-register addresses, IRQ2 line conversion, and explicit implementation boundaries;
+- the SLAVE MCU port-B bit-5 active-low IRQ output connected to SCC68070 `IN2`, with IRQ2 cleared deterministically at machine reset;
+- a disabled DSP56001 device at the documented 27 MHz board clock, representing the component without pretending that the current MAME core executes DSP code;
+- DRVDSP and SLAVE host ranges deliberately left unmapped until their real device interfaces exist;
+- five structural test cases covering board-map ordering, machine clocks/startup descriptors, IRQ/reset behavior, DSP register addressing, and unsupported-bus boundaries.
+
+### Mono-II board map
+
+| Range / component | Current representation | Evidence | Remaining boundary |
+| --- | --- | --- | --- |
+| SCC68070 and MCD212 at 30.2098 MHz | Configured and linked to the existing plane RAM, video interrupt, screen, and MCD212 map. | **A/B** | No new cycle-level bus or video claim. |
+| `0x000000-0x07ffff` plane A | 512 KiB mapped RAM. | **B** | Bus arbitration with video fetch is not cycle-accurate. |
+| `0x200000-0x27ffff` plane B | 512 KiB mapped RAM. | **B** | Same boundary as plane A. |
+| `0x300000-0x30000f` DRVDSP host interface | Address/register descriptors only; intentionally unmapped. | **B/D** | Current DSP56001 core has no host interface or instruction execution. |
+| `0x310000-0x317fff` SLAVE host mailbox | Topology recorded; intentionally unmapped. | **A/D** | SCC68070 cannot yet suspend a bus cycle for MCU-controlled asynchronous `/DTACK`. |
+| `0x320000-0x323fff` timekeeper NVRAM | Existing high-byte map retained. | **B** | Exact byte-lane wording should be checked against a board schematic. |
+| `0x400000-0x47ffff` boot ROM | Existing ROM window retained. | **B** | Runtime proof requires a legal matching Mono-II ROM set. |
+| `0x4fffe0-0x4fffff` MCD212 | Existing device submap retained. | **A/B** | Covered by Phase B structural tests, not Mono-II hardware captures. |
+| SERVO and SLAVE MC68HC05C8 at 4 MHz | Existing dumped-ROM MCU devices retained. | **A/B** | Their present CPU core exposes ports and register storage but no external SPI pins. |
+| DSP56001/DRVDSP at 27 MHz | Present as a disabled device. | **A/D** | LEMM, DSP code execution, host port, local memory, DMA, and interrupt routing are absent. |
+
+### Mono-II signal and reset audit
+
+| Signal/path | Result | Classification |
+| --- | --- | --- |
+| SLAVE port B bit 5 to SCC68070 `IN2` | Connected as an active-low line; all 256 port values are covered by the structural test. | **B**, implemented |
+| SCC68070 IRQ2 at reset | Explicitly clear before MCU firmware can assert it. | **C**, deterministic reset safety |
+| SERVO-SLAVE SPI clock/data/select | Board topology is documented, but no driver connection is made because the current MC68HC05 core lacks pin-level SPI I/O. | **A/D**, blocked |
+| SCC68070-SLAVE address/data/RW and `/DTACK` | No driver-local latch or suspended-cycle approximation restored. | **A/D**, blocked |
+| DSP host registers | Odd byte addresses `0x300001`, `03`, `05`, `07`, `0b`, `0d`, and `0f` are recorded for future implementation. | **B**, structural only |
+| DSP/LEMM execution, DMA, and interrupt | No command HLE, fake ready bit, register array, or audio bypass added. | **D**, blocked |
+| DSP reset | Device remains disabled; no executable/reset-state claim is made beyond structural presence. | **D** |
+
+Mono-II confidence after this checkpoint:
+
+- Structural foundation: `[######----] 60%`
+- Functional runtime: `[##--------] 20%`
+- Hardware fidelity: `[###-------] 30%`
+- Proven: linked machine configuration, deterministic IRQ2 reset/translation, stable map descriptors, and deliberate unsupported-range boundaries.
+- Not proven: firmware boot, SERVO-SLAVE traffic, host-mailbox transfers, DSP execution, digital audio, CD playback, controller input, or commercial-title behavior.
+
 ## MCD212 display-pipeline audit
 
 | Area | Current result | Evidence and tests | Remaining boundary |
@@ -259,6 +307,10 @@ SLAVE confidence after this checkpoint:
 - CDIC Fetch TOC remains synthesized from image metadata. Packet order, mixed-mode/multi-session behavior, P-W subcode, and exact completion signaling are unresolved.
 - CDIC end-of-disc now terminates without a fabricated sector, but the hardware error/status/IRQ response is unknown.
 - CDIC DSEL, IVEC reset, unused ABUF/XBUF/DBUF bits, and some AUDCTL fields remain stored or fixed compatibility values.
+- Mono-II SERVO-SLAVE SPI is documented but not connected because the current MC68HC05 core has no external SPI-pin interface.
+- Mono-II SLAVE host-mailbox LLE remains blocked on asynchronous SCC68070 `/DTACK`; the historical driver-local wait-state shortcut was not restored.
+- The Mono-II DSP56001 is a disabled board placeholder. MAME's current core does not execute instructions or expose the host interface, and no replacement HLE was added.
+- No matching `cdimono2` ROM files are present in this checkout, so firmware startup is an explicit unpassed runtime gate.
 
 ## Phase A validation gates
 
@@ -358,3 +410,39 @@ Latest result (2026-08-24):
 - exact-path `git diff --check`: **PASS**.
 
 No commercial title was required or run. The gates prove deterministic parser, transport, response, pointer, IRQ2, and reset behavior in this HLE; they do not prove complete SLAVE firmware semantics, exact mailbox timing, or LLE equivalence.
+
+## Phase E validation gates
+
+The checkpoint may be committed only when all of the following pass from the same tree:
+
+1. focused Mono-II board-map/startup/IRQ/reset/DSP-boundary tests;
+2. complete Mono-I regression selections and all Philips tests;
+3. complete native `mametests` suite;
+4. regenerated CD-i validation/emulator build with `-j2`;
+5. `cdivalidate -validate cdimono2` and device enumeration;
+6. address-sanitized focused, Philips, and complete native test selections;
+7. `git diff --check` and exact-path/hunk staging that excludes pre-existing traces and input changes.
+
+Latest result (2026-08-24):
+
+- focused Mono-II structure: **PASS**, 327 assertions in 5 cases;
+- focused SLAVE regression: **PASS**, 3,275 assertions in 10 cases;
+- transport regression: **PASS**, 183 assertions in 18 cases;
+- all Philips tests: **PASS**, 1,287,383 assertions in 98 cases;
+- complete native suite: **PASS**, 1,288,465 assertions in 115 cases;
+- regenerated native and AddressSanitizer `cdivalidate`/`mametests` builds (`TESTS=1`, `NOWERROR=1`, `-j2`): **PASS**;
+- `cdivalidate -validate cdimono2`: **PASS** (exit zero, no diagnostics);
+- device enumeration: **PASS**, including SCC68070, MCD212, two MC68HC05C8 devices, and a DSP56001 at their declared clocks;
+- AddressSanitizer focused Mono-II: **PASS**, 327 assertions in 5 cases;
+- AddressSanitizer focused SLAVE: **PASS**, 3,275 assertions in 10 cases;
+- AddressSanitizer all Philips: **PASS**, 1,287,383 assertions in 98 cases;
+- AddressSanitizer complete suite: **PASS**, 1,288,465 assertions in 115 cases;
+- native and AddressSanitizer global `cdivalidate -validate`: **PASS**;
+- native and AddressSanitizer five-second `cdimono1 -bios pcdi220` firmware-only smoke: **PASS**; expected REDUMP and ALSA warnings remain;
+- exact-path `git diff --check`: **PASS**.
+
+Runtime limitation:
+
+- `cdivalidate -verifyroms cdimono2` reports `romset "cdimono2" not found` because this checkout has no matching Mono-II ROM set;
+- therefore no Mono-II firmware boot, CD playback, input, audio, or commercial-title result is claimed;
+- the existing Mono-I firmware-only smoke gate remains required to protect the established machine family while Mono-II runtime media is unavailable.

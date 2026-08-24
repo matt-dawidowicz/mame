@@ -40,14 +40,17 @@ TODO:
 
 - Mono-I: Full emulation of the CDIC, as well as the SERVO and SLAVE MCUs
 
-- Mono-II: SERVO and SLAVE I/O device hookup
-- Mono-II: DSP56k hookup
+- Mono-II: SERVO/SLAVE SPI awaits pin-level SPI support in the MC68HC05 core
+- Mono-II: SLAVE host-mailbox LLE awaits asynchronous SCC68070 /DTACK support
+- Mono-II: DSP56001 execution and host-interface support; do not substitute
+  driver-local register storage or command HLE
 
 *******************************************************************************/
 
 #include "emu.h"
 #include "cdi.h"
 
+#include "cdimono2.h"
 #include "cpu/m6805/m6805.h"
 #include "imagedev/cdromimg.h"
 #include "machine/timekpr.h"
@@ -131,14 +134,22 @@ void cdi_state::cdimono1dvc_mem(address_map &map)
 
 void cdi_state::cdimono2_mem(address_map &map)
 {
-	map(0x000000, 0x07ffff).rw(FUNC(cdi_state::plane_r<0>), FUNC(cdi_state::plane_w<0>)).share("plane0");
-	map(0x200000, 0x27ffff).rw(FUNC(cdi_state::plane_r<1>), FUNC(cdi_state::plane_w<1>)).share("plane1");
+	map(cdi_mono2::PLANE_A_START, cdi_mono2::PLANE_A_END).rw(FUNC(cdi_state::plane_r<0>), FUNC(cdi_state::plane_w<0>)).share("plane0");
+	map(cdi_mono2::PLANE_B_START, cdi_mono2::PLANE_B_END).rw(FUNC(cdi_state::plane_r<1>), FUNC(cdi_state::plane_w<1>)).share("plane1");
 #if ENABLE_UART_PRINTING
 	map(0x301400, 0x301403).r(m_maincpu, FUNC(scc68070_device::uart_loopback_enable));
 #endif
-	map(0x320000, 0x323fff).rw("mk48t08", FUNC(timekeeper_device::read), FUNC(timekeeper_device::write)).umask16(0xff00);    /* nvram (only low bytes used) */
-	map(0x400000, 0x47ffff).r(FUNC(cdi_state::main_rom_r));
-	map(0x4fffe0, 0x4fffff).m(m_mcd212, FUNC(mcd212_device::map));
+	// The documented DRVDSP and SLAVE ranges remain unmapped until the device
+	// cores expose their real host interfaces.  Do not fill either hole with
+	// register storage or a /DTACK timing shortcut.
+	map(cdi_mono2::NVRAM_START, cdi_mono2::NVRAM_END).rw("mk48t08", FUNC(timekeeper_device::read), FUNC(timekeeper_device::write)).umask16(0xff00);    /* nvram (only low bytes used) */
+	map(cdi_mono2::BOOT_ROM_START, cdi_mono2::BOOT_ROM_END).r(FUNC(cdi_state::main_rom_r));
+	map(cdi_mono2::MCD212_START, cdi_mono2::MCD212_END).m(m_mcd212, FUNC(mcd212_device::map));
+}
+
+void cdi_state::cdimono2_slave_portb_w(uint8_t data)
+{
+	m_maincpu->in2_w(cdi_mono2::slave_irq2_line(data));
 }
 
 void cdi_state::cdi910_mem(address_map &map)
@@ -241,6 +252,10 @@ void cdi_state::machine_reset()
 	m_dvc_irq_state = false;
 	m_irq4_owner = IRQ4_NONE;
 	m_maincpu->in4_w(CLEAR_LINE);
+
+	// Mono-II SLAVE IRQ is active low on MCU port B bit 5.
+	if (m_slave && !m_slave_hle)
+		m_maincpu->in2_w(cdi_mono2::RESET_IRQ2_LINE);
 
 	m_dvc_dma_service_active = false;
 	m_dvc_dma_mac_mode = 0;
@@ -736,11 +751,11 @@ void cdi_state::cdimono1_base(machine_config &config, uint32_t clock, bool ntsc)
 // CD-i model 220 (Mono-II, NTSC)
 void cdi_state::cdimono2(machine_config &config)
 {
-	SCC68070(config, m_maincpu, CLOCK_A_NTSC);
+	SCC68070(config, m_maincpu, cdi_mono2::MAIN_CLOCK);
 	m_maincpu->set_uart_external_clock(CLOCK_UART);
 	m_maincpu->set_addrmap(AS_PROGRAM, &cdi_state::cdimono2_mem);
 
-	MCD212(config, m_mcd212, CLOCK_A_NTSC, m_plane_ram[0], m_plane_ram[1]);
+	MCD212(config, m_mcd212, cdi_mono2::MAIN_CLOCK, m_plane_ram[0], m_plane_ram[1]);
 	m_mcd212->set_screen("screen");
 	m_mcd212->int_callback().set(m_maincpu, FUNC(scc68070_device::int1_w));
 
@@ -761,8 +776,15 @@ void cdi_state::cdimono2(machine_config &config)
 
 	config.set_default_layout(layout_cdi);
 
-	M68HC05C8(config, m_servo, 4_MHz_XTAL);
-	M68HC05C8(config, m_slave, 4_MHz_XTAL);
+	M68HC05C8(config, m_servo, cdi_mono2::MCU_CLOCK);
+	M68HC05C8(config, m_slave, cdi_mono2::MCU_CLOCK);
+	m_slave->portb_w().set(FUNC(cdi_state::cdimono2_slave_portb_w));
+
+	// A DRVDSP/LEMM path is present on Mono-II hardware.  MAME's current
+	// DSP56001 core has no instruction execution or host interface, so retain
+	// the real component and clock as a disabled structural placeholder.  The
+	// 0x300000 host range intentionally remains unmapped.
+	DSP56001(config, m_dsp, cdi_mono2::DRVDSP_CLOCK).set_disable();
 
 	CDROM(config, m_cdrom).set_interface("cdrom");
 	SOFTWARE_LIST(config, "cd_list").set_original("cdi").set_filter("!DVC");
