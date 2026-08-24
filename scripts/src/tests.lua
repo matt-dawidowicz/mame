@@ -49,6 +49,7 @@ project("mametests")
 		MAME_DIR .. "3rdparty/catch/single_include",
 		MAME_DIR .. "src/osd",
 		MAME_DIR .. "src/emu",
+		MAME_DIR .. "src/devices/machine",
 		MAME_DIR .. "src/lib/util",
 		MAME_DIR .. "src/mame/philips",
 		ext_includedir("expat"),
@@ -62,6 +63,7 @@ project("mametests")
 
 	files {
 		MAME_DIR .. "tests/main.cpp",
+		MAME_DIR .. "tests/emu/machine/scc68070.cpp",
 		MAME_DIR .. "tests/emu/philips/cdidvc.cpp",
 		MAME_DIR .. "tests/emu/philips/cdidvc_timing.cpp",
 		MAME_DIR .. "tests/emu/philips/cdidvc_invariants.cpp",
