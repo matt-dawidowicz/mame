@@ -43,11 +43,6 @@ TODO:
 
 namespace {
 
-constexpr int16_t clip_int16(int32_t sample)
-{
-	return int16_t(std::clamp<int32_t>(sample, -32768, 32767));
-}
-
 float attenuation_scale(uint8_t attenuation)
 {
 	if (attenuation & 0x80)
@@ -65,14 +60,6 @@ DEFINE_DEVICE_TYPE(CDI_CDIC, cdicdic_device, "cdicdic", "CD-i CDIC")
 //**************************************************************************
 //  STATIC MEMBERS
 //**************************************************************************
-
-const int16_t cdicdic_device::s_xa_filter_coef[4][2] =
-{
-	{ 0x000,  0x000 },
-	{ 0x0F0,  0x000 },
-	{ 0x1CC, -0x0D0 },
-	{ 0x188, -0x0DC }
-};
 
 const int32_t cdicdic_device::s_samples_per_sector = 18 * 28 * 2;
 
@@ -276,15 +263,10 @@ const uint8_t cdicdic_device::s_sector_scramble[2448] =
 
 void cdicdic_device::decode_xa_unit(const uint8_t param, int16_t sample, int16_t &sample0, int16_t &sample1, int16_t &out_buffer)
 {
-	const int16_t *const filter = s_xa_filter_coef[(param >> 4) & 3]; // High bits are reserved.
-	const uint8_t range = std::min<uint8_t>(param & 0xf, 12); // Should be at most 8. Some decoders set 13..15 to 9.
-
-	int32_t sample32 = sample; // Work in 32-bit, clamp to avoid peaking audio.
-	sample32 = (sample32 >> range) + ((int32_t(filter[0]) * sample0 + int32_t(filter[1]) * sample1 + 128) >> 8);
-
-	sample = clip_int16(sample32);
-	sample1 = std::exchange(sample0, sample);
-	out_buffer = sample;
+	const cdic_hle::xa_sample decoded = cdic_hle::decode_xa_sample(param, sample, sample0, sample1);
+	sample0 = decoded.recent;
+	sample1 = decoded.older;
+	out_buffer = decoded.output;
 }
 
 void cdicdic_device::decode_8bit_xa_unit(int channel, uint8_t param, const uint8_t *data, int16_t *out_buffer)
@@ -506,6 +488,8 @@ void cdicdic_device::process_audio_map()
 		m_audio_sector_counter = m_audio_format_sectors;
 		m_audio_format_sectors = 0;
 		m_decoding_audio_map = false;
+		// Bit 0 reports decoder termination; bit 11 is playback enable.
+		m_z_buffer = (m_z_buffer & ~0x0800) | 0x0001;
 	}
 
 	if (was_decoding)
@@ -517,7 +501,8 @@ void cdicdic_device::process_audio_map()
 
 void cdicdic_device::update_interrupt_state()
 {
-	const bool interrupt_active = (bool)BIT(m_x_buffer | m_audio_buffer, 15);
+	const bool interrupt_active = cdic_hle::interrupt_asserted(
+		m_x_buffer, m_data_buffer, m_audio_buffer, m_z_buffer);
 	if (!interrupt_active)
 		LOGMASKED(LOG_SECTORS, "%s: Clearing CDIC interrupt line\n", machine().describe_context());
 	m_intreq_callback(interrupt_active ? ASSERT_LINE : CLEAR_LINE);
@@ -580,63 +565,20 @@ bool cdicdic_device::is_valid_sector(const uint8_t *buffer)
 	return true;
 }
 
-bool cdicdic_device::is_mode2_sector_selected(const uint8_t *buffer)
+cdic_hle::sector_decision cdicdic_device::mode2_sector_decision(const uint8_t *buffer) const
 {
-	if ((buffer[SECTOR_FILE2] << 8) != m_file)
-	{
-		LOGMASKED(LOG_SECTORS, "Mode 2 sector is not selected, current file: %04x, disc file: %04x\n", m_file, buffer[SECTOR_FILE2]);
-		return false;
-	}
-
-	if (buffer[SECTOR_SUBMODE2] & SUBMODE_EOF)
-	{
-		LOGMASKED(LOG_SECTORS, "Mode 2 sector is EOF, queueing end of read\n");
-		m_disc_command = 0;
-	}
-
-	// End-of-File, End-of-Record, or Trigger sectors skip selection beyond initial file selection.
-	if (buffer[SECTOR_SUBMODE2] & (SUBMODE_EOF | SUBMODE_TRIG | SUBMODE_EOR))
-	{
-		LOGMASKED(LOG_SECTORS, "Mode 2 sector is selected due to EOF, TRIG, or EOR (%02x)\n", buffer[SECTOR_SUBMODE2]);
-		return true;
-	}
-
-	// Sectors with no applicable data are skipped.
-	if (!(buffer[SECTOR_SUBMODE2] & (SUBMODE_DATA | SUBMODE_AUDIO | SUBMODE_VIDEO)))
-	{
-		LOGMASKED(LOG_SECTORS, "Mode 2 sector is not selected due to being a message sector (%02x)\n", buffer[SECTOR_SUBMODE2]);
-		return false;
-	}
-
-	// Select based on the specified channel mask.
-	const bool channel_selected = (bool)BIT(m_channel, buffer[SECTOR_CHAN2]);
-
-	LOGMASKED(LOG_SECTORS, "Mode 2 sector is %sselected due to channel (register %04x, buffer channel %04x)\n", channel_selected ? "" : "not ", m_channel, buffer[SECTOR_CHAN2]);
-
-	return channel_selected;
-}
-
-bool cdicdic_device::is_mode2_audio_selected(const uint8_t *buffer)
-{
-	// Non-Mode-2, Non-Audio sectors are never selected for audio playback.
-	if (!(buffer[SECTOR_SUBMODE2] & SUBMODE_FORM) || !(buffer[SECTOR_SUBMODE2] & SUBMODE_AUDIO))
-	{
-		LOGMASKED(LOG_SECTORS, "Audio is not selected; submode %02x\n", buffer[SECTOR_SUBMODE2]);
-		return false;
-	}
-
-	// Select based on the specified audio channel mask.
-	const bool channel_selected = (bool)BIT(m_audio_channel, buffer[SECTOR_CHAN2]);
-
-	LOGMASKED(LOG_SECTORS, "Mode 2 audio is %sselected due to channel (register %04x, buffer channel %04x)\n", channel_selected ? "" : "not ", m_audio_channel, buffer[SECTOR_CHAN2]);
-
-	return channel_selected;
+	return cdic_hle::select_mode2_sector(
+		m_file,
+		m_channel,
+		m_audio_channel,
+		{ buffer[SECTOR_FILE2], buffer[SECTOR_CHAN2], buffer[SECTOR_SUBMODE2] });
 }
 
 TIMER_CALLBACK_MEMBER( cdicdic_device::sector_tick )
 {
 	if (m_disc_command == 0)
 	{
+		m_disc_state = uint8_t(cdic_hle::disc_state::idle);
 		return;
 	}
 
@@ -649,12 +591,13 @@ TIMER_CALLBACK_MEMBER( cdicdic_device::sector_tick )
 
 	LOGMASKED(LOG_SECTORS, "About to process a disc sector\n");
 
+	m_disc_state = uint8_t(cdic_hle::disc_state::reading);
 	process_disc_sector();
 
 	// Reset commands stop after the next physical sector.  Keep this in the
 	// scheduler rather than process_sector_data(), because filtering may cause
 	// a sector to return before it is copied to a CPU-visible buffer.
-	if (m_command == 0x23 || m_command == 0x24)
+	if (cdic_hle::stops_after_physical_sector(m_command))
 	{
 		LOGMASKED(LOG_SECTORS, "Reset command observed after sector; stopping disc read.\n");
 		cancel_disc_read();
@@ -673,32 +616,7 @@ TIMER_CALLBACK_MEMBER( cdicdic_device::sector_tick )
 
 uint8_t cdicdic_device::get_sector_count_for_coding(uint8_t coding)
 {
-	const uint8_t channel_mode = coding & CODING_CHAN_MASK;
-	const uint8_t bits_per_sample = coding & CODING_BPS_MASK;
-	const uint8_t sample_rate = coding & CODING_RATE_MASK;
-
-	// Reject reserved coding before deriving playback duration.  This must
-	// stay in sync with play_audio_sector().
-	if (BIT(coding, 7)
-			|| channel_mode > CODING_STEREO
-			|| (bits_per_sample != CODING_4BPS && bits_per_sample != CODING_8BPS)
-			|| (sample_rate != CODING_37KHZ && sample_rate != CODING_18KHZ))
-	{
-		return 0;
-	}
-
-	uint8_t sector_count = 2;
-
-	if (bits_per_sample == CODING_4BPS)
-		sector_count *= 2;
-
-	if (sample_rate == CODING_18KHZ)
-		sector_count *= 2;
-
-	if (channel_mode == CODING_MONO)
-		sector_count *= 2;
-
-	return sector_count;
+	return cdic_hle::xa_sector_count(coding);
 }
 
 void cdicdic_device::process_disc_sector()
@@ -714,7 +632,18 @@ void cdicdic_device::process_disc_sector()
 	LOGMASKED(LOG_SECTORS, "Disc sector, current LBA: %08x, MSF: %02x %02x %02x\n", real_lba, mins_bcd, secs_bcd, frac_bcd);
 
 	uint8_t buffer[2560] = { 0 };
-	m_cdrom->read_data(m_curr_lba, buffer, cdrom_file::CD_TRACK_RAW_DONTCARE);
+	bool const read_ok =
+			m_cdrom->read_data(
+					m_curr_lba, buffer, cdrom_file::CD_TRACK_RAW_DONTCARE);
+
+	if (!read_ok)
+	{
+		// No status bit is known for end-of-disc.  Terminating the HLE
+		// operation is safer than delivering a fabricated all-zero sector.
+		LOGMASKED(LOG_SECTORS, "Disc read failed at LBA %u; terminating command\n", m_curr_lba);
+		cancel_disc_read();
+		return;
+	}
 
 	// Detect (badly) if we're dealing with a byteswapped loose-bin image
 	if (buffer[0] == 0xff && buffer[1] == 0x00)
@@ -753,16 +682,25 @@ void cdicdic_device::process_disc_sector()
 		buffer[10], buffer[11], buffer[12], buffer[13], buffer[14], buffer[15], buffer[16], buffer[17], buffer[18], buffer[19],
 		buffer[20], buffer[21], buffer[22], buffer[23]);
 
+	bool audio_sector = false;
 	if (buffer[SECTOR_MODE] == 2 && m_disc_mode == DISC_MODE2)
 	{
-		// First, filter whether we want to process this sector at all.
-		if (!is_mode2_sector_selected(buffer))
+		const cdic_hle::sector_decision decision = mode2_sector_decision(buffer);
+		if (decision.target == cdic_hle::sector_target::filtered)
 		{
+			LOGMASKED(LOG_SECTORS, "Mode 2 sector filtered (file %02x, channel %02x, submode %02x)\n",
+				buffer[SECTOR_FILE2], buffer[SECTOR_CHAN2], buffer[SECTOR_SUBMODE2]);
 			return;
 		}
 
-		// Next, determine if we want to process this sector as an audio sector.
-		if (is_mode2_audio_selected(buffer))
+		if (decision.end_read)
+		{
+			LOGMASKED(LOG_SECTORS, "Mode 2 EOF sector accepted; terminating after delivery\n");
+			m_disc_command = 0;
+		}
+
+		audio_sector = decision.target == cdic_hle::sector_target::audio;
+		if (audio_sector)
 		{
 			LOGMASKED(LOG_SECTORS, "Audio is selected\n");
 			m_audio_sector_counter = get_sector_count_for_coding(buffer[SECTOR_CODING2]);
@@ -932,24 +870,20 @@ void cdicdic_device::process_disc_sector()
 	subcode_buffer[SUBCODE_Q_CRC0] = (uint8_t)(crc_accum >> 8);
 	subcode_buffer[SUBCODE_Q_CRC1] = (uint8_t)crc_accum;
 
-	process_sector_data(buffer, subcode_buffer);
+	process_sector_data(buffer, subcode_buffer, audio_sector);
 }
 
-void cdicdic_device::process_sector_data(const uint8_t *buffer, const uint8_t *subcode_buffer)
+void cdicdic_device::process_sector_data(const uint8_t *buffer, const uint8_t *subcode_buffer, bool audio_sector)
 {
-	m_data_buffer ^= 0x0001;
-	m_data_buffer &= ~0x0004;
-
-	uint16_t *dev_buffer = (uint16_t *)&m_ram[(m_data_buffer & 0x0005) * 0xa00];
+	const cdic_hle::buffer_completion completion = cdic_hle::complete_buffer(
+		m_data_buffer, audio_sector, m_next_data_buffer, m_next_audio_buffer);
+	m_data_buffer = completion.data_buffer;
+	m_next_data_buffer = completion.next_data_buffer;
+	m_next_audio_buffer = completion.next_audio_buffer;
+	uint16_t *dev_buffer = reinterpret_cast<uint16_t *>(&m_ram[completion.byte_offset]);
 
 	for (int i = SECTOR_HEADER; i < SECTOR_FILE2; i += 2)
 		*dev_buffer++ = ((uint16_t)buffer[i] << 8) | buffer[i + 1];
-
-	if (m_command == 0x2a && is_mode2_audio_selected(buffer))
-	{
-		m_data_buffer |= 0x0004;
-		dev_buffer += 0x1400;
-	}
 
 	for (int i = SECTOR_FILE2; i < SECTOR_SIZE; i += 2)
 		*dev_buffer++ = ((uint16_t)buffer[i] << 8) | buffer[i + 1];
@@ -958,7 +892,6 @@ void cdicdic_device::process_sector_data(const uint8_t *buffer, const uint8_t *s
 		*dev_buffer++ = subcode_buffer[i];
 
 	m_x_buffer |= 0x8000;
-	m_data_buffer |= 0x4000;
 	update_interrupt_state();
 
 }
@@ -1005,7 +938,7 @@ uint16_t cdicdic_device::regs_r(offs_t offset, uint16_t mem_mask)
 		{
 			uint16_t temp = m_audio_buffer;
 			LOGMASKED(LOG_READS, "%s: cdic_r: Audio Buffer Register = %04x & %04x\n", machine().describe_context(), temp, mem_mask);
-			m_audio_buffer &= 0x7fff;
+			m_audio_buffer = cdic_hle::acknowledge_interrupt_source(m_audio_buffer);
 			update_interrupt_state();
 			return temp;
 		}
@@ -1014,7 +947,7 @@ uint16_t cdicdic_device::regs_r(offs_t offset, uint16_t mem_mask)
 		{
 			uint16_t temp = m_x_buffer;
 			LOGMASKED(LOG_READS, "%s: cdic_r: X-Buffer Register = %04x & %04x\n", machine().describe_context(), temp, mem_mask);
-			m_x_buffer &= 0x7fff;
+			m_x_buffer = cdic_hle::acknowledge_interrupt_source(m_x_buffer);
 			update_interrupt_state();
 			return temp;
 		}
@@ -1024,10 +957,13 @@ uint16_t cdicdic_device::regs_r(offs_t offset, uint16_t mem_mask)
 			return m_dma_control;
 
 		case 0x3ffa/2: // AUDCTL
-			if (!m_decoding_audio_map)
-				m_z_buffer ^= 0x0001;
-			LOGMASKED(LOG_READS, "%s: cdic_r: Z-Buffer Register Read: %04x & %04x\n", machine().describe_context(), m_z_buffer, mem_mask);
-			return m_z_buffer;
+		{
+			const uint16_t temp = m_z_buffer;
+			LOGMASKED(LOG_READS, "%s: cdic_r: Audio Control Register Read: %04x & %04x\n", machine().describe_context(), temp, mem_mask);
+			// Decoder-termination status is read-to-clear, not a synthetic toggle.
+			m_z_buffer = cdic_hle::acknowledge_audio_termination(m_z_buffer);
+			return temp;
+		}
 
 		case 0x3ffc/2: // IVEC
 			LOGMASKED(LOG_READS, "%s: cdic_r: Interrupt Vector Register = %04x & %04x\n", machine().describe_context(), m_interrupt_vector, mem_mask);
@@ -1096,11 +1032,13 @@ void cdicdic_device::regs_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 		case 0x3ff4/2:
 			LOGMASKED(LOG_WRITES, "%s: cdic_w: Audio Buffer Register = %04x & %04x\n", machine().describe_context(), data, mem_mask);
 			COMBINE_DATA(&m_audio_buffer);
+			update_interrupt_state();
 			break;
 
 		case 0x3ff6/2:
 			LOGMASKED(LOG_WRITES, "%s: cdic_w: X Buffer Register = %04x & %04x\n", machine().describe_context(), data, mem_mask);
 			COMBINE_DATA(&m_x_buffer);
+			update_interrupt_state();
 			break;
 
 		case 0x3ff8/2:
@@ -1151,6 +1089,7 @@ void cdicdic_device::regs_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 				m_decoding_audio_map = true;
 				std::fill_n(m_xa_last, 4, 0);
 			}
+			update_interrupt_state();
 			break;
 
 		case 0x3ffc/2:
@@ -1168,11 +1107,15 @@ void cdicdic_device::regs_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 			}
 			if (!(m_data_buffer & 0x4000))
 			{
+				m_disc_state = uint8_t(cdic_hle::disc_state::idle);
 				m_disc_command = 0;
 				m_disc_mode = 0;
 				m_disc_spinup_counter = 0;
 				m_curr_lba = 0;
+				m_next_data_buffer = cdic_hle::RESET_NEXT_DATA_BUFFER;
+				m_next_audio_buffer = cdic_hle::RESET_NEXT_AUDIO_BUFFER;
 			}
+			update_interrupt_state();
 			break;
 
 		default:
@@ -1194,13 +1137,16 @@ void cdicdic_device::init_disc_read(uint8_t disc_mode)
 {
 	m_disc_command = m_command;
 	m_disc_mode = disc_mode;
+	m_disc_state = uint8_t(cdic_hle::disc_state::seeking);
 	m_curr_lba = lba_from_time();
-	// TODO: Spinup time should be a variable based on distance on disc.
+	// Compatibility timing: the real seek delay depends on disc position, but
+	// the HLE has no servo feedback.  Six sectors is firmware-observed only.
 	m_disc_spinup_counter = 6; // Bugfix #14462: 6 or higher is required to prevent some softlocks.
 }
 
 void cdicdic_device::cancel_disc_read()
 {
+	m_disc_state = uint8_t(cdic_hle::disc_state::idle);
 	m_disc_command = 0;
 	m_disc_mode = 0;
 	m_curr_lba = 0;
@@ -1209,37 +1155,41 @@ void cdicdic_device::cancel_disc_read()
 
 void cdicdic_device::handle_cdic_command()
 {
-	switch (m_command)
+	const cdic_hle::command_descriptor descriptor = cdic_hle::describe_command(m_command);
+	switch (descriptor.kind)
 	{
-		case 0x23: // Reset Mode 1
+		case cdic_hle::command::reset_mode1:
 			LOGMASKED(LOG_WRITES, "%s: cdic_w: Reset Mode 1 command\n", machine().describe_context());
 			// Reset commands do not initiate a disc read.  While a read is
 			// active, sector_tick() observes the live command register and
 			// stops after the next physical sector.
 			break;
-		case 0x24: // Reset Mode 2
+		case cdic_hle::command::reset_mode2:
 			LOGMASKED(LOG_WRITES, "%s: cdic_w: Reset Mode 2 command\n", machine().describe_context());
 			// Same stop-after-sector behavior as Reset Mode 1.
 			break;
-		case 0x2b: // Stop CDDA
+		case cdic_hle::command::stop_cdda:
 			LOGMASKED(LOG_WRITES, "%s: cdic_w: Stop CDDA command\n", machine().describe_context());
 			cancel_disc_read();
 			break;
-		case 0x2e: // Update
+		case cdic_hle::command::update:
 			LOGMASKED(LOG_WRITES, "%s: cdic_w: Update command\n", machine().describe_context());
 			break;
-		case 0x27: // Fetch TOC
+		case cdic_hle::command::fetch_toc:
 			init_disc_read(DISC_TOC);
 			break;
-		case 0x28: // Play CDDA
+		case cdic_hle::command::play_cdda:
 			init_disc_read(DISC_CDDA);
 			break;
-		case 0x29: // Read Mode 1
-		case 0x2c: // Seek
+		case cdic_hle::command::read_mode1:
+		case cdic_hle::command::seek:
 			init_disc_read(DISC_MODE1);
 			break;
-		case 0x2a: // Read Mode 2
+		case cdic_hle::command::read_mode2:
 			init_disc_read(DISC_MODE2);
+			break;
+		case cdic_hle::command::unknown:
+			LOGMASKED(LOG_COMMANDS | LOG_UNKNOWNS, "%s: Unknown CDIC command %04x\n", machine().describe_context(), m_command);
 			break;
 	}
 
@@ -1248,32 +1198,7 @@ void cdicdic_device::handle_cdic_command()
 
 uint32_t cdicdic_device::lba_from_time()
 {
-	const uint8_t bcd_mins = (m_time >> 24) & 0xff;
-	const uint8_t mins_upper_digit = bcd_mins >> 4;
-	const uint8_t mins_lower_digit = bcd_mins & 0xf;
-	const uint8_t raw_mins = (mins_upper_digit * 10) + mins_lower_digit;
-
-	const uint8_t bcd_secs = (m_time >> 16) & 0xff;
-	const uint8_t secs_upper_digit = bcd_secs >> 4;
-	const uint8_t secs_lower_digit = bcd_secs & 0xf;
-	const uint8_t raw_secs = (secs_upper_digit * 10) + secs_lower_digit;
-
-	uint32_t lba = ((raw_mins * 60) + raw_secs) * 75;
-
-	const uint8_t bcd_frac = (m_time >> 8) & 0xff;
-	const bool even_second = BIT(bcd_frac, 7);
-	if (!even_second)
-	{
-		const uint8_t frac_upper_digit = bcd_frac >> 4;
-		const uint8_t frac_lower_digit = bcd_frac & 0xf;
-		const uint8_t raw_frac = (frac_upper_digit * 10) + frac_lower_digit;
-		lba += raw_frac;
-	}
-
-	if (lba >= 150)
-		lba -= 150;
-
-	return lba;
+	return cdic_hle::lba_from_time(m_time);
 }
 
 //**************************************************************************
@@ -1323,9 +1248,12 @@ void cdicdic_device::device_start()
 	save_item(NAME(m_cd_byteswap));
 
 	save_item(NAME(m_disc_command));
+	save_item(NAME(m_disc_state));
 	save_item(NAME(m_disc_mode));
 	save_item(NAME(m_disc_spinup_counter));
 	save_item(NAME(m_curr_lba));
+	save_item(NAME(m_next_data_buffer));
+	save_item(NAME(m_next_audio_buffer));
 
 	save_item(NAME(m_audio_sector_counter));
 	save_item(NAME(m_audio_format_sectors));
@@ -1353,6 +1281,7 @@ void cdicdic_device::device_reset()
 	m_file = 0;
 	m_channel = 0xffffffff;
 	m_audio_channel = 0xffff;
+	m_data_select = 0;
 	m_audio_buffer = 0;
 	m_x_buffer = 0;
 	m_dma_control = 0;
@@ -1362,10 +1291,13 @@ void cdicdic_device::device_reset()
 
 	m_cd_byteswap = false;
 
+	m_disc_state = uint8_t(cdic_hle::disc_state::idle);
 	m_disc_command = 0;
 	m_disc_mode = 0;
 	m_disc_spinup_counter = 0;
 	m_curr_lba = 0;
+	m_next_data_buffer = cdic_hle::RESET_NEXT_DATA_BUFFER;
+	m_next_audio_buffer = cdic_hle::RESET_NEXT_AUDIO_BUFFER;
 
 	m_audio_sector_counter = 0;
 	m_audio_format_sectors = 0;
