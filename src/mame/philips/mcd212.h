@@ -157,11 +157,15 @@ protected:
 		CSR1W_DD2            = 0x0300,      // /DTACK Delay
 		CSR1W_DD2_SHIFT      = 8,
 		CSR1W_DI1_BIT        = 15,
+		CSR1W_WRITE_MASK     = 0x832b,
+		CSR2W_WRITE_MASK     = 0x8000,
 
 		CSR2R_BE             = 0x0001,      // Bus Error
 		CSR2R_IT2            = 0x0002,      // Interrupt 2
 		CSR2R_IT1            = 0x0004,      // Interrupt 1
 
+		DCR1_WRITE_MASK      = 0xfb3f,
+		DCR2_WRITE_MASK      = 0x0b3f,
 		DCR_DCA_BIT          = 8,           // DCA Enable Ch.1/2
 		DCR_ICA_BIT          = 9,           // ICA Enable Ch.1/2
 		DCR_CM_BIT           = 11,          // Color Mode Ch.1/2
@@ -170,6 +174,7 @@ protected:
 		DCR_CF_BIT           = 14,          // Crystal Frequency
 		DCR_DE_BIT           = 15,          // Display Enable
 
+		DDR_WRITE_MASK       = 0x0f3f,
 		DDR_MT               = 0x0c00,      // Mosaic File Type
 		DDR_MT_2             = 0x0000,      // 2x1
 		DDR_MT_4             = 0x0400,      // 4x1
@@ -188,7 +193,8 @@ protected:
 		ICM_CLUT7            = 0x3,
 		ICM_CLUT77           = 0x4,
 		ICM_DYUV             = 0x5,
-		ICM_CLUT4            = 0xb
+		ICM_CLUT4            = 0xb,
+		ICM_QHY              = 0xf
 	};
 
 	uint8_t m_csrr[2]{};
@@ -199,6 +205,7 @@ protected:
 	uint16_t m_dcp[2]{};
 	uint32_t m_dca[2]{};
 	uint32_t m_clut[256]{};
+	uint32_t m_qhy_levels[8]{};
 	uint32_t m_image_coding_method = 0;
 	uint32_t m_transparency_control = 0;
 	uint32_t m_plane_order = 0;
@@ -242,6 +249,8 @@ protected:
 	required_shared_ptr<uint16_t> m_planeb;
 
 	uint32_t m_interlace_field[312][768];
+	uint32_t m_qhy_dyuv_field[280][384]{};
+	bool m_qhy_dyuv_valid[280]{};
 	bool m_external_video_field[312][768]{};
 	uint32_t m_scanline_cache[2][768]{};
 	bool m_external_video_cache[2][768]{};
@@ -249,8 +258,10 @@ protected:
 
 	// internal state
 	bool m_matte_flag[2][768]{};
-	int m_ica_height = 0;
+	int m_active_start = 0;
+	int m_active_height = 0;
 	int m_total_height = 0;
+	int m_ica_lines = 0;
 	emu_timer *m_ica_timer = nullptr;
 	emu_timer *m_dca_timer = nullptr;
 
@@ -268,6 +279,8 @@ protected:
 	int get_screen_width();
 	int get_border_width();
 	uint32_t get_backdrop_plane();
+	uint32_t dyuv_to_rgb(uint32_t yuv) const;
+	void update_interrupt_state();
 
 	template <int Path> void set_vsr(uint32_t value);
 	template <int Path> uint32_t get_vsr();
@@ -284,7 +297,7 @@ protected:
 	template <int Path> uint8_t get_icm();
 	template <int Path> bool get_mosaic_enable();
 	template <int Path> uint8_t get_mosaic_factor();
-	template <int Path> void process_vsr(uint32_t *pixels, bool *transparent);
+	template <int Path> void process_vsr(int active_line, uint32_t *pixels, bool *transparent);
 
 	template <int Path> void set_register(uint8_t reg, uint32_t value);
 
