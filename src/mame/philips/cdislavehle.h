@@ -8,10 +8,13 @@
 *******************************************************************************
 
 STATUS:
-- Just enough for the Mono-I CD-i board to work somewhat properly.
+- Functional Mono-I command, pointer, response, and IRQ transport HLE.
 
 TODO:
-- Proper LLE.
+- Keep the HLE until SCC68070 /DTACK and the MCU bus wiring can support a
+  trustworthy LLE implementation.
+- Implement currently classified unknown/unimplemented commands only from
+  firmware, hardware documentation, or bus traces.
 
 *******************************************************************************/
 
@@ -27,6 +30,11 @@ TODO:
 //**************************************************************************
 
 // ======================> cdislave_hle_device
+
+namespace cdi_slave_hle
+{
+struct command_descriptor;
+}
 
 class cdislave_hle_device : public device_t
 {
@@ -48,7 +56,6 @@ public:
 
 	uint16_t slave_r(offs_t offset);
 	void slave_w(offs_t offset, uint16_t data);
-	void slave_w_mouse(offs_t offset, uint16_t data);
 
 protected:
 	// device_t implementation
@@ -63,6 +70,8 @@ private:
 	void prepare_readback(const attotime &delay, uint8_t channel, uint8_t count, uint8_t data0, uint8_t data1, uint8_t data2, uint8_t data3, uint8_t cmd);
 	void set_mouse_position();
 	void prepare_pointer_readback();
+	void clear_input();
+	void execute_command(cdi_slave_hle::command_descriptor descriptor);
 
 	devcb_write_line m_int_callback;
 	devcb_write_line m_reset_callback;
@@ -90,6 +99,7 @@ private:
 	emu_timer *m_input_poll_timer;
 
 	uint8_t m_in_buf[17];
+	uint8_t m_in_channel;
 	uint8_t m_in_index;
 	uint8_t m_in_count;
 
