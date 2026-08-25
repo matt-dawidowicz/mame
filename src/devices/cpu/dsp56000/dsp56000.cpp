@@ -14,6 +14,7 @@
 #include "emu.h"
 #include "dsp56000.h"
 #include "dsp56000d.h"
+#include "dsp56000execute.h"
 
 //#define VERBOSE (LOG_GENERAL)
 
@@ -45,6 +46,8 @@ void dsp56000_device_base::device_start()
 {
 	// program-visible cpu state
 	save_item(NAME(m_pc));
+	save_item(NAME(m_current_opcode));
+	save_item(NAME(m_execution_stopped));
 
 	// Standard DSP56000/56001 host interface and bootstrap state.
 	save_item(NAME(m_host.m_hostport));
@@ -66,6 +69,8 @@ void dsp56000_device_base::device_start()
 void dsp56000_device_base::device_reset()
 {
 	m_pc = 0;
+	m_current_opcode = 0;
+	m_execution_stopped = false;
 	m_host.reset();
 }
 
@@ -73,9 +78,50 @@ void dsp56000_device_base::execute_run()
 {
 	while (m_icount > 0)
 	{
+		/*
+		 * Before the bootstrap START condition, the DSP host interface is
+		 * active but instruction execution remains held.
+		 */
+		if (!m_host.running() || m_execution_stopped)
+		{
+			m_icount = 0;
+			break;
+		}
+
 		debugger_instruction_hook(m_pc);
 
-		m_icount = 0;
+		auto const result = dsp56000_execution::execute_one(
+			m_pc,
+			m_current_opcode,
+			[this](std::uint16_t address)
+			{
+				/*
+				 * DSP-B1 executes directly from the on-chip bootstrap RAM
+				 * populated by the host interface.  A complete P-space
+				 * implementation follows when the loader begins relocating
+				 * code outside this 512-word region.
+				 */
+				return m_host.bootstrap_word(address);
+			});
+
+		if (result == dsp56000_execution::step_result::unsupported)
+		{
+			/*
+			 * Never invent instruction behavior.  Stop on the exact
+			 * unsupported opcode so the next implementation gate is
+			 * observable and deterministic.
+			 */
+			m_execution_stopped = true;
+			m_icount = 0;
+			break;
+		}
+
+		/*
+		 * Instruction timing is intentionally provisional at this stage.
+		 * DSP-B1 validates instruction semantics and PC flow, not
+		 * cycle-accurate timing.
+		 */
+		m_icount--;
 	}
 }
 

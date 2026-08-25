@@ -18,6 +18,10 @@ public:
 	u32 host_bootstrap_word(u16 address) const noexcept { return m_host.bootstrap_word(address); }
 	bool host_execution_started() const noexcept { return m_host.running(); }
 
+	u16 execution_pc() const noexcept { return m_pc; }
+	u32 execution_opcode() const noexcept { return m_current_opcode; }
+	bool execution_stopped() const noexcept { return m_execution_stopped; }
+
 protected:
 	dsp56000_device_base(machine_config const &mconfig, device_type type, char const *tag, device_t *owner, u32 clock);
 
@@ -50,6 +54,11 @@ protected:
 
 	// program-visible cpu state
 	u16 m_pc;
+	u32 m_current_opcode = 0;
+
+	// Temporary execution gate.  An unsupported instruction stops the
+	// interpreter at that instruction rather than fabricating behavior.
+	bool m_execution_stopped = false;
 };
 
 class dsp56000_device : public dsp56000_device_base
