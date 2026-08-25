@@ -6,8 +6,18 @@
 
 #pragma once
 
+#include "dsp56000host.h"
+
 class dsp56000_device_base : public cpu_device
 {
+public:
+	u8 host_r(offs_t offset) { return m_host.read(unsigned(offset)); }
+	void host_w(offs_t offset, u8 data) { m_host.write(unsigned(offset), data); }
+
+	u16 host_bootstrap_pos() const noexcept { return m_host.bootstrap_pos(); }
+	u32 host_bootstrap_word(u16 address) const noexcept { return m_host.bootstrap_word(address); }
+	bool host_execution_started() const noexcept { return m_host.running(); }
+
 protected:
 	dsp56000_device_base(machine_config const &mconfig, device_type type, char const *tag, device_t *owner, u32 clock);
 
@@ -33,6 +43,8 @@ protected:
 	address_space_config m_p_config;
 	address_space_config m_x_config;
 	address_space_config m_y_config;
+
+	dsp56000_host_interface m_host;
 
 	int m_icount;
 

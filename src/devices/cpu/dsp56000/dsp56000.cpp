@@ -46,6 +46,17 @@ void dsp56000_device_base::device_start()
 	// program-visible cpu state
 	save_item(NAME(m_pc));
 
+	// Standard DSP56000/56001 host interface and bootstrap state.
+	save_item(NAME(m_host.m_hostport));
+	save_item(NAME(m_host.m_tx));
+	save_item(NAME(m_host.m_rx));
+	save_item(NAME(m_host.m_bootstrap));
+	save_item(NAME(m_host.m_hsr));
+	save_item(NAME(m_host.m_dsp_host_rtx));
+	save_item(NAME(m_host.m_dsp_host_htx));
+	save_item(NAME(m_host.m_bootstrap_pos));
+	save_item(NAME(m_host.m_running));
+
 	state_add(STATE_GENPC, "GENPC", m_pc).noshow();
 	state_add(STATE_GENPCBASE, "CURPC", m_pc).noshow();
 
@@ -55,6 +66,7 @@ void dsp56000_device_base::device_start()
 void dsp56000_device_base::device_reset()
 {
 	m_pc = 0;
+	m_host.reset();
 }
 
 void dsp56000_device_base::execute_run()
