@@ -1,5 +1,5 @@
 // license:BSD-3-Clause
-// copyright-holders:Matt Jordan
+// copyright-holders:Matt Dawidowicz
 /***************************************************************************
 
     Philips CD-i Digital Video Cartridge
