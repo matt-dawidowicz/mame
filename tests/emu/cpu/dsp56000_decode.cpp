@@ -21,6 +21,8 @@ struct decoder_probe
 	unsigned program_writes = 0;
 	unsigned peripheral_reads = 0;
 	unsigned peripheral_writes = 0;
+	bool last_peripheral_y_space = false;
+	std::uint16_t last_peripheral_address = 0;
 
 	dsp56000_execution::core_state state;
 	std::uint16_t pc = 0;
@@ -49,12 +51,16 @@ struct decoder_probe
 			[this](bool y_space, std::uint16_t address)
 			{
 				peripheral_reads++;
+				last_peripheral_y_space = y_space;
+				last_peripheral_address = address;
 				auto const &space = y_space ? y_peripheral : x_peripheral;
 				return space[address & 0x3fU];
 			},
 			[this](bool y_space, std::uint16_t address, std::uint32_t value)
 			{
 				peripheral_writes++;
+				last_peripheral_y_space = y_space;
+				last_peripheral_address = address;
 				auto &space = y_space ? y_peripheral : x_peripheral;
 				space[address & 0x3fU] = value;
 			});
@@ -151,6 +157,42 @@ TEST_CASE(
 
 
 TEST_CASE(
+	"DSP56000 immediate MOVEP uses low six opcode bits for the peripheral address",
+	"[emu][cpu][dsp56000][execute][movep][decode]")
+{
+	for (unsigned y_space = 0; y_space < 2; ++y_space)
+	{
+		for (unsigned source_space = 0; source_space < 2; ++source_space)
+		{
+			for (unsigned pp = 0; pp < 0x40; ++pp)
+			{
+				decoder_probe probe;
+				std::uint32_t const instruction =
+					0x08f480U |
+					(y_space << 16) |
+					(source_space << 6) |
+					pp;
+
+				auto const result = probe.run(instruction);
+
+				INFO(
+					"y_space=" << y_space <<
+					" source_space=" << source_space <<
+					" pp=" << pp <<
+					" opcode=" << instruction);
+				REQUIRE(result == dsp56000_execution::step_result::executed);
+				REQUIRE(probe.pc == 2);
+				REQUIRE(probe.program_reads == 2);
+				REQUIRE(probe.peripheral_writes == 1);
+				REQUIRE(probe.last_peripheral_y_space == bool(y_space));
+				REQUIRE(probe.last_peripheral_address == (0xffc0U | pp));
+			}
+		}
+	}
+}
+
+
+TEST_CASE(
 	"DSP56000 DO zero count executes 65,536 iterations",
 	"[emu][cpu][dsp56000][execute][loop][wrap]")
 {
@@ -161,7 +203,7 @@ TEST_CASE(
 	// DO #0,$3 followed by a two-word MOVEP ending at LA=$3.
 	program[0] = 0x060080;
 	program[1] = 0x000003;
-	program[2] = 0x08f480;
+	program[2] = 0x08f4b4; // MOVEP #immediate,X:<<$fff4
 	program[3] = 0x123456;
 
 	unsigned peripheral_writes = 0;
@@ -238,7 +280,7 @@ TEST_CASE(
 	// DO #2,$3: the loop ends on the extension word of the MOVEP at P:$2.
 	program[0] = 0x060280;
 	program[1] = 0x000003;
-	program[2] = 0x08f480;
+	program[2] = 0x08f4b4; // MOVEP #immediate,X:<<$fff4
 	program[3] = 0x123456;
 
 	auto read_program =

@@ -267,7 +267,7 @@ TEST_CASE(
 	program[0x0000] = 0x0c0010;
 
 	// MOVEP #$123456,X:<<$fff4
-	program[0x0010] = 0x08f480;
+	program[0x0010] = 0x08f4b4;
 	program[0x0011] = 0x123456;
 
 	// MOVE #$20,R1
