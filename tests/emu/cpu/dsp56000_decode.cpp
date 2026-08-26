@@ -76,19 +76,19 @@ TEST_CASE(
 
 	constexpr std::array<negative_case, 13> CASES =
 	{{
-		{ "MOVEP parallel-prefix neighbor", 0x18f4be },
-		{ "MOVEP fixed-bit neighbor",       0x08b4be },
-		{ "MOVE XY-class neighbor",         0xe0f400 },
-		{ "DO parallel-prefix neighbor",    0x160380 },
-		{ "DO low-nibble neighbor",         0x060390 },
-		{ "DO fixed-bit neighbor",          0x0603c0 },
-		{ "MOVEM parallel-prefix neighbor", 0x17d984 },
-		{ "MOVEM addressing neighbor",      0x079984 },
-		{ "MOVEM low-field neighbor",       0x07d9c4 },
-		{ "JCLR parallel-prefix neighbor",  0x1aa983 },
-		{ "JMP EA parallel-prefix neighbor",0x1af080 },
-		{ "JMP EA low-field neighbor 1",    0x0af081 },
-		{ "JMP EA low-field neighbor 2",    0x0af0c0 },
+		{ "MOVEP parallel-prefix neighbor",  0x18f4be },
+		{ "MOVEP fixed-bit neighbor",        0x08b4be },
+		{ "MOVE XY-class neighbor",          0xe0f400 },
+		{ "DO parallel-prefix neighbor",     0x160380 },
+		{ "DO low-nibble neighbor",          0x060390 },
+		{ "DO fixed-bit neighbor",           0x0603c0 },
+		{ "MOVEM parallel-prefix neighbor",  0x17d984 },
+		{ "MOVEM addressing neighbor",       0x079984 },
+		{ "MOVEM low-field neighbor",        0x07d9c4 },
+		{ "JCLR parallel-prefix neighbor",   0x1aa983 },
+		{ "JMP EA parallel-prefix neighbor", 0x1af080 },
+		{ "JMP EA low-field neighbor 1",     0x0af081 },
+		{ "JMP EA low-field neighbor 2",     0x0af0c0 },
 	}};
 
 	for (auto const &test : CASES)
@@ -138,10 +138,6 @@ TEST_CASE(
 	SECTION("two-word immediate MOVEP reads its extension")
 	{
 		decoder_probe probe;
-		probe.program[1] = 0x123456;
-
-		// run() supplies an extension sentinel at word 1; only the read count is
-		// relevant here because positive MOVEP state is covered by dsp56000.cpp.
 		auto const result = probe.run(0x08f480);
 
 		REQUIRE(result == dsp56000_execution::step_result::executed);
