@@ -263,6 +263,7 @@ scc68070_device::scc68070_device(const machine_config &mconfig, const char *tag,
 	, m_i2c_scl_callback(*this)
 	, m_i2c_sdaw_callback(*this)
 	, m_i2c_sdar_callback(*this, 0)
+	, m_dma_reconfigure_callback(*this)
 	, m_ipl(0)
 	, m_in2_line(CLEAR_LINE)
 	, m_in4_line(CLEAR_LINE)
@@ -2004,6 +2005,11 @@ void scc68070_device::dma_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 		LOGMASKED(LOG_DMA | LOG_UNKNOWN, "%s: DMA Unknown Register Write: %04x = %04x & %04x\n", machine().describe_context(), offset * 2, data, mem_mask);
 		break;
 	}
+
+	if (offset <= (0x2c / 2))
+		m_dma_reconfigure_callback(0);
+	else if (offset >= (0x40 / 2) && offset <= (0x6c / 2))
+		m_dma_reconfigure_callback(1);
 }
 
 uint16_t scc68070_device::mmu_r(offs_t offset, uint16_t mem_mask)
