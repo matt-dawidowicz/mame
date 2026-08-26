@@ -7,6 +7,7 @@
 #pragma once
 
 #include "dsp56000host.h"
+#include "dsp56000execute.h"
 
 class dsp56000_device_base : public cpu_device
 {
@@ -49,6 +50,17 @@ protected:
 	address_space_config m_y_config;
 
 	dsp56000_host_interface m_host;
+	dsp56000_execution::core_state m_core;
+
+	/*
+	 * Temporary execution backing used while the DSP core is brought up.
+	 * This is functional execution state, not yet a claim of final
+	 * DSP56001 external-memory timing/fidelity.
+	 */
+	u32 m_program[0x10000]{};
+	u32 m_x_peripheral[0x40]{};
+	u32 m_y_peripheral[0x40]{};
+	bool m_program_bootstrap_loaded = false;
 
 	int m_icount;
 

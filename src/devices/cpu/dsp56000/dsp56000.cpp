@@ -49,6 +49,18 @@ void dsp56000_device_base::device_start()
 	save_item(NAME(m_current_opcode));
 	save_item(NAME(m_execution_stopped));
 
+	save_item(NAME(m_core.r));
+	save_item(NAME(m_core.x0));
+	save_item(NAME(m_core.la));
+	save_item(NAME(m_core.lc));
+	save_item(NAME(m_core.loop_start));
+	save_item(NAME(m_core.loop_active));
+
+	save_item(NAME(m_program));
+	save_item(NAME(m_x_peripheral));
+	save_item(NAME(m_y_peripheral));
+	save_item(NAME(m_program_bootstrap_loaded));
+
 	// Standard DSP56000/56001 host interface and bootstrap state.
 	save_item(NAME(m_host.m_hostport));
 	save_item(NAME(m_host.m_tx));
@@ -71,6 +83,18 @@ void dsp56000_device_base::device_reset()
 	m_pc = 0;
 	m_current_opcode = 0;
 	m_execution_stopped = false;
+	m_program_bootstrap_loaded = false;
+	m_core = {};
+
+	for (u32 &word : m_program)
+		word = 0;
+
+	for (u32 &word : m_x_peripheral)
+		word = 0;
+
+	for (u32 &word : m_y_peripheral)
+		word = 0;
+
 	m_host.reset();
 }
 
@@ -78,14 +102,23 @@ void dsp56000_device_base::execute_run()
 {
 	while (m_icount > 0)
 	{
-		/*
-		 * Before the bootstrap START condition, the DSP host interface is
-		 * active but instruction execution remains held.
-		 */
 		if (!m_host.running() || m_execution_stopped)
 		{
 			m_icount = 0;
 			break;
+		}
+
+		/*
+		 * The host bootstrap path has populated the real 24-bit words
+		 * before execution begins.  Mirror that initial image into the
+		 * B2 program backing exactly once.
+		 */
+		if (!m_program_bootstrap_loaded)
+		{
+			for (unsigned address = 0; address < m_host.bootstrap_pos(); address++)
+				m_program[address] = m_host.bootstrap_word(address) & 0x00ffffffU;
+
+			m_program_bootstrap_loaded = true;
 		}
 
 		debugger_instruction_hook(m_pc);
@@ -93,33 +126,52 @@ void dsp56000_device_base::execute_run()
 		auto const result = dsp56000_execution::execute_one(
 			m_pc,
 			m_current_opcode,
+			m_core,
 			[this](std::uint16_t address)
 			{
+				return m_program[address] & 0x00ffffffU;
+			},
+			[this](std::uint16_t address, std::uint32_t value)
+			{
+				m_program[address] = value & 0x00ffffffU;
+			},
+			[this](bool y_space, std::uint16_t address)
+			{
 				/*
-				 * DSP-B1 executes directly from the on-chip bootstrap RAM
-				 * populated by the host interface.  A complete P-space
-				 * implementation follows when the loader begins relocating
-				 * code outside this 512-word region.
+				 * X:$FFE9 is the standard DSP-side Host Status
+				 * Register.  This is the real host-interface state,
+				 * not a CD-i-specific fabricated value.
 				 */
-				return m_host.bootstrap_word(address);
+				if (!y_space && address == 0xffe9)
+					return std::uint32_t(m_host.hsr());
+
+				unsigned const offset = address & 0x3fU;
+
+				return y_space
+					? m_y_peripheral[offset]
+					: m_x_peripheral[offset];
+			},
+			[this](bool y_space, std::uint16_t address, std::uint32_t value)
+			{
+				unsigned const offset = address & 0x3fU;
+
+				if (y_space)
+					m_y_peripheral[offset] = value & 0x00ffffffU;
+				else
+					m_x_peripheral[offset] = value & 0x00ffffffU;
 			});
 
 		if (result == dsp56000_execution::step_result::unsupported)
 		{
-			/*
-			 * Never invent instruction behavior.  Stop on the exact
-			 * unsupported opcode so the next implementation gate is
-			 * observable and deterministic.
-			 */
 			m_execution_stopped = true;
 			m_icount = 0;
 			break;
 		}
 
 		/*
-		 * Instruction timing is intentionally provisional at this stage.
-		 * DSP-B1 validates instruction semantics and PC flow, not
-		 * cycle-accurate timing.
+		 * Timing remains provisional.  DSP-B2 validates architectural
+		 * state transitions and bootstrap relocation, separately from
+		 * cycle-level hardware fidelity.
 		 */
 		m_icount--;
 	}
