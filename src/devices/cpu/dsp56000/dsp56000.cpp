@@ -14,7 +14,7 @@
  * TODO:
  *   - complete the architectural register file, AGU/ALU, parallel moves,
  *     interrupts, and peripherals
- *   - replace bring-up P/X/Y backing with the device address spaces
+ *   - replace temporary P/X/Y execution backing with the device address spaces
  *   - implement instruction-accurate cycle timing
  */
 
@@ -51,7 +51,7 @@ dsp56001_device::dsp56001_device(machine_config const &mconfig, char const *tag,
 
 void dsp56000_device_base::device_start()
 {
-	// program-visible cpu state
+	// CPU execution state.
 	save_item(NAME(m_pc));
 	save_item(NAME(m_current_opcode));
 	save_item(NAME(m_execution_stopped));
@@ -116,14 +116,31 @@ void dsp56000_device_base::execute_run()
 		}
 
 		/*
-		 * The host bootstrap path has populated the real 24-bit words
-		 * before execution begins.  Mirror that initial image into the
-		 * B2 program backing exactly once.
+		 * The host bootstrap path has populated the real 24-bit words before
+		 * execution begins. Mirror that initial image into the temporary program
+		 * backing exactly once. This backing is replaced when the core moves to
+		 * its declared P address space.
 		 */
 		if (!m_program_bootstrap_loaded)
 		{
 			for (unsigned address = 0; address < m_host.bootstrap_pos(); address++)
 				m_program[address] = m_host.bootstrap_word(address) & 0x00ffffffU;
+
+			/*
+			 * The DSP56001 host bootstrap ROM initializes R2 to the Host Status
+			 * Register, R1 to the external bootstrap base, and R0 to the PRAM
+			 * destination pointer. Each received 24-bit word postincrements R0,
+			 * including when HF0 terminates a partial load. The direct host loader
+			 * above bypasses that ROM, so preserve the architectural register side
+			 * effects that the current partial core can represent. OMR, CCR, Port B,
+			 * and other unimplemented bootstrap state remain outside this model.
+			 */
+			if (type() == DSP56001)
+			{
+				m_core.r[0] = m_host.bootstrap_pos();
+				m_core.r[1] = 0xc000;
+				m_core.r[2] = 0xffe9;
+			}
 
 			m_program_bootstrap_loaded = true;
 		}
@@ -176,9 +193,9 @@ void dsp56000_device_base::execute_run()
 		}
 
 		/*
-		 * Timing remains provisional.  DSP-B2 validates architectural
-		 * state transitions and bootstrap relocation, separately from
-		 * cycle-level hardware fidelity.
+		 * Timing remains provisional. Current execution tests validate
+		 * architectural state transitions and bootstrap relocation separately
+		 * from cycle-level hardware fidelity.
 		 */
 		m_icount--;
 	}

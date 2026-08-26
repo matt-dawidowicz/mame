@@ -37,15 +37,22 @@ struct core_state
 
 inline void finish_loop(
 		std::uint16_t instruction_pc,
+		unsigned instruction_words,
 		std::uint16_t &pc,
 		core_state &state)
 {
-	if (!state.loop_active || instruction_pc != state.la)
+	std::uint16_t const last_word =
+		std::uint16_t(instruction_pc + instruction_words - 1U);
+
+	if (!state.loop_active || last_word != state.la)
 		return;
 
-	if (state.lc > 1)
+	// LC=0 is the architectural encoding for 65,536 iterations. Testing for
+	// the terminal value before a 16-bit decrement naturally preserves that
+	// behavior: 0000 -> FFFF -> ... -> 0001, then terminate.
+	if (state.lc != 1)
 	{
-		state.lc--;
+		state.lc = std::uint16_t(state.lc - 1U);
 		pc = state.loop_start;
 	}
 	else
@@ -101,55 +108,59 @@ step_result execute_one(
 	std::uint16_t const instruction_pc = pc;
 
 	opcode = read_program(pc) & 0x00ffffffU;
-	std::uint32_t const ew =
-		read_program(std::uint16_t(pc + 1)) & 0x00ffffffU;
+
+	// Do not speculatively read PC+1. Some implemented forms are one word and
+	// unsupported instructions must stop without causing an extra program-space
+	// access. Extension words are fetched only after a two-word form is decoded.
+	auto const read_extension = [&read_program, instruction_pc]()
+	{
+		return read_program(std::uint16_t(instruction_pc + 1)) & 0x00ffffffU;
+	};
 
 	/*
 	 * JMP <absolute-short>
+	 *
+	 *   0000 1100 0000 aaaa aaaa aaaa
 	 */
 	if ((opcode & 0x00fff000U) == 0x000c0000U)
 	{
 		pc = std::uint16_t(opcode & 0x00000fffU);
-		finish_loop(instruction_pc, pc, state);
+		finish_loop(instruction_pc, 1, pc, state);
 		return step_result::executed;
 	}
-
-	unsigned const top = (opcode >> 16) & 0x0fU;
 
 	/*
 	 * MOVEP #immediate,X/Y:<<pp
 	 *
-	 * Effective-address MOVEP with MMMRRR=$34 denotes a 24-bit
-	 * immediate extension word.
+	 *   0000 100s W1MM MRRR 1Spp pppp
+	 *
+	 * The currently implemented immediate form has W=1 and MMMRRR=$34.
+	 * The six-bit peripheral short address pp occupies opcode bits 5-0;
+	 * bit 6 is the effective-address X/Y selector and is irrelevant to an
+	 * immediate source. All fixed opcode fields are included in the mask so
+	 * neighboring parallel move classes cannot be accepted accidentally.
 	 */
-	if ((top == 0x8U || top == 0x9U) &&
-		(opcode & 0x000080U) &&
-		(opcode & 0x008000U) &&
-		(((opcode >> 8) & 0x3fU) == 0x34U))
+	if ((opcode & 0x00feff80U) == 0x0008f480U)
 	{
 		bool const y_space = (opcode & 0x010000U) != 0;
 		std::uint16_t const address =
-			std::uint16_t(0xffc0U | ((opcode >> 8) & 0x3fU));
+			std::uint16_t(0xffc0U | (opcode & 0x3fU));
 
-		write_peripheral(y_space, address, ew);
+		write_peripheral(y_space, address, read_extension());
 
 		pc = std::uint16_t(pc + 2);
-		finish_loop(instruction_pc, pc, state);
+		finish_loop(instruction_pc, 2, pc, state);
 		return step_result::executed;
 	}
 
 	/*
 	 * MOVE #immediate,Rn
 	 *
-	 * DSP-B2 implements the long-immediate data-move form only when
-	 * the destination encoding names R0-R7.
+	 * This is the immediate effective-address form of the X/Y memory data-move
+	 * class with an R0-R7 destination. Bit 19 selects X/Y for memory forms but
+	 * is don't-care for the immediate source, so both encodings are accepted.
 	 */
-	if ((opcode & 0x0000ffU) == 0 &&
-		(opcode & 0x400000U) &&
-		(opcode & 0x340000U) &&
-		(opcode & 0x004000U) &&
-		(opcode & 0x008000U) &&
-		(((opcode >> 8) & 0x3fU) == 0x34U))
+	if ((opcode & 0x00f0ffffU) == 0x0060f400U)
 	{
 		unsigned const reg =
 			((opcode >> 17) & 0x18U) |
@@ -157,34 +168,36 @@ step_result execute_one(
 
 		if (reg >= 16 && reg < 24)
 		{
-			state.r[reg - 16] = std::uint16_t(ew);
+			state.r[reg - 16] = std::uint16_t(read_extension());
 
 			pc = std::uint16_t(pc + 2);
-			finish_loop(instruction_pc, pc, state);
+			finish_loop(instruction_pc, 2, pc, state);
 			return step_result::executed;
 		}
 	}
 
 	/*
-	 * DO #immediate,expr
+	 * DO #immediate,encoded-loop-end
 	 *
-	 * DSP-B2 requires one active hardware loop.  Zero-count and nested
-	 * loop behavior remains unsupported until implemented explicitly.
+	 *   0000 0110 iiii iiii 1000 hhhh
+	 *
+	 * The extension word is the encoded loop-end address used by the hardware
+	 * loop state. A zero immediate represents 65,536 iterations through the
+	 * 16-bit LC register. The current partial core supports one active loop;
+	 * nested DO state remains unsupported until the stack state is modeled.
 	 */
-	if (top == 0x6U &&
-		!(opcode & 0x000020U) &&
-		(opcode & 0x000080U))
+	if ((opcode & 0x00ff00f0U) == 0x00060080U)
 	{
 		std::uint16_t const count =
 			std::uint16_t(
 				((opcode & 0x0fU) << 8) |
 				((opcode >> 8) & 0xffU));
 
-		if (count == 0 || state.loop_active)
+		if (state.loop_active)
 			return step_result::unsupported;
 
 		state.lc = count;
-		state.la = std::uint16_t(ew);
+		state.la = std::uint16_t(read_extension());
 		state.loop_start = std::uint16_t(pc + 2);
 		state.loop_active = true;
 
@@ -196,10 +209,12 @@ step_result execute_one(
 	 * MOVEM P:(Rn)+,X0
 	 * MOVEM X0,P:(Rn)+
 	 *
-	 * Only the postincrement/X0 forms needed by the bootstrap copier
-	 * are enabled in this gate.
+	 *   0000 0111 W1MM MRRR 10dd dddd
+	 *
+	 * Only the postincrement/X0 forms needed by the bootstrap copier are
+	 * enabled in this partial interpreter.
 	 */
-	if (top == 0x7U && (opcode & 0x000080U))
+	if ((opcode & 0x00ff40c0U) == 0x00074080U)
 	{
 		unsigned const mmmrrr = (opcode >> 8) & 0x3fU;
 		unsigned const mode = mmmrrr >> 3;
@@ -219,7 +234,7 @@ step_result execute_one(
 			state.r[rr] = std::uint16_t(state.r[rr] + 1);
 
 			pc = std::uint16_t(pc + 1);
-			finish_loop(instruction_pc, pc, state);
+			finish_loop(instruction_pc, 1, pc, state);
 			return step_result::executed;
 		}
 	}
@@ -227,15 +242,18 @@ step_result execute_one(
 	/*
 	 * JCLR #n,X/Y:<<pp,target
 	 *
-	 * Peripheral-memory form only.
+	 *   0000 1010 10pp pppp 1S0b bbbb
+	 *
+	 * Peripheral-memory form only. The architectural bit number is 0-23;
+	 * encodings 24-31 are reserved and remain unsupported.
 	 */
-	if ((top == 0xaU || top == 0xbU) &&
-		((opcode & 0x00c000U) != 0x00c000U) &&
-		((opcode & 0x0100a0U) == 0x000080U) &&
-		((opcode & 0x00c000U) == 0x008000U))
+	if ((opcode & 0x00ffc0a0U) == 0x000a8080U)
 	{
 		bool const y_space = (opcode & 0x000040U) != 0;
 		unsigned const bit = opcode & 31U;
+
+		if (bit >= 24U)
+			return step_result::unsupported;
 
 		std::uint16_t const address =
 			std::uint16_t(
@@ -244,30 +262,29 @@ step_result execute_one(
 
 		std::uint32_t const value =
 			read_peripheral(y_space, address) & 0x00ffffffU;
+		std::uint16_t const target = std::uint16_t(read_extension());
 
 		if (!(value & (std::uint32_t(1) << bit)))
-			pc = std::uint16_t(ew);
+			pc = target;
 		else
 			pc = std::uint16_t(pc + 2);
 
-		finish_loop(instruction_pc, pc, state);
+		finish_loop(instruction_pc, 2, pc, state);
 		return step_result::executed;
 	}
 
 	/*
 	 * JMP >absolute
 	 *
-	 * Effective-address JMP with MMM=110 consumes the extension word
-	 * as the absolute target.
+	 *   0000 1010 11MM MRRR 1000 0000
+	 *
+	 * MMM=110 consumes the extension word as the absolute target; the RRR bits
+	 * are not part of the absolute address and therefore remain don't-care.
 	 */
-	if ((top == 0xaU || top == 0xbU) &&
-		((opcode & 0x00c000U) == 0x00c000U) &&
-		(opcode & 0x000080U) &&
-		((opcode & 0x010020U) == 0) &&
-		((((opcode >> 8) & 0x3fU) >> 3) == 6U))
+	if ((opcode & 0x00fff8ffU) == 0x000af080U)
 	{
-		pc = std::uint16_t(ew);
-		finish_loop(instruction_pc, pc, state);
+		pc = std::uint16_t(read_extension());
+		finish_loop(instruction_pc, 2, pc, state);
 		return step_result::executed;
 	}
 

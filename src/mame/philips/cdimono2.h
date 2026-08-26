@@ -1,5 +1,5 @@
 // license:BSD-3-Clause
-// copyright-holders:Matt Jordan
+// copyright-holders:Matt Dawidowicz
 
 #ifndef MAME_PHILIPS_CDIMONO2_H
 #define MAME_PHILIPS_CDIMONO2_H
