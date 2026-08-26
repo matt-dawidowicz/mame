@@ -14,7 +14,7 @@
  * TODO:
  *   - complete the architectural register file, AGU/ALU, parallel moves,
  *     interrupts, and peripherals
- *   - replace bring-up P/X/Y backing with the device address spaces
+ *   - replace temporary P/X/Y execution backing with the device address spaces
  *   - implement instruction-accurate cycle timing
  */
 
