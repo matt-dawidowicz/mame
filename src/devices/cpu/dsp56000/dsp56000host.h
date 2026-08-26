@@ -29,7 +29,8 @@ public:
 	static constexpr std::uint8_t ICR_HF1  = 0x10;
 	static constexpr std::uint8_t ICR_INIT = 0x80;
 
-	static constexpr std::uint8_t CVR_HC = 0x80;
+	static constexpr std::uint8_t CVR_HV_MASK = 0x3f;
+	static constexpr std::uint8_t CVR_HC      = 0x80;
 
 	static constexpr std::uint8_t ISR_RXDF = 0x01;
 	static constexpr std::uint8_t ISR_TXDE = 0x02;
@@ -109,7 +110,8 @@ public:
 			break;
 
 		case CVR:
-			m_hostport[CVR] = data & 0x9f;
+			// HV occupies bits 0-5; bit 6 is reserved and reads as zero.
+			m_hostport[CVR] = data & (CVR_HC | CVR_HV_MASK);
 
 			if (m_hostport[CVR] & CVR_HC)
 				m_hsr |= HSR_HCP;
@@ -156,7 +158,7 @@ public:
 
 	std::uint8_t host_command_vector() const noexcept
 	{
-		return m_hostport[CVR] & 0x1f;
+		return m_hostport[CVR] & CVR_HV_MASK;
 	}
 
 	void acknowledge_host_command() noexcept
