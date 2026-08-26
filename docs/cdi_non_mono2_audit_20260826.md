@@ -99,6 +99,32 @@ The independent MiSTer implementation follows the full MCD212 CSROM aperture, bu
 
 The MCD212 does not internally acknowledge `0x4ffc00-0x4fffdf`; it only asserts CSIO. The reviewed Mono-I service-manual signal listing identifies chip selects for ROM, NVRAM, SLAVE, CDIC, VDSC, DSP/glue and related devices, but no `CSIO`/system-I/O consumer has yet been identified. Therefore it would be speculative to add a device or generic storage here. If no board device responds, the eventual result should be the documented VDSC watchdog/BERR path from E1b rather than today's immediate unconditional compatibility BERR.
 
+## E1e - Mono-I SLAVE address decode and byte lane
+
+The reverse-engineered SLAVE interface has four channel registers at relative addresses `1`, `3`, `5`, and `7`. It is connected only to main-CPU data lines D7-D0, so the registers are odd-address byte accesses. Historical MAME hardware notes additionally state that A2/A1 are wired to MCU port C bits 1/0, D7-D0 to port A, R/W to port D bit 7, and /DTACK comes from port B bit 6.
+
+Current MAME maps `0x310000-0x317fff` to a 16-bit HLE handler without a lane mask, then maps `0x318000-0x31ffff` as `noprw`. The HLE handler itself treats its word offset as a channel index and only accepts offsets 0-3.
+
+### Finding E1e-1 - SLAVE is mapped on the wrong CPU byte lane
+
+**Classification:** confirmed hardware-interface correctness bug; likely low risk to fix separately but requires validation.
+
+Because the address-map entry lacks `umask16(0x00ff)`, accesses using the upper 68000 byte lane can invoke the SLAVE HLE even though the physical SLAVE is wired only to D7-D0 and its documented registers are at odd addresses.
+
+**Required fix shape:** make SLAVE accesses explicitly lower-byte-only. Do not combine this with any mirroring/decode-range correction so lane semantics can be validated independently.
+
+**Required regression coverage:** odd-byte accesses to `0x310001/3/5/7` reach channels A-D; even/upper-byte byte accesses do not mutate or consume SLAVE transport state; word accesses preserve the physical lower-byte semantics rather than exposing a fictitious 16-bit peripheral.
+
+### Finding E1e-2 - the 0x317fff/0x318000 split is not supported by the visible MCU wiring
+
+**Classification:** strong likely decode/mirroring bug; board-level ATTEX aperture still needs primary confirmation before code change.
+
+The known MCU wiring exposes only A2/A1 for channel selection, not the higher address bits represented by the current 32 KiB split. The independent MiSTer implementation decodes the entire `0x31xxxx` range as SLAVE chip select and supplies only A2/A1 to the MCU, which would naturally mirror the four channel registers throughout that board-selected aperture.
+
+This is strong secondary corroboration but not enough to assert the ATTEX's exact SLAVE chip-select equation as primary fact. The current `.noprw()` upper half should therefore be treated as inherited unexplained behavior, not validated hardware behavior.
+
+**Required next evidence:** recover the ATTEX/Mono-I decode equation or a hardware address probe for `0x31xxxx`. If full-byte `0x31` decoding is confirmed, replace the arbitrary split with four lower-byte registers mirrored according to the unconnected higher address lines.
+
 ## Current stop point
 
-No validated behavior has been promoted. The authoritative branch remains untouched. E1a reset decode, E1b bus-error behavior, E1c phantom RAM, and E1d ROM/system-I/O decode remain separated until each can be validated or supported by stronger board evidence.
+No validated behavior has been promoted. The authoritative branch remains untouched. E1 now contains confirmed reset, BERR-status/timing, phantom-RAM, and SLAVE-lane problems plus two explicit decode questions (upper ROM aperture and SLAVE mirroring) that remain blocked on stronger board evidence.
