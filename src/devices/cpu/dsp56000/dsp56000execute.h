@@ -47,9 +47,12 @@ inline void finish_loop(
 	if (!state.loop_active || last_word != state.la)
 		return;
 
-	if (state.lc > 1)
+	// LC=0 is the architectural encoding for 65,536 iterations. Testing for
+	// the terminal value before a 16-bit decrement naturally preserves that
+	// behavior: 0000 -> FFFF -> ... -> 0001, then terminate.
+	if (state.lc != 1)
 	{
-		state.lc--;
+		state.lc = std::uint16_t(state.lc - 1U);
 		pc = state.loop_start;
 	}
 	else
@@ -177,8 +180,9 @@ step_result execute_one(
 	 *   0000 0110 iiii iiii 1000 hhhh
 	 *
 	 * The extension word is the encoded loop-end address used by the hardware
-	 * loop state. The current partial core supports one active loop and treats a
-	 * zero count as unsupported rather than inventing unverified edge behavior.
+	 * loop state. A zero immediate represents 65,536 iterations through the
+	 * 16-bit LC register. The current partial core supports one active loop;
+	 * nested DO state remains unsupported until the stack state is modeled.
 	 */
 	if ((opcode & 0x00ff00f0U) == 0x00060080U)
 	{
@@ -187,7 +191,7 @@ step_result execute_one(
 				((opcode & 0x0fU) << 8) |
 				((opcode >> 8) & 0xffU));
 
-		if (count == 0 || state.loop_active)
+		if (state.loop_active)
 			return step_result::unsupported;
 
 		state.lc = count;
