@@ -135,14 +135,16 @@ step_result execute_one(
 	 *   0000 100s W1MM MRRR 1Spp pppp
 	 *
 	 * The currently implemented immediate form has W=1 and MMMRRR=$34.
-	 * All fixed opcode fields are included in the mask so neighboring parallel
-	 * move classes cannot be accepted accidentally.
+	 * The six-bit peripheral short address pp occupies opcode bits 5-0;
+	 * bit 6 is the effective-address X/Y selector and is irrelevant to an
+	 * immediate source. All fixed opcode fields are included in the mask so
+	 * neighboring parallel move classes cannot be accepted accidentally.
 	 */
 	if ((opcode & 0x00feff80U) == 0x0008f480U)
 	{
 		bool const y_space = (opcode & 0x010000U) != 0;
 		std::uint16_t const address =
-			std::uint16_t(0xffc0U | ((opcode >> 8) & 0x3fU));
+			std::uint16_t(0xffc0U | (opcode & 0x3fU));
 
 		write_peripheral(y_space, address, read_extension());
 
