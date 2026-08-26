@@ -77,6 +77,28 @@ Source history also indicates that this block was historically suspicious rather
 
 **Validation requirement:** compile plus normal Philips/mametests/cdivalidate coverage, then an explicit Mono-I probe confirming the range is no longer writable RAM and a commercial-title smoke pass to catch any accidental dependency on the phantom block.
 
+## E1d - Mono-I ROM and MCD212 system-I/O decode
+
+Primary MCD212 documentation divides `0x400000-0x4fffff` into system ROM (`0x400000-0x4ffbff`), system I/O (`0x4ffc00-0x4fffdf`), channel-2 registers (`0x4fffe0-0x4fffef`), and channel-1 registers (`0x4ffff0-0x4fffff`). The VDSC generates ROM DTACK itself but only asserts CSIO for system-I/O accesses; the external system-I/O device, if any, must provide DTACK.
+
+Current MAME maps only the 512 KiB BIOS image at `0x400000-0x47ffff`, and maps the MCD212 register window at `0x4fffe0-0x4fffff`. Thus `0x480000-0x4fffdf` currently falls through to the board-level unmapped/BERR path.
+
+### Finding E1d-1 - upper MCD212 ROM-select range is incompletely represented, but returned data is not yet proven
+
+**Classification:** confirmed decode-model gap; functional behavior in `0x480000-0x4ffbff` remains uncertain; do not change yet.
+
+The VDSC unquestionably asserts CSROM throughout `0x400000-0x4ffbff`, so treating `0x480000-0x4ffbff` as though the VDSC did not select ROM is architecturally wrong. However the Mono-I service documentation identifies a 512 KiB system ROM and separate board glue signals for ROM chip select and ROM DTACK. The evidence reviewed so far does not establish whether accesses in the upper part of the VDSC ROM-select aperture alias the 512 KiB ROM, are further qualified by board glue, or otherwise return no device data.
+
+The independent MiSTer implementation follows the full MCD212 CSROM aperture, but its SDRAM backing is an implementation choice and is not sufficient primary evidence for physical Mono-I aliasing.
+
+**Required next evidence:** inspect the Mono-I ROM/glue schematic or hardware capture closely enough to determine which CPU address lines reach the physical system ROM and how `CSROMON/CSROMN` are qualified. Only then decide whether MAME should mirror the BIOS or use a narrower board-level decode beneath the VDSC CSROM window.
+
+### Finding E1d-2 - system-I/O aperture is correctly a separate hardware question, not an MCD212 register extension
+
+**Classification:** no confirmed MAME bug yet; keep explicitly unmapped pending board evidence.
+
+The MCD212 does not internally acknowledge `0x4ffc00-0x4fffdf`; it only asserts CSIO. The reviewed Mono-I service-manual signal listing identifies chip selects for ROM, NVRAM, SLAVE, CDIC, VDSC, DSP/glue and related devices, but no `CSIO`/system-I/O consumer has yet been identified. Therefore it would be speculative to add a device or generic storage here. If no board device responds, the eventual result should be the documented VDSC watchdog/BERR path from E1b rather than today's immediate unconditional compatibility BERR.
+
 ## Current stop point
 
-No validated behavior has been promoted. The authoritative branch remains untouched. E1a reset decode, E1b bus-error behavior, and E1c memory-map corrections remain separated until each can be validated.
+No validated behavior has been promoted. The authoritative branch remains untouched. E1a reset decode, E1b bus-error behavior, E1c phantom RAM, and E1d ROM/system-I/O decode remain separated until each can be validated or supported by stronger board evidence.
