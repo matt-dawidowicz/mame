@@ -1,5 +1,5 @@
 // license:BSD-3-Clause
-// copyright-holders:Matt Jordan
+// copyright-holders:Matt Dawidowicz
 
 #include <array>
 #include <cstdint>
