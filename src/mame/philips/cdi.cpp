@@ -245,6 +245,7 @@ void cdi_state::machine_start()
 	m_dvc_dma_timer->adjust(attotime::never);
 
 	save_item(NAME(m_dvc_dma_service_active));
+	save_item(NAME(m_dvc_dma_req_state));
 	save_item(NAME(m_dvc_dma_mac_mode));
 	save_item(NAME(m_dvc_dma_initial_words));
 	save_item(NAME(m_dvc_dma_service_events));
@@ -265,6 +266,7 @@ void cdi_state::machine_reset()
 		m_maincpu->in2_w(cdi_mono2::RESET_IRQ2_LINE);
 
 	m_dvc_dma_service_active = false;
+	m_dvc_dma_req_state = false;
 	m_dvc_dma_mac_mode = 0;
 	m_dvc_dma_initial_words = 0;
 	m_dvc_dma_service_events = 0;
@@ -390,6 +392,8 @@ uint8_t cdi_state::irq4_ack_r()
 
 void cdi_state::dvc_dma_req_w(int state)
 {
+	m_dvc_dma_req_state = state != CLEAR_LINE;
+
 	if (!state)
 	{
 		if (m_dvc_dma_service_active)
@@ -452,6 +456,16 @@ void cdi_state::dvc_dma_req_w(int state)
 		(unsigned long long)m_dvc_dma_request_clock);
 
 	m_dvc_dma_timer->adjust(attotime::zero);
+}
+
+void cdi_state::dvc_dma_reconfigure_w(uint8_t channel)
+{
+	if (channel != 1 || !m_dvc_dma_req_state || m_dvc_dma_service_active)
+		return;
+
+	LOGMASKED(LOG_DVC_DMA, "DVC_DMA_SERVICE_REARM remaining=%u\n",
+		m_maincpu->dma_channel_remaining(1));
+	dvc_dma_req_w(ASSERT_LINE);
 }
 
 TIMER_CALLBACK_MEMBER(cdi_state::dvc_dma_service_tick)
@@ -903,6 +917,7 @@ void cdi_state::cdimono1dvc(machine_config &config)
 	// channel-1 DMA service path.
 	m_dvc->intreq_callback().set(FUNC(cdi_state::dvc_irq_w));
 	m_dvc->dma_req_callback().set(FUNC(cdi_state::dvc_dma_req_w));
+	m_maincpu->dma_reconfigure_callback().set(FUNC(cdi_state::dvc_dma_reconfigure_w));
 
 	m_slave_hle->read_mousex().set_ioport("MOUSEX");
 	m_slave_hle->read_mousey().set_ioport("MOUSEY");
@@ -927,6 +942,7 @@ void cdi_state::cdimono1dvc_ntsc(machine_config &config)
 	// channel-1 DMA service path.
 	m_dvc->intreq_callback().set(FUNC(cdi_state::dvc_irq_w));
 	m_dvc->dma_req_callback().set(FUNC(cdi_state::dvc_dma_req_w));
+	m_maincpu->dma_reconfigure_callback().set(FUNC(cdi_state::dvc_dma_reconfigure_w));
 
 	m_slave_hle->read_mousex().set_ioport("MOUSEX");
 	m_slave_hle->read_mousey().set_ioport("MOUSEY");
