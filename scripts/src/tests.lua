@@ -66,6 +66,7 @@ project("mametests")
 		MAME_DIR .. "tests/main.cpp",
 		MAME_DIR .. "tests/emu/cpu/dsp56000.cpp",
 		MAME_DIR .. "tests/emu/cpu/dsp56000_decode.cpp",
+		MAME_DIR .. "tests/emu/cpu/dsp56000_wrap.cpp",
 		MAME_DIR .. "tests/emu/machine/scc68070.cpp",
 		MAME_DIR .. "tests/emu/philips/cdicdic.cpp",
 		MAME_DIR .. "tests/emu/philips/mcd212_video.cpp",
