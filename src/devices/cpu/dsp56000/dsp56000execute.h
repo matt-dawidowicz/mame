@@ -37,10 +37,14 @@ struct core_state
 
 inline void finish_loop(
 		std::uint16_t instruction_pc,
+		unsigned instruction_words,
 		std::uint16_t &pc,
 		core_state &state)
 {
-	if (!state.loop_active || instruction_pc != state.la)
+	std::uint16_t const last_word =
+		std::uint16_t(instruction_pc + instruction_words - 1U);
+
+	if (!state.loop_active || last_word != state.la)
 		return;
 
 	if (state.lc > 1)
@@ -118,7 +122,7 @@ step_result execute_one(
 	if ((opcode & 0x00fff000U) == 0x000c0000U)
 	{
 		pc = std::uint16_t(opcode & 0x00000fffU);
-		finish_loop(instruction_pc, pc, state);
+		finish_loop(instruction_pc, 1, pc, state);
 		return step_result::executed;
 	}
 
@@ -140,7 +144,7 @@ step_result execute_one(
 		write_peripheral(y_space, address, read_extension());
 
 		pc = std::uint16_t(pc + 2);
-		finish_loop(instruction_pc, pc, state);
+		finish_loop(instruction_pc, 2, pc, state);
 		return step_result::executed;
 	}
 
@@ -162,7 +166,7 @@ step_result execute_one(
 			state.r[reg - 16] = std::uint16_t(read_extension());
 
 			pc = std::uint16_t(pc + 2);
-			finish_loop(instruction_pc, pc, state);
+			finish_loop(instruction_pc, 2, pc, state);
 			return step_result::executed;
 		}
 	}
@@ -224,7 +228,7 @@ step_result execute_one(
 			state.r[rr] = std::uint16_t(state.r[rr] + 1);
 
 			pc = std::uint16_t(pc + 1);
-			finish_loop(instruction_pc, pc, state);
+			finish_loop(instruction_pc, 1, pc, state);
 			return step_result::executed;
 		}
 	}
@@ -234,12 +238,16 @@ step_result execute_one(
 	 *
 	 *   0000 1010 10pp pppp 1S0b bbbb
 	 *
-	 * Peripheral-memory form only.
+	 * Peripheral-memory form only. The architectural bit number is 0-23;
+	 * encodings 24-31 are reserved and remain unsupported.
 	 */
 	if ((opcode & 0x00ffc0a0U) == 0x000a8080U)
 	{
 		bool const y_space = (opcode & 0x000040U) != 0;
 		unsigned const bit = opcode & 31U;
+
+		if (bit >= 24U)
+			return step_result::unsupported;
 
 		std::uint16_t const address =
 			std::uint16_t(
@@ -255,7 +263,7 @@ step_result execute_one(
 		else
 			pc = std::uint16_t(pc + 2);
 
-		finish_loop(instruction_pc, pc, state);
+		finish_loop(instruction_pc, 2, pc, state);
 		return step_result::executed;
 	}
 
@@ -270,7 +278,7 @@ step_result execute_one(
 	if ((opcode & 0x00fff8ffU) == 0x000af080U)
 	{
 		pc = std::uint16_t(read_extension());
-		finish_loop(instruction_pc, pc, state);
+		finish_loop(instruction_pc, 2, pc, state);
 		return step_result::executed;
 	}
 

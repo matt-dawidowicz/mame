@@ -74,7 +74,7 @@ TEST_CASE(
 		std::uint32_t opcode;
 	};
 
-	constexpr std::array<negative_case, 14> CASES =
+	constexpr std::array<negative_case, 15> CASES =
 	{{
 		{ "short JMP parallel-prefix neighbor", 0x1c0002 },
 		{ "MOVEP parallel-prefix neighbor",     0x18f4be },
@@ -87,6 +87,7 @@ TEST_CASE(
 		{ "MOVEM addressing neighbor",          0x079984 },
 		{ "MOVEM low-field neighbor",           0x07d9c4 },
 		{ "JCLR parallel-prefix neighbor",      0x1aa983 },
+		{ "JCLR reserved bit number",           0x0aa998 },
 		{ "JMP EA parallel-prefix neighbor",    0x1af080 },
 		{ "JMP EA low-field neighbor 1",        0x0af081 },
 		{ "JMP EA low-field neighbor 2",        0x0af0c0 },
@@ -166,4 +167,79 @@ TEST_CASE(
 	REQUIRE(probe.state.la == 0);
 	REQUIRE(probe.state.loop_start == 0);
 	REQUIRE_FALSE(probe.state.loop_active);
+}
+
+
+TEST_CASE(
+	"DSP56000 DO loop address may name a two-word instruction extension",
+	"[emu][cpu][dsp56000][execute][loop]")
+{
+	std::array<std::uint32_t, 8> program{};
+	std::array<std::uint32_t, 0x40> x_peripheral{};
+	std::array<std::uint32_t, 0x40> y_peripheral{};
+
+	// DO #2,$3: the loop ends on the extension word of the MOVEP at P:$2.
+	program[0] = 0x060280;
+	program[1] = 0x000003;
+	program[2] = 0x08f480;
+	program[3] = 0x123456;
+
+	auto read_program =
+		[&program](std::uint16_t address)
+		{
+			return program[address];
+		};
+
+	auto write_program =
+		[&program](std::uint16_t address, std::uint32_t value)
+		{
+			program[address] = value & 0x00ffffffU;
+		};
+
+	auto read_peripheral =
+		[&](bool y_space, std::uint16_t address)
+		{
+			auto const &space = y_space ? y_peripheral : x_peripheral;
+			return space[address & 0x3fU];
+		};
+
+	auto write_peripheral =
+		[&](bool y_space, std::uint16_t address, std::uint32_t value)
+		{
+			auto &space = y_space ? y_peripheral : x_peripheral;
+			space[address & 0x3fU] = value & 0x00ffffffU;
+		};
+
+	dsp56000_execution::core_state state;
+	std::uint16_t pc = 0;
+	std::uint32_t opcode = 0;
+
+	auto result = dsp56000_execution::execute_one(
+		pc, opcode, state,
+		read_program, write_program, read_peripheral, write_peripheral);
+
+	REQUIRE(result == dsp56000_execution::step_result::executed);
+	REQUIRE(pc == 2);
+	REQUIRE(state.loop_active);
+	REQUIRE(state.lc == 2);
+	REQUIRE(state.la == 3);
+
+	result = dsp56000_execution::execute_one(
+		pc, opcode, state,
+		read_program, write_program, read_peripheral, write_peripheral);
+
+	REQUIRE(result == dsp56000_execution::step_result::executed);
+	REQUIRE(pc == 2);
+	REQUIRE(state.loop_active);
+	REQUIRE(state.lc == 1);
+
+	result = dsp56000_execution::execute_one(
+		pc, opcode, state,
+		read_program, write_program, read_peripheral, write_peripheral);
+
+	REQUIRE(result == dsp56000_execution::step_result::executed);
+	REQUIRE(pc == 4);
+	REQUIRE_FALSE(state.loop_active);
+	REQUIRE(state.lc == 0);
+	REQUIRE(x_peripheral[0x34] == 0x123456);
 }
