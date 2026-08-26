@@ -53,7 +53,7 @@ protected:
 	dsp56000_execution::core_state m_core;
 
 	/*
-	 * Temporary execution backing used while the DSP core is brought up.
+	 * Temporary execution backing used by the current partial interpreter.
 	 * This is functional execution state, not yet a claim of final
 	 * DSP56001 external-memory timing/fidelity.
 	 */
