@@ -1,24 +1,21 @@
 #!/usr/bin/env python3
 # license:BSD-3-Clause
 # copyright-holders:Matt Dawidowicz
-"""Static audit reproducer for the Mono-I DVC/SCC68070 DMA liveness bug.
+"""Static RED audit gate for the Mono-I DVC/SCC68070 DMA liveness bug.
 
-This is deliberately an audit gate, not a substitute for a future runtime
-regression test.  It examines the production source paths that currently own
+This is deliberately an audit reproducer, not a substitute for the future
+runtime regression test.  It examines the production source paths that own
 DREQ/service/completion state and returns non-zero while the known held-DREQ
-orphan condition is present.
+orphan pattern is present.
 
-The RED condition is:
-  * the DVC service loop is active because VMPEG asserted DREQ;
-  * SCC68070 DMA channel 1 becomes inactive before normal completion;
-  * the service tick drops only the driver's service-active state and returns;
-  * DVC dma_done() is not called, so DVC-side DMA/DREQ stays active;
-  * an ASSERT callback received while service is already active is ignored,
-    confirming the driver treats the request callback as a start event rather
-    than maintaining a persistent level-sensitive service contract.
+RED means the SCC channel-inactive service path simultaneously:
+  * drops the driver's service-active state;
+  * returns without DVC completion; and
+  * does not re-arm service.
 
-Once the production ownership model is corrected, replace this audit gate with
-(or supplement it by) a behavioral mametests regression for abort/re-arm.
+That combination can orphan a level-held VMPEG DREQ after SCC abort/error.
+Once the production ownership model is corrected, replace or supplement this
+source audit with a behavioral mametests abort/re-arm regression.
 """
 
 from __future__ import annotations
@@ -73,9 +70,8 @@ def extract_if_block(function: str, condition_pattern: str) -> str:
     raise RuntimeError(f"unterminated condition: {condition_pattern}")
 
 
-def require(text: str, pattern: str, description: str) -> None:
-    if not re.search(pattern, text, flags=re.MULTILINE | re.DOTALL):
-        raise RuntimeError(f"expected production behavior not found: {description}")
+def present(text: str, pattern: str) -> bool:
+    return bool(re.search(pattern, text, flags=re.MULTILINE | re.DOTALL))
 
 
 def main() -> int:
@@ -104,56 +100,43 @@ def main() -> int:
         dvc_cpp,
         r"void\s+cdi_dvc_device::dma_done\s*\(\s*\)",
     )
-
     inactive = extract_if_block(
         tick,
         r"if\s*\(\s*!m_maincpu->dma_channel_active\s*\(\s*1\s*\)\s*\)",
     )
 
-    # Establish the exact current ownership split before declaring RED.
-    require(
-        inactive,
-        r"m_dvc_dma_service_active\s*=\s*false\s*;",
-        "inactive SCC path drops driver service ownership",
+    drops_service = present(
+        inactive, r"m_dvc_dma_service_active\s*=\s*false\s*;"
     )
-    require(
-        inactive,
-        r"\breturn\s*;",
-        "inactive SCC path returns without further service",
+    returns = present(inactive, r"\breturn\s*;")
+    completes_dvc = present(
+        inactive, r"(?:m_dvc\s*->\s*)?dma_done\s*\("
     )
-    require(
+    reschedules = present(
+        inactive, r"m_dvc_dma_timer\s*->\s*adjust\s*\("
+    )
+    reassert_ignored = present(
         request,
         r"if\s*\(\s*m_dvc_dma_service_active\s*\)\s*\{"
         r".*?DVC_DMA_SERVICE_REASSERT.*?\breturn\s*;\s*\}",
-        "DREQ ASSERT while service-active is treated as a no-op reassert",
     )
-    require(
-        done,
-        r"m_dma_active\s*=\s*false\s*;",
-        "DVC completion clears DVC-side DMA state",
-    )
-    require(
-        done,
-        r"m_dma_req_callback\s*\(\s*CLEAR_LINE\s*\)\s*;",
-        "DVC completion clears DREQ",
+    done_clears_dma = present(done, r"m_dma_active\s*=\s*false\s*;")
+    done_clears_dreq = present(
+        done, r"m_dma_req_callback\s*\(\s*CLEAR_LINE\s*\)\s*;"
     )
 
-    inactive_completes_dvc = bool(
-        re.search(r"(?:m_dvc\s*->\s*)?dma_done\s*\(", inactive)
-    )
-    inactive_reschedules = bool(
-        re.search(r"m_dvc_dma_timer\s*->\s*adjust\s*\(", inactive)
-    )
-
-    if not inactive_completes_dvc and not inactive_reschedules:
+    if drops_service and returns and not completes_dvc and not reschedules:
         print("RED: DVC DMA held-request liveness bug reproduced")
         print("  SCC channel inactive -> driver clears service-active and returns")
-        print("  DVC dma_done() is not called -> DVC-side DMA/DREQ remains active")
-        print("  no service timer is re-armed -> a held DREQ has no retry path")
-        print("  DREQ reassert while already servicing is explicitly ignored")
+        print("  DVC dma_done() is not called -> normal DVC completion is skipped")
+        print("  no service timer is re-armed -> the request has no retry path")
+        print(f"  DREQ reassert while servicing ignored: {int(reassert_ignored)}")
+        print(f"  dma_done clears DVC active/DREQ: {int(done_clears_dma)}/{int(done_clears_dreq)}")
         return 1
 
-    print("GREEN: inactive SCC DMA no longer silently orphans a held DVC request")
+    print("GREEN: held DVC request is no longer silently orphaned by the SCC-inactive path")
+    print(f"  drops_service={int(drops_service)} returns={int(returns)}")
+    print(f"  completes_dvc={int(completes_dvc)} reschedules={int(reschedules)}")
     return 0
 
 
