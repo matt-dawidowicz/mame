@@ -50,6 +50,7 @@ project("mametests")
 		MAME_DIR .. "src/osd",
 		MAME_DIR .. "src/emu",
 		MAME_DIR .. "src/devices/machine",
+		MAME_DIR .. "src/devices/cpu/dsp56000",
 		MAME_DIR .. "src/lib/util",
 		MAME_DIR .. "src/mame/philips",
 		ext_includedir("expat"),
@@ -63,6 +64,7 @@ project("mametests")
 
 	files {
 		MAME_DIR .. "tests/main.cpp",
+		MAME_DIR .. "tests/emu/cpu/dsp56000.cpp",
 		MAME_DIR .. "tests/emu/machine/scc68070.cpp",
 		MAME_DIR .. "tests/emu/philips/cdicdic.cpp",
 		MAME_DIR .. "tests/emu/philips/mcd212_video.cpp",
