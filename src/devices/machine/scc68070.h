@@ -58,6 +58,7 @@ public:
 	auto i2c_scl_w() { return m_i2c_scl_callback.bind(); }
 	auto i2c_sda_w() { return m_i2c_sdaw_callback.bind(); }
 	auto i2c_sda_r() { return m_i2c_sdar_callback.bind(); }
+	auto dma_reconfigure_callback() { return m_dma_reconfigure_callback.bind(); }
 
 	void in2_w(int state);
 	void in4_w(int state);
@@ -287,6 +288,7 @@ private:
 	devcb_write_line m_i2c_scl_callback;
 	devcb_write_line m_i2c_sdaw_callback;
 	devcb_read8 m_i2c_sdar_callback;
+	devcb_write8 m_dma_reconfigure_callback;
 
 	// internal state
 	uint8_t m_ipl;
