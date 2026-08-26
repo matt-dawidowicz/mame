@@ -61,6 +61,22 @@ Mono-I currently overlays a catch-all `bus_error_r/w` across the 24-bit program 
 
 **Next check:** add a tiny 68070-side regression proving the stacked fault address for even byte, odd byte and word unmapped accesses before changing callback signatures.
 
+## E1c - Mono-I physical memory decode
+
+### Finding E1c-1 - phantom RAM at 0x500000-0x57ffff
+
+**Classification:** confirmed correctness bug; high-confidence removal candidate; observable compatibility change requiring runtime validation.
+
+The current Mono-I map installs generic writable RAM at `0x500000-0x57ffff`. This range is outside the MCD212/VDSC address decoder: primary MCD212 documentation places DRAM in `0x000000-0x3fffff`, ROM/system-I/O/register decoding in `0x400000-0x4fffff`, and for the two-bank 256K x16 (`TD=0`) configuration only `0x000000-0x07ffff` plus `0x200000-0x27ffff` receive DRAM acknowledgement. No DTACK is generated for addresses outside the configured DRAM ranges.
+
+The independent MiSTer CD-i hardware notes identify two 256K x16 DRAM devices and record bus-error holes on a CDI 210/05 from `0x080000-0x1fffff` and `0x500000-0xcfffff`. This is secondary evidence but directly contradicts MAME's writable `0x500000-0x57ffff` block.
+
+Source history also indicates that this block was historically suspicious rather than established hardware: the 2013 MCD212 modernization retained `0x500000-0x57ffff` only as a commented-out RAM mapping and treated the surrounding high range as unmapped/NOP.
+
+**Required fix shape:** delete the generic `map(0x500000, 0x57ffff).ram()` entry so the range falls through to the existing unmapped/bus-error path. Do not combine this with the separate E1b watchdog/BERR-timing correction.
+
+**Validation requirement:** compile plus normal Philips/mametests/cdivalidate coverage, then an explicit Mono-I probe confirming the range is no longer writable RAM and a commercial-title smoke pass to catch any accidental dependency on the phantom block.
+
 ## Current stop point
 
-No validated behavior has been promoted. The authoritative branch remains untouched. E1b source changes are intentionally not bundled with E1a or memory-map corrections.
+No validated behavior has been promoted. The authoritative branch remains untouched. E1a reset decode, E1b bus-error behavior, and E1c memory-map corrections remain separated until each can be validated.
