@@ -49,6 +49,12 @@ def extract_function(source: str, signature_pattern: str) -> str:
     raise RuntimeError(f"unterminated function: {signature_pattern}")
 
 
+def extract_optional_function(source: str, signature_pattern: str) -> str:
+    if not re.search(signature_pattern, source, flags=re.MULTILINE):
+        return ""
+    return extract_function(source, signature_pattern)
+
+
 def extract_if_block(function: str, condition_pattern: str) -> str:
     match = re.search(condition_pattern, function, flags=re.MULTILINE)
     if not match:
@@ -96,7 +102,7 @@ def main() -> int:
         cdi_cpp,
         r"void\s+cdi_state::dvc_dma_req_w\s*\(\s*int\s+state\s*\)",
     )
-    reconfigure = extract_function(
+    reconfigure = extract_optional_function(
         cdi_cpp,
         r"void\s+cdi_state::dvc_dma_reconfigure_w\s*\(\s*uint8_t\s+channel\s*\)",
     )
@@ -141,6 +147,16 @@ def main() -> int:
         cdi_cpp, r"m_dvc_dma_req_state\s*=\s*false\s*;"
     )
 
+    request_validation_preserved = all(
+        (
+            present(request, r"dma_channel_memory_to_device\s*\(\s*1\s*\)"),
+            present(request, r"dma_channel_word_transfer\s*\(\s*1\s*\)"),
+            present(request, r"dma_channel_memory_increment\s*\(\s*1\s*,"),
+            present(request, r"dma_channel_remaining\s*\(\s*1\s*\)"),
+            present(request, r"dma_channel_external_start\s*\(\s*1\s*\)"),
+        )
+    )
+
     reconfigure_declared = present(
         cdi_h, r"void\s+dvc_dma_reconfigure_w\s*\(\s*uint8_t\s+channel\s*\)\s*;"
     )
@@ -155,6 +171,9 @@ def main() -> int:
     )
     reconfigure_retries_request = present(
         reconfigure, r"dvc_dma_req_w\s*\(\s*ASSERT_LINE\s*\)\s*;"
+    )
+    reconfigure_fabricates_completion = present(
+        reconfigure, r"(?:m_dvc\s*->\s*)?dma_done\s*\("
     )
 
     scc_callback_accessor = present(
@@ -200,11 +219,13 @@ def main() -> int:
             req_level_tracked,
             req_level_saved,
             req_level_reset,
+            request_validation_preserved,
             reconfigure_declared,
             reconfigure_channel_guard,
             reconfigure_req_guard,
             reconfigure_idle_guard,
             reconfigure_retries_request,
+            not reconfigure_fabricates_completion,
             scc_callback_accessor,
             scc_callback_member,
             scc_callback_constructed,
@@ -218,6 +239,7 @@ def main() -> int:
         and done_clears_dma
         and done_clears_dreq
         and not completes_dvc_on_abort
+        and not reconfigure_fabricates_completion
     )
     no_abort_polling = not polls_after_abort
 
@@ -239,15 +261,17 @@ def main() -> int:
     if not event_rearm:
         print("RED: held-DREQ event-driven re-arm contract is incomplete")
         print(
-            "  req(member/tracked/saved/reset)="
+            "  req(member/tracked/saved/reset/validated)="
             f"{int(req_level_member)}/{int(req_level_tracked)}/"
-            f"{int(req_level_saved)}/{int(req_level_reset)}"
+            f"{int(req_level_saved)}/{int(req_level_reset)}/"
+            f"{int(request_validation_preserved)}"
         )
         print(
-            "  reconfigure(declared/channel/req/idle/retry)="
+            "  reconfigure(declared/channel/req/idle/retry/no_done)="
             f"{int(reconfigure_declared)}/{int(reconfigure_channel_guard)}/"
             f"{int(reconfigure_req_guard)}/{int(reconfigure_idle_guard)}/"
-            f"{int(reconfigure_retries_request)}"
+            f"{int(reconfigure_retries_request)}/"
+            f"{int(not reconfigure_fabricates_completion)}"
         )
         print(
             "  scc(accessor/member/ctor/ch2notify)="
@@ -267,7 +291,8 @@ def main() -> int:
             f"  normal_done_sites={normal_done_sites} "
             f"done_clears_dma={int(done_clears_dma)} "
             f"done_clears_dreq={int(done_clears_dreq)} "
-            f"abort_completes={int(completes_dvc_on_abort)}"
+            f"abort_completes={int(completes_dvc_on_abort)} "
+            f"rearm_completes={int(reconfigure_fabricates_completion)}"
         )
         return 1
 
@@ -277,6 +302,7 @@ def main() -> int:
 
     print("GREEN: held DVC DMA request has an event-driven SCC re-arm path")
     print("  DREQ level is tracked, saved, and reset")
+    print("  existing SCC direction/size/MAC/count/start validation is preserved")
     print(f"  DVC PAL/NTSC SCC reconfiguration bindings={dvc_binding_count}")
     print("  channel-2 register changes re-evaluate a held request only while service is idle")
     print("  abort does not fabricate DVC completion or start a retry polling loop")
