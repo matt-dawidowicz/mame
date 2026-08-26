@@ -151,22 +151,79 @@ TEST_CASE(
 
 
 TEST_CASE(
-	"DSP56000 unsupported DO edge does not partially enter a loop",
-	"[emu][cpu][dsp56000][execute][decode][loop]")
+	"DSP56000 DO zero count executes 65,536 iterations",
+	"[emu][cpu][dsp56000][execute][loop][wrap]")
 {
-	decoder_probe probe;
+	std::array<std::uint32_t, 4> program{};
+	std::array<std::uint32_t, 0x40> x_peripheral{};
+	std::array<std::uint32_t, 0x40> y_peripheral{};
 
-	// The partial core does not yet claim the architectural zero-count edge
-	// behavior. It must stop cleanly rather than creating guessed loop state.
-	auto const result = probe.run(0x060080);
+	// DO #0,$3 followed by a two-word MOVEP ending at LA=$3.
+	program[0] = 0x060080;
+	program[1] = 0x000003;
+	program[2] = 0x08f480;
+	program[3] = 0x123456;
 
-	REQUIRE(result == dsp56000_execution::step_result::unsupported);
-	REQUIRE(probe.pc == 0);
-	REQUIRE(probe.program_reads == 1);
-	REQUIRE(probe.state.lc == 0);
-	REQUIRE(probe.state.la == 0);
-	REQUIRE(probe.state.loop_start == 0);
-	REQUIRE_FALSE(probe.state.loop_active);
+	unsigned peripheral_writes = 0;
+
+	auto read_program =
+		[&program](std::uint16_t address)
+		{
+			return program[address];
+		};
+
+	auto write_program =
+		[&program](std::uint16_t address, std::uint32_t value)
+		{
+			program[address] = value & 0x00ffffffU;
+		};
+
+	auto read_peripheral =
+		[&](bool y_space, std::uint16_t address)
+		{
+			auto const &space = y_space ? y_peripheral : x_peripheral;
+			return space[address & 0x3fU];
+		};
+
+	auto write_peripheral =
+		[&](bool y_space, std::uint16_t address, std::uint32_t value)
+		{
+			peripheral_writes++;
+			auto &space = y_space ? y_peripheral : x_peripheral;
+			space[address & 0x3fU] = value & 0x00ffffffU;
+		};
+
+	dsp56000_execution::core_state state;
+	std::uint16_t pc = 0;
+	std::uint32_t opcode = 0;
+
+	auto result = dsp56000_execution::execute_one(
+		pc, opcode, state,
+		read_program, write_program, read_peripheral, write_peripheral);
+
+	REQUIRE(result == dsp56000_execution::step_result::executed);
+	REQUIRE(pc == 2);
+	REQUIRE(state.loop_active);
+	REQUIRE(state.lc == 0);
+	REQUIRE(state.la == 3);
+
+	unsigned iterations = 0;
+	while (state.loop_active && iterations <= 0x10000U)
+	{
+		result = dsp56000_execution::execute_one(
+			pc, opcode, state,
+			read_program, write_program, read_peripheral, write_peripheral);
+
+		REQUIRE(result == dsp56000_execution::step_result::executed);
+		iterations++;
+	}
+
+	REQUIRE(iterations == 0x10000U);
+	REQUIRE(pc == 4);
+	REQUIRE_FALSE(state.loop_active);
+	REQUIRE(state.lc == 0);
+	REQUIRE(peripheral_writes == 0x10000U);
+	REQUIRE(x_peripheral[0x34] == 0x123456);
 }
 
 
