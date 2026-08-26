@@ -86,6 +86,7 @@ protected:
 	// keeping SCC68070 transfer state owned by the SCC device.
 	emu_timer *m_dvc_dma_timer = nullptr;
 	bool m_dvc_dma_service_active = false;
+	bool m_dvc_dma_req_state = false;
 	uint8_t m_dvc_dma_mac_mode = 0;
 	uint16_t m_dvc_dma_initial_words = 0;
 	uint32_t m_dvc_dma_service_events = 0;
@@ -116,6 +117,7 @@ protected:
 	uint8_t irq4_ack_r();
 
 	void dvc_dma_req_w(int state);
+	void dvc_dma_reconfigure_w(uint8_t channel);
 	TIMER_CALLBACK_MEMBER(dvc_dma_service_tick);
 
 	uint16_t bus_error_r(offs_t offset);
