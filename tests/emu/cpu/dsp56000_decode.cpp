@@ -74,21 +74,22 @@ TEST_CASE(
 		std::uint32_t opcode;
 	};
 
-	constexpr std::array<negative_case, 13> CASES =
+	constexpr std::array<negative_case, 14> CASES =
 	{{
-		{ "MOVEP parallel-prefix neighbor",  0x18f4be },
-		{ "MOVEP fixed-bit neighbor",        0x08b4be },
-		{ "MOVE XY-class neighbor",          0xe0f400 },
-		{ "DO parallel-prefix neighbor",     0x160380 },
-		{ "DO low-nibble neighbor",          0x060390 },
-		{ "DO fixed-bit neighbor",           0x0603c0 },
-		{ "MOVEM parallel-prefix neighbor",  0x17d984 },
-		{ "MOVEM addressing neighbor",       0x079984 },
-		{ "MOVEM low-field neighbor",        0x07d9c4 },
-		{ "JCLR parallel-prefix neighbor",   0x1aa983 },
-		{ "JMP EA parallel-prefix neighbor", 0x1af080 },
-		{ "JMP EA low-field neighbor 1",     0x0af081 },
-		{ "JMP EA low-field neighbor 2",     0x0af0c0 },
+		{ "short JMP parallel-prefix neighbor", 0x1c0002 },
+		{ "MOVEP parallel-prefix neighbor",     0x18f4be },
+		{ "MOVEP fixed-bit neighbor",           0x08b4be },
+		{ "MOVE XY-class neighbor",             0xe0f400 },
+		{ "DO parallel-prefix neighbor",        0x160380 },
+		{ "DO low-nibble neighbor",             0x060390 },
+		{ "DO fixed-bit neighbor",              0x0603c0 },
+		{ "MOVEM parallel-prefix neighbor",     0x17d984 },
+		{ "MOVEM addressing neighbor",          0x079984 },
+		{ "MOVEM low-field neighbor",           0x07d9c4 },
+		{ "JCLR parallel-prefix neighbor",      0x1aa983 },
+		{ "JMP EA parallel-prefix neighbor",    0x1af080 },
+		{ "JMP EA low-field neighbor 1",        0x0af081 },
+		{ "JMP EA low-field neighbor 2",        0x0af0c0 },
 	}};
 
 	for (auto const &test : CASES)
@@ -96,7 +97,7 @@ TEST_CASE(
 		decoder_probe probe;
 		auto const result = probe.run(test.opcode);
 
-		INFO("case=" << test.name << " opcode=" << std::hex << test.opcode);
+		INFO("case=" << test.name << " opcode=" << test.opcode);
 		REQUIRE(result == dsp56000_execution::step_result::unsupported);
 		REQUIRE(probe.pc == 0);
 		REQUIRE(probe.opcode == test.opcode);
