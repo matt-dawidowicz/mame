@@ -51,7 +51,7 @@ dsp56001_device::dsp56001_device(machine_config const &mconfig, char const *tag,
 
 void dsp56000_device_base::device_start()
 {
-	// program-visible cpu state
+	// CPU execution state.
 	save_item(NAME(m_pc));
 	save_item(NAME(m_current_opcode));
 	save_item(NAME(m_execution_stopped));
@@ -116,9 +116,10 @@ void dsp56000_device_base::execute_run()
 		}
 
 		/*
-		 * The host bootstrap path has populated the real 24-bit words
-		 * before execution begins.  Mirror that initial image into the
-		 * B2 program backing exactly once.
+		 * The host bootstrap path has populated the real 24-bit words before
+		 * execution begins. Mirror that initial image into the temporary program
+		 * backing exactly once. This backing is replaced when the core moves to
+		 * its declared P address space.
 		 */
 		if (!m_program_bootstrap_loaded)
 		{
@@ -176,9 +177,9 @@ void dsp56000_device_base::execute_run()
 		}
 
 		/*
-		 * Timing remains provisional.  DSP-B2 validates architectural
-		 * state transitions and bootstrap relocation, separately from
-		 * cycle-level hardware fidelity.
+		 * Timing remains provisional. Current execution tests validate
+		 * architectural state transitions and bootstrap relocation separately
+		 * from cycle-level hardware fidelity.
 		 */
 		m_icount--;
 	}
