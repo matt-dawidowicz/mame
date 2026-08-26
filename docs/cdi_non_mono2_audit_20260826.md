@@ -125,6 +125,34 @@ This is strong secondary corroboration but not enough to assert the ATTEX's exac
 
 **Required next evidence:** recover the ATTEX/Mono-I decode equation or a hardware address probe for `0x31xxxx`. If full-byte `0x31` decoding is confirmed, replace the arbitrary split with four lower-byte registers mirrored according to the unconnected higher address lines.
 
+## E2a - MCD212 ROM/DRAM DTACK and arbitration
+
+The current machine handlers call `eat_cycles()` for every Mono-I plane-RAM and system-ROM access, with the delay supplied by `mcd212_device::ram_dtack_cycle_count<Path>()` or `rom_dtack_cycle_count()`.
+
+### E2a ROM result - current programmable ROM delay is consistent with the MCD212 timing tables
+
+**Classification:** no bug found in this pass; preserve current behavior.
+
+The MCD212's DD/DD1/DD2 table specifies progressively longer ROM acknowledgement windows of approximately 3-4, 5-6, 7-8, and 9-10 VDSC CLK periods when programmable delay is enabled, and approximately 11-12 or more CLK periods with DD cleared. With the SCC68070/VDSC clock relationship used by CD-i, the existing return values `{2, 3, 4, 5}` SCC68070 cycles and the 7-cycle DD=0 case are consistent with those documented ranges. Do not churn this code without contrary hardware timing evidence.
+
+### Finding E2a-1 - IC1/IC2 incorrectly gate display-decoder DRAM contention
+
+**Classification:** confirmed timing-model correctness bug; potentially software-visible; fix requires a bounded arbitration model rather than a one-line deletion.
+
+The MCD212 documentation lists Display Decoder 1, Display Decoder 2, ICA/DCA Controller 1, and ICA/DCA Controller 2 as distinct DRAM masters. DCR1.DE enables display access to DRAM. IC1/IC2 enable the ICA mechanisms (and gate whether DCA can be enabled); they do not enable or disable the display decoders themselves.
+
+Current `ram_dtack_cycle_count<Path>()` returns the minimum two SCC68070 cycles immediately whenever `DCR_ICA_BIT` for the path is clear. During an active display fetch region this incorrectly removes contention from the display decoder simply because ICA is disabled.
+
+The tempting fix of merely deleting the IC check is not correct either: outside active display, ICA and DCA ownership depends on IC/DC state, refresh periods still reserve slots, and documented free-run periods can accept system accesses immediately. The correct small fix should explicitly classify the current raster position as display-fetch, ICA, DCA, refresh, or free-run and then apply the documented 11-CLK channel / 5-CLK system-slot arbitration only when a video-related master actually owns the path slot.
+
+### Finding E2a-2 - focused DTACK regression coverage is missing
+
+**Classification:** regression-coverage gap.
+
+Existing MCD212 unit coverage concentrates on timing profiles, ICA/DCA pointers and limits, interrupt masking, external-video eligibility, and QHY helpers. There is no focused test that holds DE/IC/DC and raster phase independently and verifies the RAM-delay result. Because the current function depends directly on live screen/machine phase, a testable pure arbitration helper is preferable to reproducing device internals in tests.
+
+**Required regression vectors:** DE=0 free-run; active-display DE=1 with IC=0 still contended; ICA window with IC=0 free-run versus IC=1 contended; DCA window with IC/DC combinations; final/free-run region; all 16 slot phases showing the 11-CLK channel and 5-CLK system portions.
+
 ## Current stop point
 
-No validated behavior has been promoted. The authoritative branch remains untouched. E1 now contains confirmed reset, BERR-status/timing, phantom-RAM, and SLAVE-lane problems plus two explicit decode questions (upper ROM aperture and SLAVE mirroring) that remain blocked on stronger board evidence.
+No validated behavior has been promoted. The authoritative branch remains untouched. E1 findings are documented, and E2a has identified one confirmed DRAM-arbitration bug plus missing focused regression coverage. No source fix has been staged because the correct repair must distinguish display, ICA, DCA, refresh, and free-run ownership rather than removing a single condition.
