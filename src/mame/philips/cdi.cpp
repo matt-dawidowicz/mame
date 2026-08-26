@@ -36,14 +36,19 @@ TODO:
   allows the documented half-line to be modeled using the real PAL/NTSC master clocks,
   but exact odd/even field edge placement should still be verified against hardware.
 
-- Proper abstraction of the 68070's internal devices (UART, DMA, Timers, etc.)
+- SCC68070: Timer 1/2 match/capture/event-counter behavior, live MMU
+  translation, complete I2C slave/multi-master behavior, bus errors, and
+  cycle-level DMA/IRQ timing remain incomplete.
 
-- Mono-I: Full emulation of the CDIC, as well as the SERVO and SLAVE MCUs
+- Mono-I: CDIC remains an evidence-bounded HLE; SERVO and SLAVE MCU LLE still
+  require the missing bus/signal behavior described below.
 
-- Mono-II: SERVO/SLAVE SPI awaits pin-level SPI support in the MC68HC05 core
-- Mono-II: SLAVE host-mailbox LLE awaits asynchronous SCC68070 /DTACK support
-- Mono-II: DSP56001 execution and host-interface support; do not substitute
-  driver-local register storage or command HLE
+- Mono-II: SERVO/SLAVE SPI awaits pin-level SPI support in the MC68HC05 core.
+- Mono-II: SLAVE host-mailbox LLE awaits asynchronous SCC68070 /DTACK support.
+- Mono-II: the DSP56001 core now has standard host transport and partial
+  instruction execution through bootstrap relocation. Board host mapping and
+  device enablement remain blocked until full DRVDSP firmware execution and
+  integration are validated; do not substitute driver-local command HLE.
 
 *******************************************************************************/
 
@@ -81,6 +86,7 @@ static constexpr uint8_t IRQ4_IDLE_COMPAT_VECTOR = 0x3c;
 #define LOG_QUIZARD_WRITES  (1U << 3)
 #define LOG_QUIZARD_OTHER   (1U << 4)
 #define LOG_UART            (1U << 5)
+#define LOG_DVC_DMA         (1U << 6)
 
 #define VERBOSE         (0)
 #include "logmacro.h"
@@ -139,9 +145,10 @@ void cdi_state::cdimono2_mem(address_map &map)
 #if ENABLE_UART_PRINTING
 	map(0x301400, 0x301403).r(m_maincpu, FUNC(scc68070_device::uart_loopback_enable));
 #endif
-	// The documented DRVDSP and SLAVE ranges remain unmapped until the device
-	// cores expose their real host interfaces.  Do not fill either hole with
-	// register storage or a /DTACK timing shortcut.
+	// The documented DRVDSP and SLAVE ranges remain intentionally unmapped at
+	// the board level. The DSP core now exposes a standard host interface, but
+	// mapping stays blocked until full firmware execution and board integration
+	// are validated. SLAVE LLE still requires asynchronous /DTACK support.
 	map(cdi_mono2::NVRAM_START, cdi_mono2::NVRAM_END).rw("mk48t08", FUNC(timekeeper_device::read), FUNC(timekeeper_device::write)).umask16(0xff00);    /* nvram (only low bytes used) */
 	map(cdi_mono2::BOOT_ROM_START, cdi_mono2::BOOT_ROM_END).r(FUNC(cdi_state::main_rom_r));
 	map(cdi_mono2::MCD212_START, cdi_mono2::MCD212_END).m(m_mcd212, FUNC(mcd212_device::map));
@@ -387,7 +394,7 @@ void cdi_state::dvc_dma_req_w(int state)
 	{
 		if (m_dvc_dma_service_active)
 		{
-			logerror("DVC_DMA_SERVICE_ABORT serial=%u remaining=%u events=%u\n",
+			LOGMASKED(LOG_DVC_DMA, "DVC_DMA_SERVICE_ABORT serial=%u remaining=%u events=%u\n",
 				m_dvc_dma_transfer_serial,
 				m_maincpu->dma_channel_remaining(1),
 				m_dvc_dma_service_events);
@@ -406,7 +413,7 @@ void cdi_state::dvc_dma_req_w(int state)
 
 	if (m_dvc_dma_service_active)
 	{
-		logerror("DVC_DMA_SERVICE_REASSERT serial=%u remaining=%u\n",
+		LOGMASKED(LOG_DVC_DMA, "DVC_DMA_SERVICE_REASSERT serial=%u remaining=%u\n",
 			m_dvc_dma_transfer_serial,
 			m_maincpu->dma_channel_remaining(1));
 		return;
@@ -437,7 +444,7 @@ void cdi_state::dvc_dma_req_w(int state)
 		machine().time().as_ticks(m_maincpu->clock());
 	m_dvc_dma_first_clock = 0;
 
-	logerror("DVC_DMA_SERVICE_START serial=%u words=%u mac=%02x address=%08x clock=%llu\n",
+	LOGMASKED(LOG_DVC_DMA, "DVC_DMA_SERVICE_START serial=%u words=%u mac=%02x address=%08x clock=%llu\n",
 		m_dvc_dma_transfer_serial,
 		m_dvc_dma_initial_words,
 		m_dvc_dma_mac_mode,
@@ -454,7 +461,7 @@ TIMER_CALLBACK_MEMBER(cdi_state::dvc_dma_service_tick)
 
 	if (!m_maincpu->dma_channel_active(1))
 	{
-		logerror("DVC_DMA_SERVICE_ABORT serial=%u remaining=%u events=%u\n",
+		LOGMASKED(LOG_DVC_DMA, "DVC_DMA_SERVICE_ABORT serial=%u remaining=%u events=%u\n",
 			m_dvc_dma_transfer_serial,
 			m_maincpu->dma_channel_remaining(1),
 			m_dvc_dma_service_events);
@@ -468,7 +475,7 @@ TIMER_CALLBACK_MEMBER(cdi_state::dvc_dma_service_tick)
 		m_dvc_dma_first_clock =
 			machine().time().as_ticks(m_maincpu->clock());
 
-		logerror("DVC_DMA_SERVICE_FIRST serial=%u latency_clocks=%llu\n",
+		LOGMASKED(LOG_DVC_DMA, "DVC_DMA_SERVICE_FIRST serial=%u latency_clocks=%llu\n",
 			m_dvc_dma_transfer_serial,
 			(unsigned long long)
 				(m_dvc_dma_first_clock - m_dvc_dma_request_clock));
@@ -478,7 +485,7 @@ TIMER_CALLBACK_MEMBER(cdi_state::dvc_dma_service_tick)
 
 	if (!m_maincpu->dma_channel_transfer(1, data))
 	{
-		logerror("DVC_DMA_SERVICE_ABORT serial=%u remaining=%u events=%u\n",
+		LOGMASKED(LOG_DVC_DMA, "DVC_DMA_SERVICE_ABORT serial=%u remaining=%u events=%u\n",
 			m_dvc_dma_transfer_serial,
 			m_maincpu->dma_channel_remaining(1),
 			m_dvc_dma_service_events);
@@ -497,7 +504,7 @@ TIMER_CALLBACK_MEMBER(cdi_state::dvc_dma_service_tick)
 
 		m_dvc_dma_service_active = false;
 
-		logerror("DVC_DMA_SERVICE_COMPLETE serial=%u words=%u events=%u elapsed_clocks=%llu first_latency_clocks=%llu\n",
+		LOGMASKED(LOG_DVC_DMA, "DVC_DMA_SERVICE_COMPLETE serial=%u words=%u events=%u elapsed_clocks=%llu first_latency_clocks=%llu\n",
 			m_dvc_dma_transfer_serial,
 			m_dvc_dma_initial_words,
 			m_dvc_dma_service_events,
@@ -678,6 +685,12 @@ uint32_t cdi_state::screen_update_cdimono1(
 
 uint32_t cdi_state::screen_update_cdimono1_lcd(screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &cliprect)
 {
+	if (!m_slave_hle)
+	{
+		bitmap.fill(0, cliprect);
+		return 0;
+	}
+
 	uint8_t lcd_state[16];
 	std::copy_n(m_slave_hle->get_lcd_state(), 16, lcd_state);
 
@@ -780,10 +793,11 @@ void cdi_state::cdimono2(machine_config &config)
 	M68HC05C8(config, m_slave, cdi_mono2::MCU_CLOCK);
 	m_slave->portb_w().set(FUNC(cdi_state::cdimono2_slave_portb_w));
 
-	// A DRVDSP/LEMM path is present on Mono-II hardware.  MAME's current
-	// DSP56001 core has no instruction execution or host interface, so retain
-	// the real component and clock as a disabled structural placeholder.  The
-	// 0x300000 host range intentionally remains unmapped.
+	// A DRVDSP/LEMM path is present on Mono-II hardware. The DSP56001 core now
+	// provides standard host transport and partial bootstrap execution, but the
+	// complete DRVDSP firmware path and board host integration are not ready.
+	// Retain the real component and clock while keeping the device disabled and
+	// the 0x300000 host range intentionally unmapped.
 	DSP56001(config, m_dsp, cdi_mono2::DRVDSP_CLOCK).set_disable();
 
 	CDROM(config, m_cdrom).set_interface("cdrom");
@@ -885,8 +899,8 @@ void cdi_state::cdimono1dvc(machine_config &config)
 	m_dvc->add_route(0, "speaker", 1.0, 0);
 	m_dvc->add_route(1, "speaker", 1.0, 1);
 
-	// Stage 4 connects DMA only. Shared CDIC/DVC IRQ4 arbitration is
-	// introduced separately in Stage 5.
+	// The DVC shares board IRQ4 arbitration with CDIC and uses the SCC68070
+	// channel-1 DMA service path.
 	m_dvc->intreq_callback().set(FUNC(cdi_state::dvc_irq_w));
 	m_dvc->dma_req_callback().set(FUNC(cdi_state::dvc_dma_req_w));
 
@@ -909,8 +923,8 @@ void cdi_state::cdimono1dvc_ntsc(machine_config &config)
 	m_dvc->add_route(0, "speaker", 1.0, 0);
 	m_dvc->add_route(1, "speaker", 1.0, 1);
 
-	// Stage 4 connects DMA only. Shared CDIC/DVC IRQ4 arbitration is
-	// introduced separately in Stage 5.
+	// The DVC shares board IRQ4 arbitration with CDIC and uses the SCC68070
+	// channel-1 DMA service path.
 	m_dvc->intreq_callback().set(FUNC(cdi_state::dvc_irq_w));
 	m_dvc->dma_req_callback().set(FUNC(cdi_state::dvc_dma_req_w));
 

@@ -7,8 +7,15 @@
  * Sources:
  *   - http://www.bitsavers.org/components/motorola/56000/1990_DSP56000_DSP56001_Users_Manual.pdf
  *
+ * STATUS:
+ *   - standard host interface and bootstrap transport implemented
+ *   - partial interpreter executes the current bootstrap relocation subset
+ *
  * TODO:
- *   - emulation
+ *   - complete the architectural register file, AGU/ALU, parallel moves,
+ *     interrupts, and peripherals
+ *   - replace bring-up P/X/Y backing with the device address spaces
+ *   - implement instruction-accurate cycle timing
  */
 
 #include "emu.h"

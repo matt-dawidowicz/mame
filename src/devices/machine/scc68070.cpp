@@ -13,12 +13,16 @@
 
 STATUS:
 
-- Skeleton.  Just enough for the CD-i and Magicard to run.
+- Partial SCC68070 peripheral model with explicit reset, IRQ arbitration,
+  DMA register/transfer behavior, I2C/UART handling, Timer 0, and MMU
+  register storage.
 
 TODO:
 
-- Proper handling of the 68070's internal devices (UART, DMA, Timers, etc.)
-- I2C could do with re-visiting.
+- Implement Timer 1/2 match, capture, and event-counter behavior.
+- Implement live MMU translation and segment exceptions.
+- Complete I2C slave/multi-master/arbitration behavior.
+- Refine bus-error sources and cycle-level DMA/IRQ timing.
 
 *******************************************************************************/
 

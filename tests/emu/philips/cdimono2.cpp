@@ -83,7 +83,7 @@ TEST_CASE(
 }
 
 TEST_CASE(
-	"CD-i Mono-II unsupported buses remain blocked instead of receiving HLE storage",
+	"CD-i Mono-II board integration boundaries remain explicit",
 	"[emu][philips][cdi][mono2][structure][boundary]")
 {
 	const auto *const dsp = cdi_mono2::find_region(cdi_mono2::DRVDSP_HOST_START);
@@ -95,6 +95,6 @@ TEST_CASE(
 
 	REQUIRE_FALSE(cdi_mono2::SLAVE_HOST_DTACK_AVAILABLE);
 	REQUIRE_FALSE(cdi_mono2::MCU_SPI_PIN_API_AVAILABLE);
-	REQUIRE_FALSE(cdi_mono2::DRVDSP_EXECUTION_AVAILABLE);
-	REQUIRE_FALSE(cdi_mono2::DRVDSP_HOST_INTERFACE_AVAILABLE);
+	REQUIRE_FALSE(cdi_mono2::DRVDSP_DEVICE_ENABLED);
+	REQUIRE_FALSE(cdi_mono2::DRVDSP_HOST_RANGE_MAPPED);
 }

@@ -18,11 +18,11 @@ enum class step_result : std::uint8_t
 };
 
 /*
- * Execution state introduced as instruction families become live.
+ * Partial architectural execution state.
  *
- * DSP-B2 requires the address registers, X0, and a single active hardware
- * loop.  Additional architectural state is added when instructions actually
- * require it rather than being filled with guessed behavior.
+ * Only state required by implemented instruction families is present. Add
+ * architectural state with the corresponding instruction semantics rather
+ * than filling unimplemented registers with guessed behavior.
  */
 struct core_state
 {
@@ -56,9 +56,7 @@ inline void finish_loop(
 }
 
 /*
- * DSP-B1 compatibility entry point.
- *
- * Short absolute JMP:
+ * Focused execution entry point retained for short-absolute JMP tests:
  *
  *   0000 1100 0000 aaaa aaaa aaaa
  */
@@ -80,10 +78,11 @@ step_result execute_one(
 }
 
 /*
- * DSP-B2 execution entry point.
+ * Current partial interpreter.
  *
- * This implements only architecture-defined forms exercised by the Philips
- * relocation stub.  Unsupported forms stop rather than being approximated.
+ * This implements only architecture-defined forms needed by the present
+ * bootstrap execution path. Unsupported forms stop rather than being
+ * approximated.
  */
 template <
 		typename ProgramRead,

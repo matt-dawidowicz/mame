@@ -10,11 +10,15 @@
 
 STATUS:
 
-- Just enough for the Mono-I CD-i board to work somewhat properly.
+- Evidence-bounded Mono-I CDIC HLE with explicit command/transport state,
+  sector filtering, independent data/audio buffers, XA decode, and IRQ state.
 
 TODO:
 
-- Work out more low-level functionality.
+- Resolve seek-only completion and exact command-complete behavior.
+- Improve TOC/subcode, EDC/ECC, error/status, and end-of-disc signaling.
+- Refine AUDCTL/audio ownership and cycle-level DMA/IRQ timing from hardware
+  or firmware evidence rather than title-specific behavior.
 
 *******************************************************************************/
 

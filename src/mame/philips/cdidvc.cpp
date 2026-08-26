@@ -40,11 +40,9 @@
 #define LOG_RAM_ACCESS   (1U << 8)
 #define LOG_SEQUENCE     (1U << 9)
 
-// Keep the low-volume gate transition visible for the 12G14 regression.
-// Keep the low-volume interactive-presentation boundary trace visible while
-// Dragon's Lair scene chaining is under investigation.  Per-frame video and
-// general register diagnostics remain opt-in.
-#define VERBOSE          (LOG_RAM_GATE | LOG_SEQUENCE)
+// Runtime diagnostics are opt-in. Regression coverage belongs in tests rather
+// than in the default emulator log stream.
+#define VERBOSE          (0)
 #include "logmacro.h"
 
 DEFINE_DEVICE_TYPE(CDI_DVC, cdi_dvc_device, "cdidvc", "Philips CD-i Digital Video Cartridge")

@@ -32,7 +32,8 @@ TODO:
 #define LOG_INPUTS      (1U << 6)
 #define LOG_ALL         (LOG_IRQS | LOG_COMMANDS | LOG_READS | LOG_WRITES | LOG_UNKNOWNS | LOG_INPUTS)
 
-#define VERBOSE         (LOG_INPUTS)
+// Pointer/input diagnostics remain available but are opt-in.
+#define VERBOSE         (0)
 #include "logmacro.h"
 
 // device type definition

@@ -78,8 +78,9 @@ struct host_register
 };
 
 // The DSP is an 8-bit host device with its register select shifted by the
-// disconnected SCC68070 A0 line.  These addresses are documented for future
-// host-interface work; they are deliberately not mapped to synthetic storage.
+// disconnected SCC68070 A0 line. These are the documented board addresses.
+// The driver deliberately leaves them unmapped until the partial DSP core is
+// ready for full DRVDSP firmware and board-integration validation.
 inline constexpr std::array<host_register, 7> DRVDSP_HOST_REGISTERS =
 {{
 	{ 0x300001, "ICR" },
@@ -120,8 +121,11 @@ inline constexpr int RESET_IRQ2_LINE = 0;
 inline constexpr bool SLAVE_IRQ2_CONNECTED = true;
 inline constexpr bool SLAVE_HOST_DTACK_AVAILABLE = false;
 inline constexpr bool MCU_SPI_PIN_API_AVAILABLE = false;
-inline constexpr bool DRVDSP_EXECUTION_AVAILABLE = false;
-inline constexpr bool DRVDSP_HOST_INTERFACE_AVAILABLE = false;
+
+// Board-driver integration state. These do not describe the capabilities of
+// the standalone DSP56001 core.
+inline constexpr bool DRVDSP_DEVICE_ENABLED = false;
+inline constexpr bool DRVDSP_HOST_RANGE_MAPPED = false;
 
 } // namespace cdi_mono2
 

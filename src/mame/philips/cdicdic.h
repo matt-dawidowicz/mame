@@ -13,11 +13,16 @@
 
 STATUS:
 
-- Just enough for the Mono-I CD-i board to work somewhat properly.
+- Partial Mono-I CDIC HLE. Command transport, sector filtering, independent
+  data/audio buffers, XA audio, and IRQ/DMA interaction are modeled, while
+  exact IMS66490 behavior remains incomplete.
 
 TODO:
 
-- Decapping and proper emulation.
+- Replace inferred HLE behavior only when chip, firmware, or hardware evidence
+  establishes the corresponding low-level semantics.
+- Resolve seek completion, TOC/subcode, error/EDC/ECC behavior, and exact
+  DMA/IRQ timing.
 
 *******************************************************************************/
 
