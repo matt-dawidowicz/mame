@@ -109,10 +109,6 @@ def main() -> int:
         tick,
         r"if\s*\(\s*!m_maincpu->dma_channel_active\s*\(\s*1\s*\)\s*\)",
     )
-    reassert = extract_if_block(
-        request,
-        r"if\s*\(\s*m_dvc_dma_service_active\s*\)",
-    )
 
     # Establish the exact current ownership split before declaring RED.
     require(
@@ -126,8 +122,9 @@ def main() -> int:
         "inactive SCC path returns without further service",
     )
     require(
-        reassert,
-        r"\breturn\s*;",
+        request,
+        r"if\s*\(\s*m_dvc_dma_service_active\s*\)\s*\{"
+        r".*?DVC_DMA_SERVICE_REASSERT.*?\breturn\s*;\s*\}",
         "DREQ ASSERT while service-active is treated as a no-op reassert",
     )
     require(
