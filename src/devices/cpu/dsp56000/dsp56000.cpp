@@ -126,6 +126,22 @@ void dsp56000_device_base::execute_run()
 			for (unsigned address = 0; address < m_host.bootstrap_pos(); address++)
 				m_program[address] = m_host.bootstrap_word(address) & 0x00ffffffU;
 
+			/*
+			 * The DSP56001 host bootstrap ROM initializes R2 to the Host Status
+			 * Register, R1 to the external bootstrap base, and R0 to the PRAM
+			 * destination pointer. Each received 24-bit word postincrements R0,
+			 * including when HF0 terminates a partial load. The direct host loader
+			 * above bypasses that ROM, so preserve the architectural register side
+			 * effects that the current partial core can represent. OMR, CCR, Port B,
+			 * and other unimplemented bootstrap state remain outside this model.
+			 */
+			if (type() == DSP56001)
+			{
+				m_core.r[0] = m_host.bootstrap_pos();
+				m_core.r[1] = 0xc000;
+				m_core.r[2] = 0xffe9;
+			}
+
 			m_program_bootstrap_loaded = true;
 		}
 
