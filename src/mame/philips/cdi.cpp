@@ -245,6 +245,7 @@ void cdi_state::machine_start()
 	m_dvc_dma_timer->adjust(attotime::never);
 
 	save_item(NAME(m_dvc_dma_service_active));
+	save_item(NAME(m_dvc_dma_req_state));
 	save_item(NAME(m_dvc_dma_mac_mode));
 	save_item(NAME(m_dvc_dma_initial_words));
 	save_item(NAME(m_dvc_dma_service_events));
@@ -265,6 +266,7 @@ void cdi_state::machine_reset()
 		m_maincpu->in2_w(cdi_mono2::RESET_IRQ2_LINE);
 
 	m_dvc_dma_service_active = false;
+	m_dvc_dma_req_state = false;
 	m_dvc_dma_mac_mode = 0;
 	m_dvc_dma_initial_words = 0;
 	m_dvc_dma_service_events = 0;
@@ -390,6 +392,8 @@ uint8_t cdi_state::irq4_ack_r()
 
 void cdi_state::dvc_dma_req_w(int state)
 {
+	m_dvc_dma_req_state = state != CLEAR_LINE;
+
 	if (!state)
 	{
 		if (m_dvc_dma_service_active)
@@ -452,6 +456,16 @@ void cdi_state::dvc_dma_req_w(int state)
 		(unsigned long long)m_dvc_dma_request_clock);
 
 	m_dvc_dma_timer->adjust(attotime::zero);
+}
+
+void cdi_state::dvc_dma_reconfigure_w(uint8_t channel)
+{
+	if (channel != 1 || !m_dvc_dma_req_state || m_dvc_dma_service_active)
+		return;
+
+	LOGMASKED(LOG_DVC_DMA, "DVC_DMA_SERVICE_REARM remaining=%u\n",
+		m_maincpu->dma_channel_remaining(1));
+	dvc_dma_req_w(ASSERT_LINE);
 }
 
 TIMER_CALLBACK_MEMBER(cdi_state::dvc_dma_service_tick)
@@ -903,6 +917,7 @@ void cdi_state::cdimono1dvc(machine_config &config)
 	// channel-1 DMA service path.
 	m_dvc->intreq_callback().set(FUNC(cdi_state::dvc_irq_w));
 	m_dvc->dma_req_callback().set(FUNC(cdi_state::dvc_dma_req_w));
+	m_maincpu->dma_reconfigure_callback().set(FUNC(cdi_state::dvc_dma_reconfigure_w));
 
 	m_slave_hle->read_mousex().set_ioport("MOUSEX");
 	m_slave_hle->read_mousey().set_ioport("MOUSEY");
@@ -927,6 +942,7 @@ void cdi_state::cdimono1dvc_ntsc(machine_config &config)
 	// channel-1 DMA service path.
 	m_dvc->intreq_callback().set(FUNC(cdi_state::dvc_irq_w));
 	m_dvc->dma_req_callback().set(FUNC(cdi_state::dvc_dma_req_w));
+	m_maincpu->dma_reconfigure_callback().set(FUNC(cdi_state::dvc_dma_reconfigure_w));
 
 	m_slave_hle->read_mousex().set_ioport("MOUSEX");
 	m_slave_hle->read_mousey().set_ioport("MOUSEY");
@@ -1124,10 +1140,9 @@ ROM_END
 	DISK_REGION( "cdrom" ) \
 	DISK_IMAGE_READONLY( "quizard10", 0, SHA1(5715db50f0d5ffe06f47c0943f4bf0481ab6048e) ) // Dumped via BurnAtOnce 0.99.5, CHDMAN 0.163, TS-L633R drive
 
-// CD-ROM printed 01/95
 #define QUIZARD1_CHD_12 \
 	DISK_REGION( "cdrom" ) \
-	DISK_IMAGE_READONLY( "quizard12", 0, BAD_DUMP SHA1(6e41683b96b74e903040842aeb18437ad7813c82) )
+	DISK_IMAGE_READONLY( "quizard12", 0, BAD_DUMP SHA1(03c8fdcf27ead6e221691111e8c679b551099543) )
 
 #define QUIZARD1_CHD_17 \
 	DISK_REGION( "cdrom" ) \
@@ -1144,7 +1159,7 @@ ROM_END
 
 #define QUIZARD1_MCU_IT \
 	ROM_REGION(0x1000, "mcu", 0) \
-	ROM_LOAD( "it_11_i2.bin", 0x0000, 0x1000, CRC(e00dc02c) SHA1(e4ef1ea47c242879a99c9d54cfc008ae99a651cb) ) // Italian
+	ROM_LOAD( "it_11_i2.bin", 0x0000, 0x1000, CRC(e00dc02c) SHA1(56d0acd7caad51c7de703247cd6d842b36173079) ) // Italian
 
 ROM_START( quizard )
 	QUIZARD_BIOS_ROM
@@ -1187,6 +1202,7 @@ ROM_START( quizardi_12 )
 	QUIZARD1_CHD_12
 	QUIZARD1_MCU_IT
 ROM_END
+
 
 //********************************************************
 //                     Quizard 2
@@ -1259,10 +1275,10 @@ ROM_START( quizard4 ) /* CD-ROM printed 09/98 */
 	DISK_IMAGE_READONLY( "quizard4r42", 0, BAD_DUMP SHA1(a5d5c8950b4650b8753f9119dc7f1ccaa2aa5442) )
 
 	ROM_REGION(0x1000, "mcu", 0) // Intel D8751H MCU
-	ROM_LOAD( "de_142_d3.bin", 0x0000, 0x1000, CRC(77be0b40) SHA1(113b5c239480a2259f55e411ba8fb3972e6d4301) ) // German language
+	ROM_LOAD( "de_142_d3.bin", 0x0000, 0x1000, CRC(77be0b40) SHA1(113b5c239480a2259f55e411ba8fb3972e6d4301) ) // German
 ROM_END
 
-ROM_START( quizard4cz ) /* CD-ROM printed 09/98 */
+ROM_START( quizard4cz )
 	QUIZARD_BIOS_ROM
 
 	DISK_REGION( "cdrom" )
@@ -1327,7 +1343,7 @@ GAME( 1995, quizard,     cdibios,  quizard,       quizard,  quizard_state, empty
 GAME( 1995, quizard_17,  quizard,  quizard,       quizard,  quizard_state, empty_init,  ROT0, "TAB Austria",  "Quizard (v1.7, German, i8751 DE 11 D3)", MACHINE_IMPERFECT_SOUND )
 GAME( 1995, quizard_12,  quizard,  quizard,       quizard,  quizard_state, empty_init,  ROT0, "TAB Austria",  "Quizard (v1.2, German, i8751 DE 11 D3)", MACHINE_IMPERFECT_SOUND )
 GAME( 1995, quizard_10,  quizard,  quizard,       quizard,  quizard_state, empty_init,  ROT0, "TAB Austria",  "Quizard (v1.0, German, i8751 DE 11 D3)", MACHINE_IMPERFECT_SOUND )
-GAME( 1995, quizardi,    quizard,  quizard,       quizard,  quizard_state, empty_init,  ROT0, "TAB Austria",  "Quizard (v1.8, Italian, i8751 IT 11 I2)", MACHINE_IMPERFECT_SOUND )
+GAME( 1995, quizardi,    cdibios,  quizard,       quizard,  quizard_state, empty_init,  ROT0, "TAB Austria",  "Quizard (v1.8, Italian, i8751 IT 11 I2)", MACHINE_IMPERFECT_SOUND )
 GAME( 1995, quizardi_17, quizard,  quizard,       quizard,  quizard_state, empty_init,  ROT0, "TAB Austria",  "Quizard (v1.7, Italian, i8751 IT 11 I2)", MACHINE_IMPERFECT_SOUND )
 GAME( 1995, quizardi_12, quizard,  quizard,       quizard,  quizard_state, empty_init,  ROT0, "TAB Austria",  "Quizard (v1.2, Italian, i8751 IT 11 I2)", MACHINE_IMPERFECT_SOUND )
 
