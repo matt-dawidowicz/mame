@@ -8,6 +8,7 @@
 
 #include "catch.hpp"
 
+#include "cdi_dvc_dma_service.h"
 #include "cdidvc_save_state.h"
 #include "cdislavehle_pointer.h"
 #include "cdislavehle_transport.h"
@@ -28,6 +29,61 @@ uint8_t expected_button_field(uint8_t buttons)
 }
 
 } // anonymous namespace
+
+
+TEST_CASE(
+	"CD-i DVC held DMA request survives SCC abort and completes exactly once after re-arm",
+	"[emu][philips][cdi][dvc][dma][hardening]")
+{
+	using cdi_dvc_dma::post_transfer_action;
+	using cdi_dvc_dma::reconfigure_action;
+
+	bool service_active = true;
+	bool request_asserted = true;
+	unsigned completions = 0;
+
+	// A partial transfer is already in progress when firmware aborts SCC DMA
+	// channel 2 before the scheduled driver service tick observes the abort.
+	REQUIRE(cdi_dvc_dma::reconfigure(
+		service_active, 1, request_asserted, false) == reconfigure_action::stop_service);
+	REQUIRE_FALSE(service_active);
+	REQUIRE(request_asserted);
+	REQUIRE(completions == 0);
+
+	// Invalid intermediate programming must not restart the held request.
+	REQUIRE_FALSE(cdi_dvc_dma::request_configuration_valid(false, true, true, 2));
+	REQUIRE_FALSE(cdi_dvc_dma::request_configuration_valid(true, false, true, 2));
+	REQUIRE_FALSE(cdi_dvc_dma::request_configuration_valid(true, true, false, 2));
+	REQUIRE_FALSE(cdi_dvc_dma::request_configuration_valid(true, true, true, 0));
+
+	// Once firmware repairs channel 2, the still-asserted DREQ is eligible to
+	// retry the existing request-start path.
+	REQUIRE(cdi_dvc_dma::request_configuration_valid(true, true, true, 2));
+	REQUIRE(cdi_dvc_dma::reconfigure(
+		service_active, 1, request_asserted, false) == reconfigure_action::retry_request);
+
+	service_active = true;
+
+	// The first resumed word leaves SCC DMA active and therefore cannot signal
+	// DVC completion.
+	REQUIRE(cdi_dvc_dma::post_transfer(service_active, true) == post_transfer_action::schedule_next);
+	REQUIRE(service_active);
+	REQUIRE(completions == 0);
+
+	// The final resumed word is the sole completion edge.
+	const post_transfer_action final_action = cdi_dvc_dma::post_transfer(service_active, false);
+	REQUIRE(final_action == post_transfer_action::complete);
+	REQUIRE_FALSE(service_active);
+	if (final_action == post_transfer_action::complete)
+		++completions;
+
+	// DVC completion deasserts DREQ. Later SCC writes must not fabricate a
+	// second completion or restart the request.
+	request_asserted = false;
+	REQUIRE(cdi_dvc_dma::reconfigure(
+		service_active, 1, request_asserted, false) == reconfigure_action::ignore);
+	REQUIRE(completions == 1);
+}
 
 
 TEST_CASE(
