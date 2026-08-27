@@ -1,0 +1,39 @@
+name: E1c2 DVC DMA native validation
+
+on:
+  push:
+    branches:
+      - cdi-audit-e1c2-dvc-dma-behavioral-regression
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsdl2-dev libsdl2-ttf-dev libfontconfig-dev libasound2-dev libxinerama-dev libxi-dev qt6-base-dev qt6-base-dev-tools
+
+      - name: Run E1c2 source audit
+        run: python3 scripts/cdi_dvc_dma_liveness_audit.py
+
+      - name: Build mametests
+        run: make -j2 REGENIE=1 NOWERROR=1 TESTS=1 EMULATOR=0
+
+      - name: Run SCC68070 tests
+        run: ./mametests "[emu][machine][scc68070]"
+
+      - name: Run Philips CD-i tests
+        run: ./mametests "[emu][philips][cdi]"
+
+      - name: Build CD-i audit target
+        run: make -j2 SUBTARGET=cdiaudit SOURCES=src/mame/philips/cdi.cpp
+
+      - name: Diff check
+        run: git diff --check
