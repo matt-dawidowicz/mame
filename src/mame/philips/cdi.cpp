@@ -460,8 +460,29 @@ void cdi_state::dvc_dma_req_w(int state)
 
 void cdi_state::dvc_dma_reconfigure_w(uint8_t channel)
 {
-	if (channel != 1 || !m_dvc_dma_req_state || m_dvc_dma_service_active)
+	if (channel != 1 || !m_dvc_dma_req_state)
 		return;
+
+	// An SCC-side abort can arrive before the scheduled service tick
+	// observes that DMA channel 2 became inactive. Stop only the
+	// driver-local service loop here, preserving the level-held DREQ so
+	// later SCC reconfiguration can re-evaluate the request.
+	if (m_dvc_dma_service_active)
+	{
+		if (!m_maincpu->dma_channel_active(1))
+		{
+			LOGMASKED(LOG_DVC_DMA,
+				"DVC_DMA_SERVICE_ABORT_RECONFIG remaining=%u\n",
+				m_maincpu->dma_channel_remaining(1));
+
+			m_dvc_dma_service_active = false;
+
+			if (m_dvc_dma_timer)
+				m_dvc_dma_timer->adjust(attotime::never);
+		}
+
+		return;
+	}
 
 	LOGMASKED(LOG_DVC_DMA, "DVC_DMA_SERVICE_REARM remaining=%u\n",
 		m_maincpu->dma_channel_remaining(1));
