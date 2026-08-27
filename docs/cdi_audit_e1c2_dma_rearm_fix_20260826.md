@@ -4,7 +4,9 @@ Validated baseline remains `cdi-project-audit-20260826` at `a014f032c23c67222c5f
 
 RED checkpoint: `cdi-audit-e1c-dvc-dma-handoff` at `a10e2d071b482e4a1d929e9983873d988a5061c6`.
 
-Fix/review branch: `cdi-audit-e1c2-dvc-dma-rearm-3`.
+Fix/review branch: `cdi-audit-e1c2-dvc-dma-rearm`.
+
+Native-tested implementation commit: `ff3adbc880eb6a709b5f7635eb0ee3e6d1f0689a` (`philips/cdi: close DVC DMA abort re-arm race`).
 
 ## Scope
 
@@ -53,13 +55,14 @@ Only DVC-equipped Mono-I machine configurations bind the callback.
 
 ### Re-arm policy
 
-`cdi_state::dvc_dma_reconfigure_w()` retries the existing DREQ-start path only when:
+`cdi_state::dvc_dma_reconfigure_w()` handles two cases for SCC DMA channel index 1 (hardware DMA channel 2) while VMPEG DREQ remains asserted:
 
-- the notification is for SCC DMA channel index 1 (hardware DMA channel 2);
-- VMPEG DREQ is still asserted;
-- the driver is no longer servicing the request.
+- if driver service is idle, it re-runs the existing DREQ-start path and therefore the existing SCC direction/size/MAC/count/start validation;
+- if driver service is still marked active but the SCC channel has already become inactive, it stops only the driver-local service loop and cancels the pending service timer. DREQ remains held, so a subsequent SCC channel-2 register change can re-run the start validation.
 
-This means SCC abort itself is not converted to `dma_done()`, and the inactive service path still stops rather than polling. Once firmware subsequently changes/re-arms channel 2, the still-high DREQ is re-evaluated against the existing SCC configuration checks.
+The second case closes the race where an SCC-side software abort/reconfiguration notification can arrive before the next scheduled DVC service tick observes that channel 2 became inactive.
+
+SCC abort itself is still not converted to `dma_done()`, and the inactive service path still stops rather than polling. Later firmware changes/re-arm of channel 2 re-evaluate the still-high DREQ against the existing SCC configuration checks.
 
 ## Preserved invariants
 
@@ -71,16 +74,17 @@ Source review confirms:
 4. The normal final-word path still contains exactly one `m_dvc->dma_done()` call.
 5. DVC `dma_done()` remains responsible for clearing DVC-side DMA-active state and deasserting DREQ.
 6. PAL and NTSC DVC machine configurations both bind the SCC reconfiguration notification.
+7. The abort-before-service-tick race stops only driver-local service and preserves the held DREQ for later re-evaluation.
 
 ## Audit gate
 
 `scripts/cdi_dvc_dma_liveness_audit.py` was upgraded from the E1c1 RED detector into a RED-to-GREEN contract gate.
 
-The gate now requires all of the following for event-driven GREEN:
+The gate requires the event-driven held-request contract, including:
 
 - DREQ level member/tracking/reset/save coverage;
 - preservation of the existing SCC DMA direction/size/MAC/count/start validation;
-- CD-i reconfiguration callback declaration and request/channel/idle guards;
+- CD-i reconfiguration callback declaration and request/channel guards;
 - no `dma_done()` fabrication in the re-arm path;
 - SCC callback accessor/member/construction and channel-2 notification;
 - exactly two DVC machine bindings (PAL and NTSC);
@@ -110,18 +114,44 @@ A separate regex/path mutation check also produced GREEN for the complete fixed 
 
 These are test-harness controls, not a substitute for compiling/running MAME.
 
+## Native validation
+
+The race-corrected implementation at `ff3adbc880eb6a709b5f7635eb0ee3e6d1f0689a` was validated in a detached WSL worktree with the following results:
+
+```text
+mametests-build: 0
+scc-tests:       0
+cdi-tests:       0
+cdi-build:       0
+source-audit:    0
+diff-check:      0
+```
+
+The corresponding commands were:
+
+```text
+make -j2 REGENIE=1 NOWERROR=1 TESTS=1 EMULATOR=0
+./mametests "[emu][machine][scc68070]"
+./mametests "[emu][philips][cdi]"
+make -j2 SUBTARGET=cdiaudit SOURCES=src/mame/philips/cdi.cpp
+python3 scripts/cdi_dvc_dma_liveness_audit.py
+git diff --check
+```
+
+`REGENIE=1 NOWERROR=1` was required for the test build because the existing GCC 11 environment otherwise promoted unrelated volatile-deprecation warnings in `tests/emu/video/rgbutil.cpp` to errors. The CD-i-only build had already compiled and linked E1c2 successfully even when that unrelated mametests build issue was present.
+
+The native checkpoint establishes that the race-corrected E1c2 source compiles and links and does not regress the repository's existing SCC68070 or Philips/CD-i unit coverage.
+
 ## Validation status
 
 **Source-audit status: GREEN.**
 
-**Native MAME/mametests/runtime status: UNVALIDATED.**
+**Existing native build/unit-test status: GREEN at `ff3adbc880eb6a709b5f7635eb0ee3e6d1f0689a`.**
 
-No authoritative branch has been changed. E1c2 must remain on the review branch until it receives at minimum:
+**Dedicated abort/re-arm behavioral regression: PENDING.**
 
-1. a native compile;
-2. `mametests` / existing SCC68070 and Philips unit coverage;
-3. the E1c2 audit gate against the real checkout;
-4. targeted DVC PAL/NTSC runtime smoke coverage;
-5. the project's consolidated Philips/CD-i validation before promotion.
+**Hardware-fidelity status for exact SCC/VMPEG request/ack timing: UNVALIDATED.**
 
-A future stronger runtime regression should exercise an actual DVC request across SCC abort, status/config repair, re-arm, resumed word ingress, and exactly-once final completion. Until that exists, this source-level fix should not be described as fully validated hardware behavior.
+No authoritative validated branch has been changed. E1c2 remains on the review branch until the dedicated held-DREQ behavioral regression and the project's later consolidated Philips/CD-i validation are complete.
+
+The next E1c2 regression should exercise the intended sequence as directly as the test harness permits: partial DMA service, SCC channel-2 abort before the next service tick, held DREQ preservation, SCC repair/re-arm, resumed ingress, and exactly-once final DVC completion with DREQ deassertion. A production-shared driver-logic regression is acceptable if the current `mametests` harness cannot instantiate the complete CD-i machine/device graph without disproportionate infrastructure; such a test must not duplicate production logic in a test-only model.
