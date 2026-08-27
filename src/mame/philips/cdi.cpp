@@ -54,6 +54,7 @@ TODO:
 
 #include "emu.h"
 #include "cdi.h"
+#include "cdi_dvc_dma_service.h"
 
 #include "cdimono2.h"
 #include "cpu/m6805/m6805.h"
@@ -423,17 +424,16 @@ void cdi_state::dvc_dma_req_w(int state)
 		return;
 	}
 
-	if (!m_maincpu->dma_channel_memory_to_device(1))
-		return;
-
-	if (!m_maincpu->dma_channel_word_transfer(1))
-		return;
-
 	bool increment_memory = false;
-	if (!m_maincpu->dma_channel_memory_increment(1, increment_memory))
-		return;
+	bool const memory_mode_valid =
+		m_maincpu->dma_channel_memory_increment(1, increment_memory);
+	uint16_t const remaining = m_maincpu->dma_channel_remaining(1);
 
-	if (!m_maincpu->dma_channel_remaining(1))
+	if (!cdi_dvc_dma::request_configuration_valid(
+			m_maincpu->dma_channel_memory_to_device(1),
+			m_maincpu->dma_channel_word_transfer(1),
+			memory_mode_valid,
+			remaining))
 		return;
 
 	if (!m_maincpu->dma_channel_external_start(1))
@@ -441,7 +441,7 @@ void cdi_state::dvc_dma_req_w(int state)
 
 	m_dvc_dma_service_active = true;
 	m_dvc_dma_mac_mode = increment_memory ? 0x04 : 0x00;
-	m_dvc_dma_initial_words = m_maincpu->dma_channel_remaining(1);
+	m_dvc_dma_initial_words = remaining;
 	m_dvc_dma_service_events = 0;
 	++m_dvc_dma_transfer_serial;
 	m_dvc_dma_request_clock =
@@ -464,29 +464,32 @@ void cdi_state::dvc_dma_reconfigure_w(uint8_t channel)
 		return;
 
 	// An SCC-side abort can arrive before the scheduled service tick
-	// observes that DMA channel 2 became inactive. Stop only the
-	// driver-local service loop here, preserving the level-held DREQ so
-	// later SCC reconfiguration can re-evaluate the request.
-	if (m_dvc_dma_service_active)
+	// observes that DMA channel 2 became inactive. The shared transition
+	// policy stops only driver-local service while preserving held DREQ.
+	cdi_dvc_dma::reconfigure_action const action = cdi_dvc_dma::reconfigure(
+		m_dvc_dma_service_active,
+		channel,
+		m_dvc_dma_req_state,
+		m_maincpu->dma_channel_active(1));
+
+	if (action == cdi_dvc_dma::reconfigure_action::stop_service)
 	{
-		if (!m_maincpu->dma_channel_active(1))
-		{
-			LOGMASKED(LOG_DVC_DMA,
-				"DVC_DMA_SERVICE_ABORT_RECONFIG remaining=%u\n",
-				m_maincpu->dma_channel_remaining(1));
+		LOGMASKED(LOG_DVC_DMA,
+			"DVC_DMA_SERVICE_ABORT_RECONFIG remaining=%u\n",
+			m_maincpu->dma_channel_remaining(1));
 
-			m_dvc_dma_service_active = false;
-
-			if (m_dvc_dma_timer)
-				m_dvc_dma_timer->adjust(attotime::never);
-		}
+		if (m_dvc_dma_timer)
+			m_dvc_dma_timer->adjust(attotime::never);
 
 		return;
 	}
 
-	LOGMASKED(LOG_DVC_DMA, "DVC_DMA_SERVICE_REARM remaining=%u\n",
-		m_maincpu->dma_channel_remaining(1));
-	dvc_dma_req_w(ASSERT_LINE);
+	if (action == cdi_dvc_dma::reconfigure_action::retry_request)
+	{
+		LOGMASKED(LOG_DVC_DMA, "DVC_DMA_SERVICE_REARM remaining=%u\n",
+			m_maincpu->dma_channel_remaining(1));
+		dvc_dma_req_w(ASSERT_LINE);
+	}
 }
 
 TIMER_CALLBACK_MEMBER(cdi_state::dvc_dma_service_tick)
@@ -532,12 +535,13 @@ TIMER_CALLBACK_MEMBER(cdi_state::dvc_dma_service_tick)
 	m_dvc->dma_w(data);
 	++m_dvc_dma_service_events;
 
-	if (!m_maincpu->dma_channel_active(1))
+	if (cdi_dvc_dma::post_transfer(
+			m_dvc_dma_service_active,
+			m_maincpu->dma_channel_active(1))
+		== cdi_dvc_dma::post_transfer_action::complete)
 	{
 		uint64_t const complete_clock =
 			machine().time().as_ticks(m_maincpu->clock());
-
-		m_dvc_dma_service_active = false;
 
 		LOGMASKED(LOG_DVC_DMA, "DVC_DMA_SERVICE_COMPLETE serial=%u words=%u events=%u elapsed_clocks=%llu first_latency_clocks=%llu\n",
 			m_dvc_dma_transfer_serial,
