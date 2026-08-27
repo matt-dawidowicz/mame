@@ -1,0 +1,96 @@
+name: E1c2 DVC DMA behavioral regression
+
+on:
+  push:
+    branches:
+      - cdi-audit-e1c2-dvc-dma-behavioral-regression
+
+permissions:
+  contents: write
+
+jobs:
+  validate-and-commit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Wire shared DMA transition policy into production driver
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/mame/philips/cdi.cpp')
+          source = path.read_text(encoding='utf-8')
+
+          def replace_once(old: str, new: str, label: str) -> None:
+              global source
+              count = source.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected exactly one anchor, found {count}')
+              source = source.replace(old, new, 1)
+
+          replace_once(
+              '#include "emu.h"\n#include "cdi.h"\n\n#include "cdimono2.h"',
+              '#include "emu.h"\n#include "cdi.h"\n#include "cdi_dvc_dma_service.h"\n\n#include "cdimono2.h"',
+              'include')
+
+          replace_once(
+              '''\tif (!m_maincpu->dma_channel_memory_to_device(1))\n\t\treturn;\n\n\tif (!m_maincpu->dma_channel_word_transfer(1))\n\t\treturn;\n\n\tbool increment_memory = false;\n\tif (!m_maincpu->dma_channel_memory_increment(1, increment_memory))\n\t\treturn;\n\n\tif (!m_maincpu->dma_channel_remaining(1))\n\t\treturn;\n''',
+              '''\tbool increment_memory = false;\n\tbool const memory_mode_valid =\n\t\tm_maincpu->dma_channel_memory_increment(1, increment_memory);\n\tuint16_t const remaining = m_maincpu->dma_channel_remaining(1);\n\n\tif (!cdi_dvc_dma::request_configuration_valid(\n\t\t\tm_maincpu->dma_channel_memory_to_device(1),\n\t\t\tm_maincpu->dma_channel_word_transfer(1),\n\t\t\tmemory_mode_valid,\n\t\t\tremaining))\n\t\treturn;\n''',
+              'request validation')
+
+          replace_once(
+              '\tm_dvc_dma_initial_words = m_maincpu->dma_channel_remaining(1);',
+              '\tm_dvc_dma_initial_words = remaining;',
+              'initial word count')
+
+          replace_once(
+              '''\t// An SCC-side abort can arrive before the scheduled service tick\n\t// observes that DMA channel 2 became inactive. Stop only the\n\t// driver-local service loop here, preserving the level-held DREQ so\n\t// later SCC reconfiguration can re-evaluate the request.\n\tif (m_dvc_dma_service_active)\n\t{\n\t\tif (!m_maincpu->dma_channel_active(1))\n\t\t{\n\t\t\tLOGMASKED(LOG_DVC_DMA,\n\t\t\t\t"DVC_DMA_SERVICE_ABORT_RECONFIG remaining=%u\\n",\n\t\t\t\tm_maincpu->dma_channel_remaining(1));\n\n\t\t\tm_dvc_dma_service_active = false;\n\n\t\t\tif (m_dvc_dma_timer)\n\t\t\t\tm_dvc_dma_timer->adjust(attotime::never);\n\t\t}\n\n\t\treturn;\n\t}\n\n\tLOGMASKED(LOG_DVC_DMA, "DVC_DMA_SERVICE_REARM remaining=%u\\n",\n\t\tm_maincpu->dma_channel_remaining(1));\n\tdvc_dma_req_w(ASSERT_LINE);\n''',
+              '''\t// An SCC-side abort can arrive before the scheduled service tick\n\t// observes that DMA channel 2 became inactive. The shared transition\n\t// policy stops only driver-local service while preserving held DREQ.\n\tcdi_dvc_dma::reconfigure_action const action = cdi_dvc_dma::reconfigure(\n\t\tm_dvc_dma_service_active,\n\t\tchannel,\n\t\tm_dvc_dma_req_state,\n\t\tm_maincpu->dma_channel_active(1));\n\n\tif (action == cdi_dvc_dma::reconfigure_action::stop_service)\n\t{\n\t\tLOGMASKED(LOG_DVC_DMA,\n\t\t\t"DVC_DMA_SERVICE_ABORT_RECONFIG remaining=%u\\n",\n\t\t\tm_maincpu->dma_channel_remaining(1));\n\n\t\tif (m_dvc_dma_timer)\n\t\t\tm_dvc_dma_timer->adjust(attotime::never);\n\n\t\treturn;\n\t}\n\n\tif (action == cdi_dvc_dma::reconfigure_action::retry_request)\n\t{\n\t\tLOGMASKED(LOG_DVC_DMA, "DVC_DMA_SERVICE_REARM remaining=%u\\n",\n\t\t\tm_maincpu->dma_channel_remaining(1));\n\t\tdvc_dma_req_w(ASSERT_LINE);\n\t}\n''',
+              'reconfigure transition')
+
+          replace_once(
+              '''\tif (!m_maincpu->dma_channel_active(1))\n\t{\n\t\tuint64_t const complete_clock =\n\t\t\tmachine().time().as_ticks(m_maincpu->clock());\n\n\t\tm_dvc_dma_service_active = false;\n\n\t\tLOGMASKED(LOG_DVC_DMA, "DVC_DMA_SERVICE_COMPLETE serial=%u words=%u events=%u elapsed_clocks=%llu first_latency_clocks=%llu\\n",\n\t\t\tm_dvc_dma_transfer_serial,\n\t\t\tm_dvc_dma_initial_words,\n\t\t\tm_dvc_dma_service_events,\n\t\t\t(unsigned long long)\n\t\t\t\t(complete_clock - m_dvc_dma_request_clock),\n\t\t\t(unsigned long long)\n\t\t\t\t(m_dvc_dma_first_clock - m_dvc_dma_request_clock));\n\n\t\tm_dvc->dma_done();\n\t\treturn;\n\t}\n''',
+              '''\tif (cdi_dvc_dma::post_transfer(\n\t\t\tm_dvc_dma_service_active,\n\t\t\tm_maincpu->dma_channel_active(1))\n\t\t== cdi_dvc_dma::post_transfer_action::complete)\n\t{\n\t\tuint64_t const complete_clock =\n\t\t\tmachine().time().as_ticks(m_maincpu->clock());\n\n\t\tLOGMASKED(LOG_DVC_DMA, "DVC_DMA_SERVICE_COMPLETE serial=%u words=%u events=%u elapsed_clocks=%llu first_latency_clocks=%llu\\n",\n\t\t\tm_dvc_dma_transfer_serial,\n\t\t\tm_dvc_dma_initial_words,\n\t\t\tm_dvc_dma_service_events,\n\t\t\t(unsigned long long)\n\t\t\t\t(complete_clock - m_dvc_dma_request_clock),\n\t\t\t(unsigned long long)\n\t\t\t\t(m_dvc_dma_first_clock - m_dvc_dma_request_clock));\n\n\t\tm_dvc->dma_done();\n\t\treturn;\n\t}\n''',
+              'post-transfer transition')
+
+          path.write_text(source, encoding='utf-8')
+          PY
+
+          git diff -- src/mame/philips/cdi.cpp
+          git diff --check
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsdl2-dev libsdl2-ttf-dev libfontconfig-dev libasound2-dev libxinerama-dev libxi-dev qt6-base-dev qt6-base-dev-tools
+
+      - name: Run E1c2 source audit
+        run: python3 scripts/cdi_dvc_dma_liveness_audit.py
+
+      - name: Build mametests
+        run: make -j2 REGENIE=1 NOWERROR=1 TESTS=1 EMULATOR=0
+
+      - name: Run SCC68070 tests
+        run: ./mametests "[emu][machine][scc68070]"
+
+      - name: Run Philips CD-i tests including E1c2 regression
+        run: ./mametests "[emu][philips][cdi]"
+
+      - name: Build CD-i audit target
+        run: make -j2 SUBTARGET=cdiaudit SOURCES=src/mame/philips/cdi.cpp
+
+      - name: Final diff check
+        run: git diff --check
+
+      - name: Commit validated production wiring and remove one-shot workflow
+        run: |
+          git config user.name "starlight_world"
+          git config user.email "43389528+matt-dawidowicz@users.noreply.github.com"
+          git rm .github/workflows/e1c2-dvc-dma-behavioral.yml
+          git add src/mame/philips/cdi.cpp
+          git commit -m "philips/cdi: exercise shared DVC DMA transition policy"
+          git push origin HEAD:cdi-audit-e1c2-dvc-dma-behavioral-regression
