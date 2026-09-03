@@ -636,25 +636,6 @@ void cdicdic_device::process_disc_sector()
 			m_cdrom->read_data(
 					m_curr_lba, buffer, cdrom_file::CD_TRACK_RAW_DONTCARE);
 
-	logerror(
-			"CDIC_TRACE sector disc_cmd=%02x live_cmd=%04x mode=%u "
-			"lba=%u real_lba=%u msf=%02x:%02x:%02x read_ok=%u "
-			"hdr=%02x%02x%02x%02x sector_mode=%02x file=%02x "
-			"chan=%02x sub=%02x coding=%02x ctx=%s\n",
-			unsigned(m_disc_command), unsigned(m_command),
-			unsigned(m_disc_mode), unsigned(m_curr_lba),
-			unsigned(real_lba), unsigned(mins_bcd),
-			unsigned(secs_bcd), unsigned(frac_bcd),
-			read_ok ? 1U : 0U,
-			unsigned(buffer[0]), unsigned(buffer[1]),
-			unsigned(buffer[2]), unsigned(buffer[3]),
-			unsigned(buffer[SECTOR_MODE]),
-			unsigned(buffer[SECTOR_FILE2]),
-			unsigned(buffer[SECTOR_CHAN2]),
-			unsigned(buffer[SECTOR_SUBMODE2]),
-			unsigned(buffer[SECTOR_CODING2]),
-			machine().describe_context());
-
 	if (!read_ok)
 	{
 		// No status bit is known for end-of-disc.  Terminating the HLE
@@ -989,13 +970,6 @@ uint16_t cdicdic_device::regs_r(offs_t offset, uint16_t mem_mask)
 			return m_interrupt_vector;
 
 		case 0x3ffe/2:
-			logerror(
-					"CDIC_DBUF_TRACE read value=%04x mask=%04x "
-					"cmd=%04x disc_cmd=%02x mode=%u lba=%u ctx=%s\\n",
-					unsigned(m_data_buffer), unsigned(mem_mask),
-					unsigned(m_command), unsigned(m_disc_command),
-					unsigned(m_disc_mode), unsigned(m_curr_lba),
-					machine().describe_context());
 			LOGMASKED(LOG_READS, "%s: cdic_r: Data buffer Register = %04x & %04x\n", machine().describe_context(), m_data_buffer, mem_mask);
 			return m_data_buffer;
 
@@ -1124,22 +1098,8 @@ void cdicdic_device::regs_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 			break;
 
 		case 0x3ffe/2:
-		{
-			uint16_t const old_data_buffer = m_data_buffer;
-
 			LOGMASKED(LOG_WRITES, "%s: cdic_w: Data Buffer Register = %04x & %04x\n", machine().describe_context(), data, mem_mask);
 			COMBINE_DATA(&m_data_buffer);
-
-			logerror(
-					"CDIC_DBUF_TRACE write data=%04x mask=%04x old=%04x "
-					"combined=%04x cmd=%04x disc_cmd=%02x mode=%u "
-					"lba=%u ctx=%s\\n",
-					unsigned(data), unsigned(mem_mask),
-					unsigned(old_data_buffer), unsigned(m_data_buffer),
-					unsigned(m_command), unsigned(m_disc_command),
-					unsigned(m_disc_mode), unsigned(m_curr_lba),
-					machine().describe_context());
-
 			if (m_data_buffer & 0x8000)
 			{
 				LOGMASKED(LOG_WRITES, "%s: cdic_w: Data Buffer high-bit set, beginning command processing\n", machine().describe_context());
@@ -1156,15 +1116,7 @@ void cdicdic_device::regs_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 				m_next_audio_buffer = cdic_hle::RESET_NEXT_AUDIO_BUFFER;
 			}
 			update_interrupt_state();
-
-			logerror(
-					"CDIC_DBUF_TRACE write-complete value=%04x "
-					"cmd=%04x disc_cmd=%02x mode=%u lba=%u ctx=%s\\n",
-					unsigned(m_data_buffer), unsigned(m_command),
-					unsigned(m_disc_command), unsigned(m_disc_mode),
-					unsigned(m_curr_lba), machine().describe_context());
 			break;
-		}
 
 		default:
 			LOGMASKED(LOG_WRITES | LOG_UNKNOWNS, "%s: cdic_w: Unknown address: %04x = %04x & %04x\n", machine().describe_context(), addr*2, data, mem_mask);
@@ -1187,13 +1139,6 @@ void cdicdic_device::init_disc_read(uint8_t disc_mode)
 	m_disc_mode = disc_mode;
 	m_disc_state = uint8_t(cdic_hle::disc_state::seeking);
 	m_curr_lba = lba_from_time();
-	logerror(
-			"CDIC_TRACE begin cmd=%04x mode=%u time=%08x lba=%u "
-			"file=%04x channel=%08x audio=%04x dsel=%04x data=%04x ctx=%s\n",
-			unsigned(m_command), unsigned(disc_mode), unsigned(m_time),
-			unsigned(m_curr_lba), unsigned(m_file), unsigned(m_channel),
-			unsigned(m_audio_channel), unsigned(m_data_select),
-			unsigned(m_data_buffer), machine().describe_context());
 	// Compatibility timing: the real seek delay depends on disc position, but
 	// the HLE has no servo feedback.  Six sectors is firmware-observed only.
 	m_disc_spinup_counter = 6; // Bugfix #14462: 6 or higher is required to prevent some softlocks.
@@ -1201,12 +1146,6 @@ void cdicdic_device::init_disc_read(uint8_t disc_mode)
 
 void cdicdic_device::cancel_disc_read()
 {
-	logerror(
-			"CDIC_TRACE cancel disc_cmd=%02x live_cmd=%04x mode=%u "
-			"time=%08x lba=%u ctx=%s\n",
-			unsigned(m_disc_command), unsigned(m_command),
-			unsigned(m_disc_mode), unsigned(m_time),
-			unsigned(m_curr_lba), machine().describe_context());
 	m_disc_state = uint8_t(cdic_hle::disc_state::idle);
 	m_disc_command = 0;
 	m_disc_mode = 0;
@@ -1216,16 +1155,6 @@ void cdicdic_device::cancel_disc_read()
 
 void cdicdic_device::handle_cdic_command()
 {
-	logerror(
-			"CDIC_TRACE command cmd=%04x time=%08x disc_cmd=%02x "
-			"mode=%u lba=%u file=%04x channel=%08x audio=%04x "
-			"dsel=%04x data=%04x ctx=%s\n",
-			unsigned(m_command), unsigned(m_time),
-			unsigned(m_disc_command), unsigned(m_disc_mode),
-			unsigned(m_curr_lba), unsigned(m_file),
-			unsigned(m_channel), unsigned(m_audio_channel),
-			unsigned(m_data_select), unsigned(m_data_buffer),
-			machine().describe_context());
 	const cdic_hle::command_descriptor descriptor = cdic_hle::describe_command(m_command);
 	switch (descriptor.kind)
 	{
