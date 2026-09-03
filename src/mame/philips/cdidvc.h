@@ -6,11 +6,8 @@
 
 #pragma once
 
-#include "cdidvc_save_state.h"
-
 #include <array>
 #include <deque>
-#include <memory>
 #include <vector>
 
 struct plm_buffer_t;
@@ -105,14 +102,6 @@ private:
 	void record_dsp_bootstrap_write(unsigned index, uint32_t address, uint16_t data, uint16_t mem_mask);
 	void av_clock_observe();
 
-	// SAVE-STATE IMPLEMENTATION MODEL: dynamic queues are mirrored into
-	// fixed registered storage and opaque PL_MPEG state is reconstructed
-	// by replaying elementary-stream bytes on postload.
-	void save_state_presave();
-	void save_state_postload();
-	void save_state_restore_failed();
-	bool save_state_rebuild_audio_decoder();
-	bool save_state_rebuild_video_decoder();
 
 	// Current MAME compatibility values. Their hardware attribution is pending;
 	// keep them out of emulator-independent specifications until proven.
@@ -371,41 +360,6 @@ private:
 	uint32_t m_video_last_picture_generation = 0;
 	bool m_video_last_picture_pending = false;
 
-	// SAVE-STATE IMPLEMENTATION MODEL, NOT HARDWARE SPECIFICATION.
-	// PL_MPEG owns pointer-rich decoder state that MAME cannot serialize
-	// directly.  Journal the ES byte stream and mirror dynamic queues into
-	// fixed registered buffers; postload reconstructs the decoder to the saved
-	// decoded-frame count without replaying guest-visible side effects.
-	std::vector<uint8_t> m_audio_replay_journal;
-	std::vector<uint8_t> m_video_replay_journal;
-	std::vector<uint64_t> m_video_replay_pump_events;
-	bool m_audio_replay_overflow = false;
-	bool m_video_replay_overflow = false;
-	bool m_video_replay_pump_overflow = false;
-
-	std::unique_ptr<uint8_t[]> m_save_audio_replay;
-	std::unique_ptr<uint8_t[]> m_save_video_replay;
-	std::unique_ptr<int16_t[]> m_save_audio_pcm;
-	std::unique_ptr<uint32_t[]> m_save_video_queue_pixels;
-	std::unique_ptr<uint32_t[]> m_save_video_present_pixels;
-	uint32_t m_save_audio_replay_length = 0;
-	uint32_t m_save_video_replay_length = 0;
-	uint32_t m_save_audio_pcm_values = 0;
-	uint16_t m_save_video_queue_count = 0;
-	uint32_t m_save_video_present_pixel_count = 0;
-	uint16_t m_save_picture_event_count = 0;
-	uint32_t m_save_video_replay_pump_count = 0;
-	bool m_save_snapshot_valid = false;
-	uint32_t m_save_snapshot_serial = 0;
-
-	std::array<uint16_t, cdi_dvc::SAVE_VIDEO_QUEUE_FRAMES> m_save_video_queue_width{};
-	std::array<uint16_t, cdi_dvc::SAVE_VIDEO_QUEUE_FRAMES> m_save_video_queue_height{};
-	std::array<uint32_t, cdi_dvc::SAVE_VIDEO_QUEUE_FRAMES> m_save_video_queue_generation{};
-	std::array<uint16_t, cdi_dvc::SAVE_VIDEO_QUEUE_FRAMES> m_save_video_queue_interrupts{};
-	std::array<uint64_t, cdi_dvc::SAVE_VIDEO_QUEUE_FRAMES> m_save_video_queue_timestamp90{};
-	std::array<uint8_t, cdi_dvc::SAVE_VIDEO_QUEUE_FRAMES> m_save_video_queue_timestamp_valid{};
-	std::array<uint16_t, cdi_dvc::SAVE_PICTURE_EVENTS> m_save_picture_events{};
-	std::array<uint64_t, cdi_dvc::SAVE_VIDEO_REPLAY_PUMP_EVENTS> m_save_video_replay_pump_events{};
 
 	// 512 KiB MPEG/DVC RAM at E80000-EFFFFF.
 	//
