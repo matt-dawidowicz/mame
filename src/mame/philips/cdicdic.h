@@ -8,9 +8,6 @@
 
     written by Ryan Holtz
 
-
-*******************************************************************************/
-
 STATUS:
 
 - Just enough for the Mono-I CD-i board to work somewhat properly.
