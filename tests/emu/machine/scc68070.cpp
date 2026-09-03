@@ -97,7 +97,7 @@ TEST_CASE("SCC68070 UART fixed and command bits retain only documented state", "
 {
 	for (unsigned value = 0; value <= 0xff; ++value)
 	{
-		REQUIRE(scc68070::uart_status_read_value(std::uint8_t(value)) == (value | 0x02));
+		REQUIRE(scc68070::uart_status_read_value(std::uint8_t(value)) == (value & ~0x02));
 		REQUIRE(scc68070::uart_control_after_misc_command(std::uint8_t(value)) == (value & 0x0f));
 	}
 }
