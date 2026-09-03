@@ -78,6 +78,12 @@ bool scc68070_device::dma_channel_transfer(unsigned channel, uint16_t &data)
 		return false;
 
 	dma_channel_t &dma = m_dma.channel[channel];
+	auto terminate_timing_error = [this, &dma]()
+	{
+		dma.channel_status = scc68070::dma_status_after_error(dma.channel_status);
+		dma.channel_error = CER_TIMING;
+		update_ipl();
+	};
 	address_space &memory = space(AS_PROGRAM);
 	uint32_t operand_size;
 
@@ -90,6 +96,7 @@ bool scc68070_device::dma_channel_transfer(unsigned channel, uint16_t &data)
 		operand_size = 2;
 		break;
 	default:
+		terminate_timing_error();
 		return false;
 	}
 
@@ -100,9 +107,13 @@ bool scc68070_device::dma_channel_transfer(unsigned channel, uint16_t &data)
 	const scc68070::dma_address_result next_device =
 		scc68070::dma_address_after_transfer(dma.device_address_counter, device_mode, operand_size);
 
-	// Reserved MAC/DAC encodings do not perform a partial transfer.
+	// Reserved MAC/DAC encodings terminate the operation before any partial
+	// transfer can reach memory or the peripheral.
 	if (!next_memory.valid || !next_device.valid)
+	{
+		terminate_timing_error();
 		return false;
+	}
 
 	const uint32_t memory_address = dma.memory_address_counter & DMA_ADDRESS_MASK;
 	if (operand_size == 1)
