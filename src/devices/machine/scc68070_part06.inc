@@ -113,23 +113,23 @@ void scc68070_device::ucsr_w(uint8_t data)
 
 void scc68070_device::update_uart_timing()
 {
+	// Receive characters arrive through uart_rx() only after their serial frame
+	// has completed (or from the TX frame timer in local loopback), so there is
+	// no second SCC receive-delay timer to schedule.
+	m_uart.rx_timer->adjust(attotime::never);
+
 	const uint32_t uart_clock = scc68070::uart_baud_clock(
 		clock(), m_uart_external_clock, BIT(m_uart.clock_select, 7));
 	if (!uart_clock)
 	{
-		m_uart.rx_timer->adjust(attotime::never);
 		m_uart.tx_timer->adjust(attotime::never);
 		return;
 	}
 
 	const uint64_t frame_bits = scc68070::uart_frame_bits(m_uart.mode_register);
-	const attotime rx_rate = attotime::from_ticks(
-		uint64_t(scc68070::uart_baud_divisor((m_uart.clock_select >> 4) & 7)) * frame_bits,
-		uart_clock);
 	const attotime tx_rate = attotime::from_ticks(
 		uint64_t(scc68070::uart_baud_divisor(m_uart.clock_select & 7)) * frame_bits,
 		uart_clock);
-	m_uart.rx_timer->adjust(rx_rate, 0, rx_rate);
 	m_uart.tx_timer->adjust(tx_rate, 0, tx_rate);
 }
 
@@ -260,24 +260,12 @@ uint8_t scc68070_device::urh_r()
 	const uint8_t data = m_uart.receive_holding_register;
 	if (!machine().side_effects_disabled())
 	{
+		m_uart.status_register &= ~USR_RXRDY;
 		if (m_uart_rx_int)
 		{
 			m_uart_rx_int = false;
 			update_ipl();
 		}
-		if (m_uart.receive_pointer >= 0)
-		{
-			for (int index = 0; index < m_uart.receive_pointer; index++)
-				m_uart.receive_buffer[index] = m_uart.receive_buffer[index + 1];
-			m_uart.receive_pointer--;
-		}
-		if (m_uart.receive_pointer >= 0)
-		{
-			m_uart.receive_holding_register = m_uart.receive_buffer[0];
-			m_uart.status_register |= USR_RXRDY;
-		}
-		else
-			m_uart.status_register &= ~USR_RXRDY;
 	}
 	return data;
 }
