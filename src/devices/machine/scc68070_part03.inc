@@ -140,19 +140,27 @@ void scc68070_device::timer_schedule_match(unsigned channel)
 
 	const uint16_t current = timer0_current();
 	const uint16_t target = channel == 1 ? m_timers.timer1 : m_timers.timer2;
-	if (target < current)
+	uint32_t ticks;
+
+	if (target >= current)
+		ticks = uint32_t(target) - current;
+	else if (target >= m_timers.reload_register)
+		ticks = (0x10000U - current) + (uint32_t(target) - m_timers.reload_register);
+	else
 	{
+		// After overflow Timer 0 reloads from TRR, so a target below TRR is
+		// unreachable until software reprograms Timer 0 or TRR.
 		timer->adjust(attotime::never);
 		return;
 	}
 
-	const uint32_t ticks = uint32_t(target) - current;
 	timer->adjust(ticks ? cycles_to_attotime(96 * ticks) : attotime::zero);
 }
 
 TIMER_CALLBACK_MEMBER(scc68070_device::timer0_callback)
 {
 	m_timers.timer0 = m_timers.reload_register;
+	set_timer_callback(0);
 	timer_set_status(TSR_OV0);
 
 	for (unsigned channel = 1; channel <= 2; ++channel)
@@ -163,8 +171,6 @@ TIMER_CALLBACK_MEMBER(scc68070_device::timer0_callback)
 			timer_schedule_match(channel);
 		}
 	}
-
-	set_timer_callback(0);
 }
 
 TIMER_CALLBACK_MEMBER(scc68070_device::timer1_match_callback)
