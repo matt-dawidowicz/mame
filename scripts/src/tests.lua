@@ -79,7 +79,6 @@ project("mametests")
 		MAME_DIR .. "tests/emu/philips/cdidvc_timestamp_format.cpp",
 		MAME_DIR .. "tests/emu/philips/cdidvc_pes_format.cpp",
 		MAME_DIR .. "tests/emu/philips/cdidvc_dclk_wrap.cpp",
-		MAME_DIR .. "tests/emu/philips/cdimono2.cpp",
 		MAME_DIR .. "tests/lib/util/corestr.cpp",
 		MAME_DIR .. "tests/lib/util/options.cpp",
 		MAME_DIR .. "tests/emu/attotime.cpp",

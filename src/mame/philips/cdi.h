@@ -10,7 +10,6 @@
 #include "cdidvc.h"
 #include "cdi220_lcd.h"
 #include "sound/dmadac.h"
-#include "cpu/dsp56000/dsp56000.h"
 #include "mcd212.h"
 #include "cpu/mcs51/i8051.h"
 #include "cpu/m6805/m68hc05.h"
@@ -31,7 +30,6 @@ public:
 		, m_plane_ram(*this, "plane%u", 0U)
 		, m_servo(*this, "servo")
 		, m_slave(*this, "slave")
-		, m_dsp(*this, "dsp")
 		, m_cdic(*this, "cdic")
 		, m_dvc(*this, "dvc")
 		, m_cdrom(*this, "cdrom")
@@ -62,7 +60,6 @@ protected:
 	required_shared_ptr_array<uint16_t, 2> m_plane_ram;
 	optional_device<m68hc05c8_device> m_servo;
 	optional_device<m68hc05c8_device> m_slave;
-	optional_device<dsp56001_device> m_dsp;
 	optional_device<cdicdic_device> m_cdic;
 	optional_device<cdi_dvc_device> m_dvc;
 	required_device<cdrom_image_device> m_cdrom;
@@ -120,8 +117,6 @@ protected:
 
 	uint16_t bus_error_r(offs_t offset);
 	void bus_error_w(offs_t offset, uint16_t data);
-
-	void cdimono2_slave_portb_w(uint8_t data);
 };
 
 class quizard_state : public cdi_state, public device_serial_interface
