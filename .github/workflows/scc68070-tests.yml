@@ -1,0 +1,35 @@
+name: SCC68070 tests
+
+on:
+  push:
+    branches:
+    - cdi-upstream-scc68070-completion
+    paths:
+    - '.github/workflows/scc68070-tests.yml'
+    - 'scripts/src/tests.lua'
+    - 'src/devices/machine/scc68070*'
+    - 'tests/emu/machine/scc68070*'
+    - 'makefile'
+
+permissions:
+  contents: read
+
+jobs:
+  scc68070-tests:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@main
+      with:
+        fetch-depth: 1
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libsdl2-dev libsdl2-ttf-dev libfontconfig-dev libasound2-dev libxinerama-dev libxi-dev qt6-base-dev qt6-base-dev-tools
+    - name: Build unit tests
+      env:
+        TESTS: 1
+        EMULATOR: 0
+        TOOLS: 0
+      run: make -j3
+    - name: Run SCC68070 tests
+      run: ./mametests "[emu][machine][scc68070]"
