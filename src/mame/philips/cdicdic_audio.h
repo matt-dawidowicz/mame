@@ -86,6 +86,29 @@ constexpr uint32_t attenuation_gain_q30(uint8_t control)
 	return uint32_t(gain);
 }
 
+struct mixer_gains
+{
+	uint32_t left_to_left;
+	uint32_t left_to_right;
+	uint32_t right_to_right;
+	uint32_t right_to_left;
+};
+
+constexpr mixer_gains decode_mixer_gains(
+		uint8_t left_to_left,
+		uint8_t left_to_right,
+		uint8_t right_to_right,
+		uint8_t right_to_left)
+{
+	return
+	{
+		attenuation_gain_q30(left_to_left),
+		attenuation_gain_q30(left_to_right),
+		attenuation_gain_q30(right_to_right),
+		attenuation_gain_q30(right_to_left)
+	};
+}
+
 constexpr int16_t mix_one_channel(
 		int16_t first,
 		uint32_t first_gain,
@@ -105,6 +128,15 @@ struct stereo_sample
 	int16_t right;
 };
 
+constexpr stereo_sample mix_sample(int16_t left, int16_t right, const mixer_gains &gains)
+{
+	return
+	{
+		mix_one_channel(left, gains.left_to_left, right, gains.right_to_left),
+		mix_one_channel(left, gains.left_to_right, right, gains.right_to_right)
+	};
+}
+
 constexpr stereo_sample mix_sample(
 		int16_t left,
 		int16_t right,
@@ -113,15 +145,10 @@ constexpr stereo_sample mix_sample(
 		uint8_t right_to_right,
 		uint8_t right_to_left)
 {
-	return
-	{
-		mix_one_channel(
-			left, attenuation_gain_q30(left_to_left),
-			right, attenuation_gain_q30(right_to_left)),
-		mix_one_channel(
-			left, attenuation_gain_q30(left_to_right),
-			right, attenuation_gain_q30(right_to_right))
-	};
+	return mix_sample(
+		left,
+		right,
+		decode_mixer_gains(left_to_left, left_to_right, right_to_right, right_to_left));
 }
 
 struct deemphasis_coefficients
