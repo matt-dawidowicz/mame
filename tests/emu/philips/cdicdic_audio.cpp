@@ -48,6 +48,21 @@ TEST_CASE("CDIC audio coding accepts only Green Book base audio formats", "[emu]
 	REQUIRE_FALSE(cdic_audio::decode_coding(0x80).valid); // reserved bit 7
 }
 
+TEST_CASE("CDIC ADPCM sound parameters honor level-specific range limits", "[emu][philips][cdic][audio][coding][range]")
+{
+	// Level A is 8-bit and only defines ranges 0-8.
+	REQUIRE(cdic_audio::normalize_sound_parameter(0x27, 8) == 0x27);
+	REQUIRE(cdic_audio::normalize_sound_parameter(0x28, 8) == 0x28);
+	REQUIRE(cdic_audio::normalize_sound_parameter(0x29, 8) == 0x28);
+	REQUIRE(cdic_audio::normalize_sound_parameter(0x2f, 8) == 0x28);
+
+	// Levels B/C are 4-bit and define ranges 0-12.
+	REQUIRE(cdic_audio::normalize_sound_parameter(0x3b, 12) == 0x3b);
+	REQUIRE(cdic_audio::normalize_sound_parameter(0x3c, 12) == 0x3c);
+	REQUIRE(cdic_audio::normalize_sound_parameter(0x3d, 12) == 0x3c);
+	REQUIRE(cdic_audio::normalize_sound_parameter(0x3f, 12) == 0x3c);
+}
+
 TEST_CASE("CDIC attenuation matrix implements one-decibel controls and mute", "[emu][philips][cdic][audio][mixer]")
 {
 	constexpr uint32_t unity = uint32_t(1) << 30;
