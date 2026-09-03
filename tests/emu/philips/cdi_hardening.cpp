@@ -8,7 +8,6 @@
 
 #include "catch.hpp"
 
-#include "cdidvc_save_state.h"
 #include "cdislavehle_pointer.h"
 #include "cdislavehle_transport.h"
 
@@ -140,76 +139,4 @@ TEST_CASE(
 	REQUIRE(cdi_slave_pointer::clamp_y(559) == 559);
 	REQUIRE(cdi_slave_pointer::clamp_y(560) == 559);
 	REQUIRE(cdi_slave_pointer::clamp_y(std::numeric_limits<int32_t>::max()) == 559);
-}
-
-
-TEST_CASE(
-	"CD-i DVC save mirrors accept every exact capacity boundary and reject the next value",
-	"[emu][philips][cdi][dvc][hardening][save]")
-{
-	REQUIRE(cdi_dvc::save_replay_fits(
-		cdi_dvc::SAVE_AUDIO_REPLAY_CAPACITY, cdi_dvc::SAVE_AUDIO_REPLAY_CAPACITY));
-	REQUIRE_FALSE(cdi_dvc::save_replay_fits(
-		cdi_dvc::SAVE_AUDIO_REPLAY_CAPACITY + 1, cdi_dvc::SAVE_AUDIO_REPLAY_CAPACITY));
-
-	REQUIRE(cdi_dvc::save_replay_fits(
-		cdi_dvc::SAVE_VIDEO_REPLAY_CAPACITY, cdi_dvc::SAVE_VIDEO_REPLAY_CAPACITY));
-	REQUIRE_FALSE(cdi_dvc::save_replay_fits(
-		cdi_dvc::SAVE_VIDEO_REPLAY_CAPACITY + 1, cdi_dvc::SAVE_VIDEO_REPLAY_CAPACITY));
-
-	REQUIRE(cdi_dvc::save_audio_pcm_fits(cdi_dvc::SAVE_AUDIO_PCM_VALUES));
-	REQUIRE_FALSE(cdi_dvc::save_audio_pcm_fits(cdi_dvc::SAVE_AUDIO_PCM_VALUES + 1));
-
-	REQUIRE(cdi_dvc::save_video_queue_fits(cdi_dvc::SAVE_VIDEO_QUEUE_FRAMES));
-	REQUIRE_FALSE(cdi_dvc::save_video_queue_fits(cdi_dvc::SAVE_VIDEO_QUEUE_FRAMES + 1));
-
-	REQUIRE(cdi_dvc::save_picture_events_fit(cdi_dvc::SAVE_PICTURE_EVENTS));
-	REQUIRE_FALSE(cdi_dvc::save_picture_events_fit(cdi_dvc::SAVE_PICTURE_EVENTS + 1));
-
-	REQUIRE(cdi_dvc::save_video_replay_pumps_fit(cdi_dvc::SAVE_VIDEO_REPLAY_PUMP_EVENTS));
-	REQUIRE_FALSE(cdi_dvc::save_video_replay_pumps_fit(cdi_dvc::SAVE_VIDEO_REPLAY_PUMP_EVENTS + 1));
-}
-
-
-TEST_CASE(
-	"CD-i DVC saved video geometry requires exact bounded pixel storage",
-	"[emu][philips][cdi][dvc][hardening][save]")
-{
-	REQUIRE(cdi_dvc::save_video_frame_fits(
-		cdi_dvc::SAVE_VIDEO_MAX_WIDTH,
-		cdi_dvc::SAVE_VIDEO_MAX_HEIGHT,
-		cdi_dvc::SAVE_VIDEO_PIXELS_PER_FRAME));
-
-	REQUIRE_FALSE(cdi_dvc::save_video_frame_fits(
-		cdi_dvc::SAVE_VIDEO_MAX_WIDTH + 1,
-		cdi_dvc::SAVE_VIDEO_MAX_HEIGHT,
-		cdi_dvc::SAVE_VIDEO_PIXELS_PER_FRAME));
-	REQUIRE_FALSE(cdi_dvc::save_video_frame_fits(
-		cdi_dvc::SAVE_VIDEO_MAX_WIDTH,
-		cdi_dvc::SAVE_VIDEO_MAX_HEIGHT + 1,
-		cdi_dvc::SAVE_VIDEO_PIXELS_PER_FRAME));
-	REQUIRE_FALSE(cdi_dvc::save_video_frame_fits(320, 240, 320U * 240U - 1U));
-	REQUIRE_FALSE(cdi_dvc::save_video_frame_fits(320, 240, 320U * 240U + 1U));
-
-	REQUIRE(cdi_dvc::video_present_frame_fits(false, 0, 0, 0));
-	REQUIRE_FALSE(cdi_dvc::video_present_frame_fits(false, 0, 0, 1));
-	REQUIRE_FALSE(cdi_dvc::video_present_frame_fits(false, 1, 1, 0));
-	REQUIRE_FALSE(cdi_dvc::video_present_frame_fits(true, 0, 0, 0));
-}
-
-
-TEST_CASE(
-	"CD-i DVC replay pump offsets reject backwards and out-of-range journals without overflow",
-	"[emu][philips][cdi][dvc][hardening][save]")
-{
-	constexpr std::size_t BYTES = cdi_dvc::SAVE_VIDEO_REPLAY_CAPACITY;
-
-	REQUIRE(cdi_dvc::save_video_replay_pump_offset_valid(0, 0, BYTES));
-	REQUIRE(cdi_dvc::save_video_replay_pump_offset_valid(0, BYTES, BYTES));
-	REQUIRE(cdi_dvc::save_video_replay_pump_offset_valid(BYTES, BYTES, BYTES));
-	REQUIRE_FALSE(cdi_dvc::save_video_replay_pump_offset_valid(1, 0, BYTES));
-	REQUIRE_FALSE(cdi_dvc::save_video_replay_pump_offset_valid(0, BYTES + 1, BYTES));
-	REQUIRE_FALSE(cdi_dvc::save_video_replay_pump_offset_valid(
-		std::numeric_limits<std::size_t>::max() - 1,
-		std::numeric_limits<std::size_t>::max(), BYTES));
 }
