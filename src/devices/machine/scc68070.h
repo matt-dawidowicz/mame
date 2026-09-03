@@ -54,6 +54,7 @@ public:
 	auto iack7_callback() { return m_iack7_callback.bind(); }
 	auto uart_tx_callback() { return m_uart_tx_callback.bind(); }
 	auto uart_rtsn_callback() { return m_uart_rtsn_callback.bind(); }
+	void set_uart_external_clock(uint32_t clock) { m_uart_external_clock = clock; }
 	auto i2c_scl_w() { return m_i2c_scl_callback.bind(); }
 	auto i2c_sda_w() { return m_i2c_sdaw_callback.bind(); }
 	auto i2c_sda_r() { return m_i2c_sdar_callback.bind(); }
@@ -187,7 +188,20 @@ public:
 		mmu_desc_t desc[8];
 	};
 
-	dma_regs_t& dma() { return m_dma; }
+	bool dma_channel_active(unsigned channel) const;
+	bool dma_channel_transfer(unsigned channel, uint16_t &data);
+
+	// Read-only state exposed to peripheral-side DMA clients.
+	bool dma_channel_memory_to_device(unsigned channel) const;
+	bool dma_channel_word_transfer(unsigned channel) const;
+	bool dma_channel_memory_increment(unsigned channel, bool &increment) const;
+	uint16_t dma_channel_remaining(unsigned channel) const;
+	uint32_t dma_channel_memory_address(unsigned channel) const;
+	bool dma_channel_external_start(unsigned channel);
+
+	// Compatibility wrappers for the existing channel-1 peripheral path.
+	bool dma_channel1_active() const { return dma_channel_active(0); }
+	bool dma_channel1_transfer(uint16_t &data) { return dma_channel_transfer(0, data); }
 
 protected:
 	// device_t implementation
@@ -282,6 +296,8 @@ private:
 	int m_nmi_line;
 	int m_int1_line;
 	int m_int2_line;
+
+	uint32_t m_uart_external_clock = 0;
 
 	uint8_t m_lir;
 	uint8_t m_picr1;

@@ -24,6 +24,7 @@ TODO:
 
 #include "emu.h"
 #include "scc68070.h"
+#include "scc68070_helpers.h"
 
 #define LOG_I2C         (1U << 1)
 #define LOG_UART        (1U << 2)
@@ -141,7 +142,8 @@ enum cer_bits
 enum dcr1_bits
 {
 	DCR1_ERM        = 0x80,
-	DCR1_DT         = 0x30
+	DCR1_DT         = 0x30,
+	DCR1_DS         = 0x08
 };
 
 enum dcr2_bits
@@ -151,6 +153,14 @@ enum dcr2_bits
 	DCR2_DS         = 0x08
 };
 
+
+enum scr1_bits
+{
+	SCR1_MAC_INC    = 0x04
+};
+
+static constexpr uint32_t DMA_ADDRESS_MASK = scc68070::DMA_ADDRESS_MASK;
+static constexpr uint8_t DMA_OCR_READ_FIXED = 0x02;
 
 enum scr2_bits
 {
@@ -355,7 +365,6 @@ void scc68070_device::device_start()
 //  device_reset - device-specific reset
 //-------------------------------------------------
 
-
 void scc68070_device::reset_peripheral_state()
 {
 	m_lir = 0;
@@ -375,18 +384,26 @@ void scc68070_device::reset_peripheral_state()
 	m_i2c.scl_out_state = true;
 	m_i2c.scl_in_state = true;
 	m_i2c.sda_out_state = true;
+	m_i2c.sda_in_state = true;
 	m_i2c.state = I2C_IDLE;
+	m_i2c.counter = 0;
 	m_i2c.clock_change_state = I2C_SCL_IDLE;
 	m_i2c.clocks = 0;
+	m_i2c.first_byte = false;
+	m_i2c.ack_or_nak_sent = false;
 
 	m_uart.mode_register = 0;
+	// TXRDY-at-reset is retained as a compatibility model pending firmware
+	// evidence for the existing CD-i and Magicard paths.
 	m_uart.status_register = USR_TXRDY;
 	m_uart.clock_select = 0;
 	m_uart.command_register = 0;
 	m_uart.transmit_holding_register = 0;
 	m_uart.receive_holding_register = 0;
 	m_uart.receive_pointer = -1;
+	std::fill(std::begin(m_uart.receive_buffer), std::end(m_uart.receive_buffer), 0);
 	m_uart.transmit_pointer = -1;
+	std::fill(std::begin(m_uart.transmit_buffer), std::end(m_uart.transmit_buffer), 0);
 	m_uart.transmit_ctsn = true;
 
 	m_timers.timer_status_register = 0;
@@ -400,9 +417,9 @@ void scc68070_device::reset_peripheral_state()
 	{
 		m_dma.channel[index].channel_status = 0;
 		m_dma.channel[index].channel_error = 0;
-		m_dma.channel[index].device_control = 0;
-		m_dma.channel[index].operation_control = 0;
-		m_dma.channel[index].sequence_control = 0;
+		m_dma.channel[index].device_control = index == 0 ? DCR1_DT : 0;
+		m_dma.channel[index].operation_control = DMA_OCR_READ_FIXED;
+		m_dma.channel[index].sequence_control = index == 0 ? SCR1_MAC_INC : 0;
 		m_dma.channel[index].channel_control = 0;
 		m_dma.channel[index].transfer_counter = 0;
 		m_dma.channel[index].memory_address_counter = 0;
@@ -422,7 +439,6 @@ void scc68070_device::reset_peripheral_state()
 	m_uart.rx_timer->adjust(attotime::never);
 	m_uart.tx_timer->adjust(attotime::never);
 	m_i2c.timer->adjust(attotime::never);
-
 	set_timer_callback(0);
 	update_ipl();
 }
@@ -464,7 +480,9 @@ void scc68070_device::update_ipl()
 	const uint8_t dma_ch1_level = (m_dma.channel[0].channel_status & CSR_COC) && (m_dma.channel[0].channel_control & CCR_INE) ? m_dma.channel[0].channel_control & CCR_IPL : 0;
 	const uint8_t dma_ch2_level = (m_dma.channel[1].channel_status & CSR_COC) && (m_dma.channel[1].channel_control & CCR_INE) ? m_dma.channel[1].channel_control & CCR_IPL : 0;
 
-	const uint8_t new_ipl = std::max({external_level, int1_level, int2_level, timer_level, uart_rx_level, uart_tx_level, i2c_level, dma_ch1_level, dma_ch2_level});
+	const uint8_t new_ipl = scc68070::highest_interrupt_level(std::array<uint8_t, 9>{
+		external_level, int1_level, int2_level, timer_level, uart_rx_level,
+		uart_tx_level, i2c_level, dma_ch1_level, dma_ch2_level });
 
 	if (m_ipl != new_ipl)
 	{
@@ -555,36 +573,44 @@ uint8_t scc68070_device::iack_r(offs_t offset)
 
 	if (!machine().side_effects_disabled())
 	{
-		if (BIT(m_lir, 7) && offset == ((m_lir >> 4) & 7))
+		const std::array<uint8_t, 8> levels = {
+			BIT(m_lir, 7) ? uint8_t((m_lir >> 4) & 7) : uint8_t(0),
+			BIT(m_lir, 3) ? uint8_t(m_lir & 7) : uint8_t(0),
+			m_timer_int ? uint8_t(m_picr1 & 7) : uint8_t(0),
+			m_uart_rx_int ? uint8_t((m_picr2 >> 4) & 7) : uint8_t(0),
+			m_uart_tx_int ? uint8_t(m_picr2 & 7) : uint8_t(0),
+			m_i2c_int ? uint8_t((m_picr1 >> 4) & 7) : uint8_t(0),
+			(m_dma.channel[0].channel_status & CSR_COC) && (m_dma.channel[0].channel_control & CCR_INE) ? uint8_t(m_dma.channel[0].channel_control & CCR_IPL) : uint8_t(0),
+			(m_dma.channel[1].channel_status & CSR_COC) && (m_dma.channel[1].channel_control & CCR_INE) ? uint8_t(m_dma.channel[1].channel_control & CCR_IPL) : uint8_t(0)
+		};
+
+		switch (scc68070::first_interrupt_source(levels, offset))
 		{
+		case scc68070::interrupt_source::int1:
 			m_lir &= 0x7f;
-			update_ipl();
-		}
-		else if (BIT(m_lir, 3) && offset == (m_lir & 7))
-		{
+			break;
+		case scc68070::interrupt_source::int2:
 			m_lir &= 0xf7;
-			update_ipl();
-		}
-		else if (m_timer_int && offset == (m_picr1 & 7))
-		{
+			break;
+		case scc68070::interrupt_source::timer:
 			m_timer_int = false;
-			update_ipl();
-		}
-		else if (m_uart_rx_int && offset == ((m_picr2 >> 4) & 7))
-		{
+			break;
+		case scc68070::interrupt_source::uart_rx:
 			m_uart_rx_int = false;
-			update_ipl();
-		}
-		else if (m_uart_tx_int && offset == (m_picr2 & 7))
-		{
+			break;
+		case scc68070::interrupt_source::uart_tx:
 			m_uart_tx_int = false;
-			update_ipl();
-		}
-		else if (m_i2c_int && offset == ((m_picr1 >> 4) & 7))
-		{
+			break;
+		case scc68070::interrupt_source::i2c:
 			m_i2c_int = false;
-			update_ipl();
+			break;
+		case scc68070::interrupt_source::dma1:
+		case scc68070::interrupt_source::dma2:
+		case scc68070::interrupt_source::none:
+			break;
 		}
+
+		update_ipl();
 	}
 
 	return 0x38 + offset;
@@ -847,35 +873,33 @@ uint8_t scc68070_device::idr_r()
 {
 	// I2C data register: 80002001
 	if (!machine().side_effects_disabled())
+	{
 		LOGMASKED(LOG_I2C, "%s: I2C Data Register Read: %02x\n", machine().describe_context(), m_i2c.data_register);
 
-	m_i2c.counter = 0;
-	m_i2c.status_register |= ISR_PIN;
-	m_i2c_int = false;
-	update_ipl();
+		m_i2c.counter = 0;
+		m_i2c.status_register = scc68070::i2c_status_after_data_access(m_i2c.status_register);
+		m_i2c_int = false;
+		update_ipl();
 
-	if (m_i2c.state != I2C_RX_COMPLETE)
-	{
-	}
-	else
-	{
-		m_i2c.sda_out_state = (m_i2c.control_register & ICR_ACK) ? false : true;
-		m_i2c_sdaw_callback(m_i2c.sda_out_state);
-
-		if (m_i2c.control_register & ICR_ACK)
+		if (m_i2c.state == I2C_RX_COMPLETE)
 		{
-			m_i2c.state = I2C_SEND_ACK_AND_RX;
-			m_i2c.clocks = 9;
-		}
-		else
-		{
-			m_i2c.state = I2C_SEND_ACK;
-			m_i2c.clocks = 1;
-		}
-		m_i2c.ack_or_nak_sent = true;
-		m_i2c.clock_change_state = I2C_SCL_SET_1;
-		set_i2c_timer();
+			m_i2c.sda_out_state = (m_i2c.control_register & ICR_ACK) ? false : true;
+			m_i2c_sdaw_callback(m_i2c.sda_out_state);
 
+			if (m_i2c.control_register & ICR_ACK)
+			{
+				m_i2c.state = I2C_SEND_ACK_AND_RX;
+				m_i2c.clocks = 9;
+			}
+			else
+			{
+				m_i2c.state = I2C_SEND_ACK;
+				m_i2c.clocks = 1;
+			}
+			m_i2c.ack_or_nak_sent = true;
+			m_i2c.clock_change_state = I2C_SCL_SET_1;
+			set_i2c_timer();
+		}
 	}
 	return m_i2c.data_register;
 }
@@ -884,11 +908,11 @@ void scc68070_device::idr_w(uint8_t data)
 {
 	LOGMASKED(LOG_I2C, "%s: I2C Data Register Write: %02x\n", machine().describe_context(), data);
 	m_i2c.data_register = data;
+	m_i2c.status_register = scc68070::i2c_status_after_data_access(m_i2c.status_register);
+	m_i2c_int = false;
+	update_ipl();
 	if (m_i2c.status_register & ISR_MST && m_i2c.status_register & ISR_TRX && m_i2c.status_register & ISR_BB)
 	{
-		m_i2c.status_register |= ISR_PIN;
-		m_i2c_int = false;
-		update_ipl();
 		m_i2c.counter = 0;
 		m_i2c.state = I2C_TX_IN_PROGRESS;
 		m_i2c.clocks = 9;
@@ -1318,11 +1342,9 @@ uint8_t scc68070_device::usr_r()
 {
 	// UART status register: 80002013
 	if (!machine().side_effects_disabled())
-	{
-		m_uart.status_register |= (1 << 1);
 		LOGMASKED(LOG_MORE_UART, "%s: UART Status Register Read: %02x\n", machine().describe_context(), m_uart.status_register);
-	}
-	return m_uart.status_register | 0x08; // hack for magicard
+	// TXEMT remains forced high as an explicit Magicard compatibility model.
+	return scc68070::uart_status_read_value(m_uart.status_register) | USR_TXEMT;
 }
 
 uint8_t scc68070_device::ucsr_r()
@@ -1338,10 +1360,28 @@ void scc68070_device::ucsr_w(uint8_t data)
 	LOGMASKED(LOG_UART, "%s: UART Clock Select Write: %02x\n", machine().describe_context(), data);
 	m_uart.clock_select = data;
 
-	static const uint32_t s_baud_divisors[8] = { 65536, 32768, 16384, 4096, 2048, 1024, 512, 256 };
+	static constexpr uint32_t s_baud_divisors[8] =
+	{
+		65536, 32768, 16384, 4096, 2048, 1024, 512, 256
+	};
 
-	attotime rx_rate = attotime::from_ticks(s_baud_divisors[(data >> 4) & 7] * 10, 49152000);
-	attotime tx_rate = attotime::from_ticks(s_baud_divisors[data & 7] * 10, 49152000);
+	// CLS bit 7 selects the baud-rate clock source.  The internal source is
+	// the SCC68070 system clock divided by four; the external source is XCKI.
+	const uint32_t uart_clock = BIT(data, 7) ? m_uart_external_clock : clock() / 4;
+
+	if (!uart_clock)
+	{
+		LOGMASKED(LOG_UART | LOG_UNKNOWN, "%s: UART external clock selected with no XCKI frequency configured\n", machine().describe_context());
+		m_uart.rx_timer->adjust(attotime::never);
+		m_uart.tx_timer->adjust(attotime::never);
+		return;
+	}
+
+	const attotime rx_rate = attotime::from_ticks(
+			uint64_t(s_baud_divisors[(data >> 4) & 7]) * 10, uart_clock);
+	const attotime tx_rate = attotime::from_ticks(
+			uint64_t(s_baud_divisors[data & 7]) * 10, uart_clock);
+
 	m_uart.rx_timer->adjust(rx_rate, 0, rx_rate);
 	m_uart.tx_timer->adjust(tx_rate, 0, tx_rate);
 }
@@ -1364,20 +1404,22 @@ void scc68070_device::ucr_w(uint8_t data)
 	case 0x2: // Reset receiver
 		LOGMASKED(LOG_MORE_UART, "%s: Reset receiver\n", machine().describe_context());
 		m_uart.receive_pointer = -1;
-		m_uart.command_register &= 0xf0;
 		m_uart.receive_holding_register = 0x00;
+		m_uart.status_register &= ~USR_RXRDY;
+		m_uart_rx_int = false;
+		update_ipl();
 		break;
 	case 0x3: // Reset transmitter
 		LOGMASKED(LOG_MORE_UART, "%s: Reset transmitter\n", machine().describe_context());
 		m_uart.transmit_pointer = -1;
 		m_uart.status_register |= USR_TXEMT | USR_TXRDY;
-		m_uart.command_register &= 0xf0;
 		m_uart.transmit_holding_register = 0x00;
+		m_uart_tx_int = false;
+		update_ipl();
 		break;
 	case 0x4: // Reset error status
 		LOGMASKED(LOG_MORE_UART, "%s: Reset error status\n", machine().describe_context());
 		m_uart.status_register &= ~(USR_RB | USR_FE | USR_PE | USR_OE); // Clear error bits in USR
-		m_uart.command_register &= 0xf0;
 		break;
 	case 0x6: // Start break
 		LOGMASKED(LOG_MORE_UART, "%s: Start break (not yet implemented)\n", machine().describe_context());
@@ -1386,6 +1428,9 @@ void scc68070_device::ucr_w(uint8_t data)
 		LOGMASKED(LOG_MORE_UART, "%s: Stop break (not yet implemented)\n", machine().describe_context());
 		break;
 	}
+
+	if (misc_command != 0)
+		m_uart.command_register = scc68070::uart_control_after_misc_command(m_uart.command_register);
 }
 
 uint8_t scc68070_device::uth_r()
@@ -1407,9 +1452,10 @@ void scc68070_device::uth_w(uint8_t data)
 uint8_t scc68070_device::urh_r()
 {
 	// UART receive holding register: 8000201b
+	const uint8_t data = m_uart.receive_holding_register;
 	if (!machine().side_effects_disabled())
 	{
-		LOGMASKED(LOG_UART, "%s: UART Receive Holding Register Read: %02x\n", machine().describe_context(), m_uart.receive_holding_register);
+		LOGMASKED(LOG_UART, "%s: UART Receive Holding Register Read: %02x\n", machine().describe_context(), data);
 
 		if (m_uart_rx_int)
 		{
@@ -1417,7 +1463,6 @@ uint8_t scc68070_device::urh_r()
 			update_ipl();
 		}
 
-		m_uart.receive_holding_register = m_uart.receive_buffer[0];
 		if (m_uart.receive_pointer >= 0)
 		{
 			for(int index = 0; index < m_uart.receive_pointer; index++)
@@ -1426,8 +1471,13 @@ uint8_t scc68070_device::urh_r()
 			}
 			m_uart.receive_pointer--;
 		}
+
+		if (m_uart.receive_pointer >= 0)
+			m_uart.receive_holding_register = m_uart.receive_buffer[0];
+		else
+			m_uart.status_register &= ~USR_RXRDY;
 	}
-	return m_uart.receive_holding_register;
+	return data;
 }
 
 uint16_t scc68070_device::timer_r(offs_t offset, uint16_t mem_mask)
@@ -1491,7 +1541,6 @@ void scc68070_device::timer_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 	case 0x2/2:
 		LOGMASKED(LOG_TIMERS, "%s: Timer Reload Register Write: %04x & %04x\n", machine().describe_context(), data, mem_mask);
 		COMBINE_DATA(&m_timers.reload_register);
-		set_timer_callback(0);
 		break;
 	case 0x4/2:
 		LOGMASKED(LOG_TIMERS, "%s: Timer 0 Write: %04x & %04x\n", machine().describe_context(), data, mem_mask);
@@ -1510,6 +1559,160 @@ void scc68070_device::timer_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 		LOGMASKED(LOG_TIMERS | LOG_UNKNOWN, "%s: Timer Unknown Register Write: %04x = %04x & %04x\n", machine().describe_context(), offset * 2, data, mem_mask);
 		break;
 	}
+}
+
+bool scc68070_device::dma_channel_active(unsigned channel) const
+{
+	if (channel >= 2)
+		return false;
+
+	const dma_channel_t &dma = m_dma.channel[channel];
+
+	return (dma.channel_status & CSR_CA) && dma.transfer_counter != 0;
+}
+
+bool scc68070_device::dma_channel_transfer(unsigned channel, uint16_t &data)
+{
+	if (!dma_channel_active(channel))
+		return false;
+
+	dma_channel_t &dma = m_dma.channel[channel];
+	address_space &memory = space(AS_PROGRAM);
+	uint32_t operand_size;
+
+	switch (dma.operation_control & SCC68070_OCR_OS)
+	{
+	case SCC68070_OCR_OS_BYTE:
+		operand_size = 1;
+		break;
+
+	case SCC68070_OCR_OS_WORD:
+		operand_size = 2;
+		break;
+
+	default:
+		return false;
+	}
+
+	const uint8_t memory_mode = channel == 0
+		? 0x01
+		: (dma.sequence_control & SCR2_MAC) >> 2;
+	const uint8_t device_mode = channel == 0
+		? 0x00
+		: dma.sequence_control & SCR2_DAC;
+	const scc68070::dma_address_result next_memory =
+		scc68070::dma_address_after_transfer(dma.memory_address_counter, memory_mode, operand_size);
+	const scc68070::dma_address_result next_device =
+		scc68070::dma_address_after_transfer(dma.device_address_counter, device_mode, operand_size);
+
+	// Reserved MAC/DAC encodings do not perform a partial transfer.
+	if (!next_memory.valid || !next_device.valid)
+		return false;
+
+	const uint32_t memory_address = dma.memory_address_counter & DMA_ADDRESS_MASK;
+	if (operand_size == 1)
+	{
+		if (dma.operation_control & SCC68070_OCR_D)
+			memory.write_byte(memory_address, data & 0x00ff);
+		else
+			data = (data & 0xff00) | memory.read_byte(memory_address);
+	}
+	else if (dma.operation_control & SCC68070_OCR_D)
+		memory.write_word(memory_address, data);
+	else
+		data = memory.read_word(memory_address);
+
+	dma.memory_address_counter = next_memory.address;
+	if (channel == 1)
+		dma.device_address_counter = next_device.address;
+
+	--dma.transfer_counter;
+
+	if (dma.transfer_counter == 0)
+	{
+		dma.channel_status &= ~CSR_CA;
+		dma.channel_status |= CSR_COC;
+		update_ipl();
+	}
+
+	return true;
+}
+
+bool scc68070_device::dma_channel_external_start(unsigned channel)
+{
+	if (channel >= 2)
+		return false;
+
+	dma_channel_t &dma = m_dma.channel[channel];
+
+	if (dma.transfer_counter == 0)
+		return false;
+
+	// Peripheral DREQ begins an externally requested operation.  Preserve
+	// the validated DVC behavior of clearing a stale completion condition,
+	// while the modern controller owns the live CA state and completion.
+	dma.channel_status &= ~CSR_COC;
+	dma.channel_error = CER_NONE;
+	dma.channel_status |= CSR_CA;
+	update_ipl();
+
+	return true;
+}
+
+bool scc68070_device::dma_channel_memory_to_device(unsigned channel) const
+{
+	if (channel >= 2)
+		return false;
+
+	return (m_dma.channel[channel].operation_control & SCC68070_OCR_D)
+		== SCC68070_OCR_D_M2D;
+}
+
+bool scc68070_device::dma_channel_word_transfer(unsigned channel) const
+{
+	if (channel >= 2)
+		return false;
+
+	return (m_dma.channel[channel].operation_control & SCC68070_OCR_OS)
+		== SCC68070_OCR_OS_WORD;
+}
+
+bool scc68070_device::dma_channel_memory_increment(unsigned channel, bool &increment) const
+{
+	if (channel >= 2)
+		return false;
+
+	if (channel == 0)
+	{
+		increment = true;
+		return true;
+	}
+
+	switch (m_dma.channel[1].sequence_control & SCR2_MAC)
+	{
+	case SCR2_MAC_NONE:
+		increment = false;
+		return true;
+
+	case SCR2_MAC_INC:
+		increment = true;
+		return true;
+
+	default:
+		return false;
+	}
+}
+
+uint16_t scc68070_device::dma_channel_remaining(unsigned channel) const
+{
+	return channel < 2 ? m_dma.channel[channel].transfer_counter : 0;
+}
+
+uint32_t scc68070_device::dma_channel_memory_address(unsigned channel) const
+{
+	return channel < 2
+		? (m_dma.channel[channel].memory_address_counter & DMA_ADDRESS_MASK)
+		: 0;
 }
 
 uint16_t scc68070_device::dma_r(offs_t offset, uint16_t mem_mask)
@@ -1551,6 +1754,7 @@ uint16_t scc68070_device::dma_r(offs_t offset, uint16_t mem_mask)
 		}
 		return (m_dma.channel[offset / 32].sequence_control << 8) | m_dma.channel[offset / 32].channel_control;
 	case 0x0a/2:
+	case 0x4a/2:
 		if (!machine().side_effects_disabled())
 			LOGMASKED(LOG_DMA, "%s: DMA(%d) Memory Transfer Counter Read: %04x & %04x\n", machine().describe_context(), offset / 32, m_dma.channel[offset / 32].transfer_counter, mem_mask);
 		return m_dma.channel[offset / 32].transfer_counter;
@@ -1558,22 +1762,33 @@ uint16_t scc68070_device::dma_r(offs_t offset, uint16_t mem_mask)
 	case 0x4c/2:
 		if (!machine().side_effects_disabled())
 			LOGMASKED(LOG_DMA, "%s: DMA(%d) Memory Address Counter (High Word) Read: %04x & %04x\n", machine().describe_context(), offset / 32, (m_dma.channel[offset / 32].memory_address_counter >> 16), mem_mask);
-		return (m_dma.channel[offset / 32].memory_address_counter >> 16);
+		return (m_dma.channel[offset / 32].memory_address_counter >> 16) & 0x00ff;
 	case 0x0e/2:
 	case 0x4e/2:
 		if (!machine().side_effects_disabled())
 			LOGMASKED(LOG_DMA, "%s: DMA(%d) Memory Address Counter (Low Word) Read: %04x & %04x\n", machine().describe_context(), offset / 32, m_dma.channel[offset / 32].memory_address_counter, mem_mask);
 		return m_dma.channel[offset / 32].memory_address_counter;
 	case 0x14/2:
+		return 0;
 	case 0x54/2:
 		if (!machine().side_effects_disabled())
 			LOGMASKED(LOG_DMA, "%s: DMA(%d) Device Address Counter (High Word) Read: %04x & %04x\n", machine().describe_context(), offset / 32, (m_dma.channel[offset / 32].device_address_counter >> 16), mem_mask);
-		return (m_dma.channel[offset / 32].device_address_counter >> 16);
+		return (m_dma.channel[offset / 32].device_address_counter >> 16) & 0x00ff;
 	case 0x16/2:
+		return 0;
 	case 0x56/2:
 		if (!machine().side_effects_disabled())
 			LOGMASKED(LOG_DMA, "%s: DMA(%d) Device Address Counter (Low Word) Read: %04x & %04x\n", machine().describe_context(), offset / 32, m_dma.channel[offset / 32].device_address_counter, mem_mask);
 		return m_dma.channel[offset / 32].device_address_counter;
+	case 0x2c/2:
+	case 0x6c/2:
+	{
+		// Compatibility-only register: channel 1 reads 0, channel 2 reads 1.
+		const uint8_t priority = offset < (0x40 / 2) ? 0x00 : 0x01;
+		if (ACCESSING_BITS_0_7 && !machine().side_effects_disabled())
+			LOGMASKED(LOG_DMA, "%s: DMA(%d) Channel Priority Register Read: %02x & %04x\n", machine().describe_context(), offset / 32, priority, mem_mask);
+		return priority;
+	}
 
 	default:
 		LOGMASKED(LOG_DMA | LOG_UNKNOWN, "%s: DMA Unknown Register Read: %04x & %04x\n", machine().describe_context(), offset * 2, mem_mask);
@@ -1597,21 +1812,87 @@ void scc68070_device::dma_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 		if (ACCESSING_BITS_8_15)
 		{
 			LOGMASKED(LOG_DMA, "%s: DMA(%d) Status Write: %04x & %04x\n", machine().describe_context(), offset / 32, data, mem_mask);
-			m_dma.channel[offset / 32].channel_status &= ~((data >> 8) & 0xb0);
+
+			dma_channel_t &dma = m_dma.channel[offset / 32];
+			const uint8_t clear_mask =
+				(data >> 8) & (CSR_COC | CSR_NDT | CSR_ERR);
+
+			dma.channel_status &= ~clear_mask;
+
+			if (clear_mask & CSR_ERR)
+				dma.channel_error = CER_NONE;
+
 			update_ipl();
 		}
 		break;
+
 	case 0x04/2:
 	case 0x44/2:
 		if (ACCESSING_BITS_0_7)
 		{
 			LOGMASKED(LOG_DMA, "%s: DMA(%d) Operation Control Register Write: %04x & %04x\n", machine().describe_context(), offset / 32, data, mem_mask);
-			m_dma.channel[offset / 32].operation_control = data & 0x00ff;
+			const int channel = offset / 32;
+
+			m_dma.channel[channel].operation_control =
+				(data & (SCC68070_OCR_D | SCC68070_OCR_OS))
+				| DMA_OCR_READ_FIXED;
+
+			if (channel == 0)
+			{
+				m_dma.channel[0].device_control &= ~DCR1_DS;
+
+				if (m_dma.channel[0].operation_control
+					& SCC68070_OCR_OS)
+				{
+					m_dma.channel[0].device_control |= DCR1_DS;
+				}
+			}
+			else if ((m_dma.channel[1].device_control & DCR2_DT)
+				== DCR2_DT)
+			{
+				m_dma.channel[1].device_control &= ~DCR2_DS;
+
+				if (m_dma.channel[1].operation_control
+					& SCC68070_OCR_OS)
+				{
+					m_dma.channel[1].device_control |= DCR2_DS;
+				}
+			}
 		}
 		if (ACCESSING_BITS_8_15)
 		{
 			LOGMASKED(LOG_DMA, "%s: DMA(%d) Device Control Register Write: %04x & %04x\n", machine().describe_context(), offset / 32, data, mem_mask);
-			m_dma.channel[offset / 32].device_control = data >> 8;
+			const int channel = offset / 32;
+
+			if (channel == 0)
+			{
+				m_dma.channel[0].device_control =
+					((data >> 8) & DCR1_ERM) | DCR1_DT;
+
+				if (m_dma.channel[0].operation_control
+					& SCC68070_OCR_OS)
+				{
+					m_dma.channel[0].device_control |= DCR1_DS;
+				}
+			}
+			else
+			{
+				m_dma.channel[1].device_control =
+					(data >> 8)
+					& (DCR2_ERM | DCR2_DT | DCR2_DS);
+
+				if ((m_dma.channel[1].device_control & DCR2_DT)
+					== DCR2_DT)
+				{
+					m_dma.channel[1].device_control &= ~DCR2_DS;
+
+					if (m_dma.channel[1].operation_control
+						& SCC68070_OCR_OS)
+					{
+						m_dma.channel[1].device_control |= DCR2_DS;
+					}
+				}
+			}
 		}
 		break;
 	case 0x06/2:
@@ -1619,46 +1900,101 @@ void scc68070_device::dma_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 		if (ACCESSING_BITS_0_7)
 		{
 			LOGMASKED(LOG_DMA, "%s: DMA(%d) Channel Control Register Write: %04x & %04x\n", machine().describe_context(), offset / 32, data, mem_mask);
-			m_dma.channel[offset / 32].channel_control = data & 0x007f;
-			if (data & CCR_SO)
+
+			dma_channel_t &dma = m_dma.channel[offset / 32];
+
+			// SO and SA are command bits and do not read back as set.
+			dma.channel_control = data & (CCR_INE | CCR_IPL);
+
+			if (data & CCR_SA)
 			{
-				m_dma.channel[offset / 32].channel_status |= CSR_COC;
+				// Software abort terminates the current operation.
+				dma.channel_status &= ~CSR_CA;
+				dma.channel_status |= CSR_COC | CSR_ERR;
+				dma.channel_error = CER_SOFT_ABORT;
 			}
+			else if (data & CCR_SO)
+			{
+				// Starting before all status bits have been cleared
+				// produces an operation timing error.
+				if (dma.channel_status &
+					(CSR_COC | CSR_NDT | CSR_ERR | CSR_CA))
+				{
+					dma.channel_status &= ~CSR_CA;
+					dma.channel_status |= CSR_COC | CSR_ERR;
+					dma.channel_error = CER_TIMING;
+				}
+				else
+				{
+					dma.channel_error = CER_NONE;
+					dma.channel_status |= CSR_CA;
+				}
+			}
+
 			update_ipl();
 		}
+
 		if (ACCESSING_BITS_8_15)
 		{
 			LOGMASKED(LOG_DMA, "%s: DMA(%d) Sequence Control Register Write: %04x & %04x\n", machine().describe_context(), offset / 32, data, mem_mask);
-			m_dma.channel[offset / 32].sequence_control = data >> 8;
+			if ((offset / 32) == 0)
+			{
+				m_dma.channel[0].sequence_control = SCR1_MAC_INC;
+			}
+			else
+			{
+				m_dma.channel[1].sequence_control =
+					(data >> 8) & (SCR2_MAC | SCR2_DAC);
+			}
 		}
 		break;
+
 	case 0x0a/2:
+	case 0x4a/2:
 		LOGMASKED(LOG_DMA, "%s: DMA(%d) Memory Transfer Counter Write: %04x & %04x\n", machine().describe_context(), offset / 32, data, mem_mask);
 		COMBINE_DATA(&m_dma.channel[offset / 32].transfer_counter);
 		break;
 	case 0x0c/2:
 	case 0x4c/2:
 		LOGMASKED(LOG_DMA, "%s: DMA(%d) Memory Address Counter (High Word) Write: %04x & %04x\n", machine().describe_context(), offset / 32, data, mem_mask);
-		m_dma.channel[offset / 32].memory_address_counter &= ~(mem_mask << 16);
-		m_dma.channel[offset / 32].memory_address_counter |= data << 16;
+		m_dma.channel[offset / 32].memory_address_counter &= ~(uint32_t(mem_mask) << 16);
+		m_dma.channel[offset / 32].memory_address_counter |=
+			uint32_t(data) << 16;
+		m_dma.channel[offset / 32].memory_address_counter &=
+			DMA_ADDRESS_MASK;
 		break;
 	case 0x0e/2:
 	case 0x4e/2:
 		LOGMASKED(LOG_DMA, "%s: DMA(%d) Memory Address Counter (Low Word) Write: %04x & %04x\n", machine().describe_context(), offset / 32, data, mem_mask);
 		m_dma.channel[offset / 32].memory_address_counter &= ~mem_mask;
 		m_dma.channel[offset / 32].memory_address_counter |= data;
+		m_dma.channel[offset / 32].memory_address_counter &=
+			DMA_ADDRESS_MASK;
 		break;
 	case 0x14/2:
+		break;
 	case 0x54/2:
 		LOGMASKED(LOG_DMA, "%s: DMA(%d) Device Address Counter (High Word) Write: %04x & %04x\n", machine().describe_context(), offset / 32, data, mem_mask);
-		m_dma.channel[offset / 32].device_address_counter &= ~(mem_mask << 16);
-		m_dma.channel[offset / 32].device_address_counter |= data << 16;
+		m_dma.channel[offset / 32].device_address_counter &= ~(uint32_t(mem_mask) << 16);
+		m_dma.channel[offset / 32].device_address_counter |=
+			uint32_t(data) << 16;
+		m_dma.channel[offset / 32].device_address_counter &=
+			DMA_ADDRESS_MASK;
 		break;
 	case 0x16/2:
+		break;
 	case 0x56/2:
 		LOGMASKED(LOG_DMA, "%s: DMA(%d) Device Address Counter (Low Word) Write: %04x & %04x\n", machine().describe_context(), offset / 32, data, mem_mask);
 		m_dma.channel[offset / 32].device_address_counter &= ~mem_mask;
 		m_dma.channel[offset / 32].device_address_counter |= data;
+		m_dma.channel[offset / 32].device_address_counter &=
+			DMA_ADDRESS_MASK;
+		break;
+	case 0x2c/2:
+	case 0x6c/2:
+		// Compatibility-only register.  Writes have no effect.
+		if (ACCESSING_BITS_0_7)
+			LOGMASKED(LOG_DMA, "%s: DMA(%d) Channel Priority Register Write Ignored: %02x & %04x\n", machine().describe_context(), offset / 32, data & 0xff, mem_mask);
 		break;
 	default:
 		LOGMASKED(LOG_DMA | LOG_UNKNOWN, "%s: DMA Unknown Register Write: %04x = %04x & %04x\n", machine().describe_context(), offset * 2, data, mem_mask);
@@ -1673,17 +2009,15 @@ uint16_t scc68070_device::mmu_r(offs_t offset, uint16_t mem_mask)
 	// MMU: 80008000 to 8000807f
 	case 0x00/2:  // Status / Control register
 		if (ACCESSING_BITS_0_7)
-		{   // Control
-			if (!machine().side_effects_disabled())
-				LOGMASKED(LOG_MMU, "%s: MMU Control Read: %02x & %04x\n", machine().describe_context(), m_mmu.control, mem_mask);
-			return m_mmu.control;
-		}   // Status
-		else
 		{
 			if (!machine().side_effects_disabled())
-				LOGMASKED(LOG_MMU, "%s: MMU Status Read: %02x & %04x\n", machine().describe_context(), m_mmu.status, mem_mask);
-			return m_mmu.status;
+				LOGMASKED(LOG_MMU, "%s: MMU Control Read: %02x & %04x\n", machine().describe_context(), m_mmu.control, mem_mask);
 		}
+		if (ACCESSING_BITS_8_15 && !machine().side_effects_disabled())
+		{
+			LOGMASKED(LOG_MMU, "%s: MMU Status Read: %02x & %04x\n", machine().describe_context(), m_mmu.status, mem_mask);
+		}
+		return scc68070::mmu_status_control_word(m_mmu.status, m_mmu.control);
 	case 0x40/2:
 	case 0x48/2:
 	case 0x50/2:
@@ -1750,7 +2084,7 @@ void scc68070_device::mmu_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 		if (ACCESSING_BITS_0_7)
 		{   // Control
 			LOGMASKED(LOG_MMU, "%s: MMU Control Write: %04x & %04x\n", machine().describe_context(), data, mem_mask);
-			m_mmu.control = data & 0x00ff;
+			m_mmu.control = scc68070::mmu_control_value(data);
 		}   // Status
 		else
 		{
@@ -1778,6 +2112,8 @@ void scc68070_device::mmu_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 	case 0x7a/2:  // Segment Length (SD0-7)
 		LOGMASKED(LOG_MMU, "%s: MMU descriptor %d length Write: %04x & %04x\n", machine().describe_context(), (offset - 0x20) / 4, data, mem_mask);
 		COMBINE_DATA(&m_mmu.desc[(offset - 0x20) / 4].length);
+		m_mmu.desc[(offset - 0x20) / 4].length =
+			scc68070::mmu_segment_length(m_mmu.desc[(offset - 0x20) / 4].length);
 		break;
 	case 0x44/2:
 	case 0x4c/2:
@@ -1803,6 +2139,8 @@ void scc68070_device::mmu_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 	case 0x7e/2:  // Base Address (SD0-7)
 		LOGMASKED(LOG_MMU, "%s: MMU descriptor %d base Write: %04x & %04x\n", machine().describe_context(), (offset - 0x20) / 4, data, mem_mask);
 		COMBINE_DATA(&m_mmu.desc[(offset - 0x20) / 4].base);
+		m_mmu.desc[(offset - 0x20) / 4].base =
+			scc68070::mmu_base_address(m_mmu.desc[(offset - 0x20) / 4].base);
 		break;
 	default:
 		LOGMASKED(LOG_MMU | LOG_UNKNOWN, "%s: Unknown Register Write: %04x = %04x & %04x\n", machine().describe_context(), offset * 2, data, mem_mask);

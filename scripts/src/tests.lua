@@ -49,6 +49,7 @@ project("mametests")
 		MAME_DIR .. "3rdparty/catch/single_include",
 		MAME_DIR .. "src/osd",
 		MAME_DIR .. "src/emu",
+		MAME_DIR .. "src/devices/machine",
 		MAME_DIR .. "src/lib/util",
 		ext_includedir("expat"),
 		ext_includedir("zlib"),
@@ -63,6 +64,7 @@ project("mametests")
 
 	files {
 		MAME_DIR .. "tests/main.cpp",
+		MAME_DIR .. "tests/emu/machine/scc68070.cpp",
 		MAME_DIR .. "tests/lib/util/corestr.cpp",
 		MAME_DIR .. "tests/lib/util/options.cpp",
 		MAME_DIR .. "tests/emu/attotime.cpp",
