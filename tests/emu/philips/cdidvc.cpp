@@ -6,7 +6,6 @@
 
 #include "catch.hpp"
 
-#include "cdidvc_save_state.h"
 #include "cdidvc_utils.h"
 
 #define PLM_NO_STDIO
@@ -192,10 +191,9 @@ TEST_CASE("CD-i DVC compressed input status honors the VMPEG high-water boundary
 
 TEST_CASE("CD-i DVC incomplete MPEG pictures cannot deadlock compressed input", "[emu][philips][dvc]")
 {
-	// Dragon's Lair reached this exact state: stock PL_MPEG retained
-	// 28,380 bytes while waiting for the next picture start code.
-	// Treating those retained bytes as physical FIFO occupancy prevents
-	// the firmware from supplying the data PL_MPEG itself requires.
+	// The decoder backend can retain bytes while waiting for the next picture
+	// start code. Treating those retained bytes as physical FIFO occupancy can
+	// prevent the firmware from supplying the data the decoder itself requires.
 	REQUIRE(cdi_dvc::fmv_input_status_from_backend(28'380, false) == 0);
 	REQUIRE(cdi_dvc::fmv_input_status_from_backend(
 			28'380, true) == cdi_dvc::FMV_STATUS_INPUT_READY);
@@ -212,39 +210,6 @@ TEST_CASE("CD-i DVC frame-period register converts millihertz to 90 kHz ticks", 
 	REQUIRE(cdi_dvc::fmv_frame_period_90khz(25'000) == 3'600);
 	REQUIRE(cdi_dvc::fmv_frame_period_90khz(29'970) == 3'003);
 	REQUIRE(cdi_dvc::fmv_frame_period_90khz(30'000) == 3'000);
-}
-
-TEST_CASE("CD-i DVC video replay pump events preserve offset flush and frame target", "[emu][philips][dvc]")
-{
-	uint64_t const event = cdi_dvc::save_video_replay_pump_event(0x0123456, true, 0x12345678);
-	REQUIRE(cdi_dvc::save_video_replay_pump_offset(event) == 0x0123456);
-	REQUIRE(cdi_dvc::save_video_replay_pump_flush(event));
-	REQUIRE(cdi_dvc::save_video_replay_pump_frames(event) == 0x12345678);
-
-	uint64_t const plain = cdi_dvc::save_video_replay_pump_event(
-			cdi_dvc::SAVE_VIDEO_REPLAY_CAPACITY, false, 3);
-	REQUIRE(cdi_dvc::save_video_replay_pump_offset(plain)
-			== cdi_dvc::SAVE_VIDEO_REPLAY_CAPACITY);
-	REQUIRE_FALSE(cdi_dvc::save_video_replay_pump_flush(plain));
-	REQUIRE(cdi_dvc::save_video_replay_pump_frames(plain) == 3);
-}
-
-TEST_CASE("CD-i DVC presentation storage rejects unsafe restored states", "[emu][philips][dvc]")
-{
-	REQUIRE(cdi_dvc::video_present_frame_fits(false, 0, 0, 0));
-	REQUIRE(cdi_dvc::video_present_frame_fits(true, 1, 1, 1));
-	REQUIRE(cdi_dvc::video_present_frame_fits(
-			true, cdi_dvc::SAVE_VIDEO_MAX_WIDTH, cdi_dvc::SAVE_VIDEO_MAX_HEIGHT,
-			cdi_dvc::SAVE_VIDEO_PIXELS_PER_FRAME));
-
-	REQUIRE_FALSE(cdi_dvc::video_present_frame_fits(true, 0, 0, 0));
-	REQUIRE_FALSE(cdi_dvc::video_present_frame_fits(true, 320, 240, 0));
-	REQUIRE_FALSE(cdi_dvc::video_present_frame_fits(true, 320, 240, 320 * 240 - 1));
-	REQUIRE_FALSE(cdi_dvc::video_present_frame_fits(false, 320, 240, 0));
-	REQUIRE_FALSE(cdi_dvc::video_present_frame_fits(false, 0, 0, 1));
-	REQUIRE_FALSE(cdi_dvc::video_present_frame_fits(
-			true, cdi_dvc::SAVE_VIDEO_MAX_WIDTH + 1, 1,
-			cdi_dvc::SAVE_VIDEO_MAX_WIDTH + 1));
 }
 
 TEST_CASE("CD-i DVC picture interrupts follow the presented generation", "[emu][philips][dvc]")
@@ -394,8 +359,8 @@ TEST_CASE("CD-i DVC audio queue compaction discards only consumed samples", "[em
 TEST_CASE("CD-i DVC MPEG audio accepts legal per-frame channel-mode changes", "[emu][philips][dvc]")
 {
 	// Synthetic 192 kbit/s, 44.1 kHz MPEG-1 Layer II frames cover all four
-	// channel modes.  The first two reproduce the transition observed
-	// at the beginning of The 7th Guest stream without retaining game data.
+	// channel modes, including a stereo-to-joint-stereo transition observed
+	// in real CD-i Full Motion Video streams.
 	constexpr size_t frame_size = 627;
 	constexpr std::array<uint8_t, 4> modes { 0x00, 0x40, 0x80, 0xc0 };
 	std::vector<uint8_t> stream(frame_size * modes.size(), 0);
