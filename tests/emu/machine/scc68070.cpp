@@ -2,21 +2,40 @@
 // copyright-holders:MAMEdev Team
 
 #include <array>
+#include <cstdint>
 
 #include "catch.hpp"
 
 #include "scc68070_helpers.h"
 
+namespace
+{
+
+struct dma_reset_model
+{
+	std::uint8_t channel_status;
+	std::uint8_t channel_error;
+	std::uint8_t device_control;
+	std::uint8_t operation_control;
+	std::uint8_t sequence_control;
+	std::uint8_t channel_control;
+	std::uint16_t transfer_counter;
+	std::uint32_t memory_address_counter;
+	std::uint32_t device_address_counter;
+};
+
+} // anonymous namespace
+
 TEST_CASE("SCC68070 interrupt arbitration selects the highest level", "[emu][machine][scc68070][irq]")
 {
-	REQUIRE(scc68070::highest_interrupt_level(std::array<uint8_t, 9>{}) == 0);
-	REQUIRE(scc68070::highest_interrupt_level(std::array<uint8_t, 9>{ 2, 5, 4, 0, 0, 0, 0, 0, 7 }) == 7);
-	REQUIRE(scc68070::highest_interrupt_level(std::array<uint8_t, 9>{ 2, 5, 4, 6, 0, 3, 1, 0, 0 }) == 6);
+	REQUIRE(scc68070::highest_interrupt_level(std::array<std::uint8_t, 9>{}) == 0);
+	REQUIRE(scc68070::highest_interrupt_level(std::array<std::uint8_t, 9>{ 2, 5, 4, 0, 0, 0, 0, 0, 7 }) == 7);
+	REQUIRE(scc68070::highest_interrupt_level(std::array<std::uint8_t, 9>{ 2, 5, 4, 6, 0, 3, 1, 0, 0 }) == 6);
 }
 
 TEST_CASE("SCC68070 same-level interrupt acknowledgement follows documented priority", "[emu][machine][scc68070][irq]")
 {
-	std::array<uint8_t, 8> levels{ 5, 5, 5, 5, 5, 5, 5, 5 };
+	std::array<std::uint8_t, 8> levels{ 5, 5, 5, 5, 5, 5, 5, 5 };
 	constexpr std::array<scc68070::interrupt_source, 8> order = {
 		scc68070::interrupt_source::int1,
 		scc68070::interrupt_source::int2,
@@ -34,32 +53,42 @@ TEST_CASE("SCC68070 same-level interrupt acknowledgement follows documented prio
 		levels[index] = 0;
 	}
 	REQUIRE(scc68070::first_interrupt_source(levels, 5) == scc68070::interrupt_source::none);
-	REQUIRE(scc68070::first_interrupt_source(std::array<uint8_t, 8>{ 1, 2, 3, 4, 5, 6, 7, 1 }, 0) == scc68070::interrupt_source::none);
+	REQUIRE(scc68070::first_interrupt_source(std::array<std::uint8_t, 8>{ 1, 2, 3, 4, 5, 6, 7, 1 }, 0) == scc68070::interrupt_source::none);
 }
 
-TEST_CASE("SCC68070 DMA address modes handle fixed, increment, wrap, and reserved encodings", "[emu][machine][scc68070][dma]")
+TEST_CASE("SCC68070 DMA address writes preserve untouched byte lanes", "[emu][machine][scc68070][dma]")
 {
-	auto result = scc68070::dma_address_after_transfer(0x123456, 0x00, 2);
-	REQUIRE(result.valid);
-	REQUIRE(result.address == 0x123456);
+	REQUIRE(scc68070::dma_address_high_write(0x123456, 0x00ab, 0xffff) == 0xab3456);
+	REQUIRE(scc68070::dma_address_high_write(0x123456, 0x00cd, 0x00ff) == 0xcd3456);
+	REQUIRE(scc68070::dma_address_high_write(0x123456, 0xef00, 0xff00) == 0x123456);
 
-	result = scc68070::dma_address_after_transfer(0x123456, 0x01, 1);
-	REQUIRE(result.valid);
-	REQUIRE(result.address == 0x123457);
+	REQUIRE(scc68070::dma_address_low_write(0x123456, 0xbeef, 0xffff) == 0x12beef);
+	REQUIRE(scc68070::dma_address_low_write(0x123456, 0x00aa, 0x00ff) == 0x1234aa);
+	REQUIRE(scc68070::dma_address_low_write(0x123456, 0xbb00, 0xff00) == 0x12bb56);
+}
 
-	result = scc68070::dma_address_after_transfer(0xffffff, 0x01, 2);
-	REQUIRE(result.valid);
-	REQUIRE(result.address == 0x000001);
+TEST_CASE("SCC68070 DMA RESET preserves transfer and address counters", "[emu][machine][scc68070][dma][reset]")
+{
+	dma_reset_model channel{ 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x1357, 0x123456, 0x654321 };
 
-	REQUIRE_FALSE(scc68070::dma_address_after_transfer(0x123456, 0x02, 1).valid);
-	REQUIRE_FALSE(scc68070::dma_address_after_transfer(0x123456, 0x03, 2).valid);
+	scc68070::reset_dma_control_state(channel, 0x30, 0x02, 0x04);
+
+	REQUIRE(channel.channel_status == 0x00);
+	REQUIRE(channel.channel_error == 0x00);
+	REQUIRE(channel.device_control == 0x30);
+	REQUIRE(channel.operation_control == 0x02);
+	REQUIRE(channel.sequence_control == 0x04);
+	REQUIRE(channel.channel_control == 0x00);
+	REQUIRE(channel.transfer_counter == 0x1357);
+	REQUIRE(channel.memory_address_counter == 0x123456);
+	REQUIRE(channel.device_address_counter == 0x654321);
 }
 
 TEST_CASE("SCC68070 I2C data access sets PIN and clears AL and AAS", "[emu][machine][scc68070][i2c]")
 {
 	for (unsigned status = 0; status <= 0xff; ++status)
 	{
-		const uint8_t result = scc68070::i2c_status_after_data_access(uint8_t(status));
+		const std::uint8_t result = scc68070::i2c_status_after_data_access(std::uint8_t(status));
 		REQUIRE(result == ((status | 0x10) & ~0x0c));
 	}
 }
@@ -68,9 +97,19 @@ TEST_CASE("SCC68070 UART fixed and command bits retain only documented state", "
 {
 	for (unsigned value = 0; value <= 0xff; ++value)
 	{
-		REQUIRE(scc68070::uart_status_read_value(uint8_t(value)) == (value | 0x02));
-		REQUIRE(scc68070::uart_control_after_misc_command(uint8_t(value)) == (value & 0x0f));
+		REQUIRE(scc68070::uart_status_read_value(std::uint8_t(value)) == (value | 0x02));
+		REQUIRE(scc68070::uart_control_after_misc_command(std::uint8_t(value)) == (value & 0x0f));
 	}
+}
+
+TEST_CASE("SCC68070 UART baud clock selects internal divide-by-four or XCKI", "[emu][machine][scc68070][uart][timing]")
+{
+	REQUIRE(scc68070::uart_baud_clock(19'660'800, 7'372'800, false) == 4'915'200);
+	REQUIRE(scc68070::uart_baud_clock(19'660'800, 7'372'800, true) == 7'372'800);
+	REQUIRE(scc68070::uart_baud_clock(19'660'800, 0, true) == 0);
+	REQUIRE(scc68070::uart_baud_divisor(0) == 65536);
+	REQUIRE(scc68070::uart_baud_divisor(7) == 256);
+	REQUIRE(scc68070::uart_baud_divisor(0x0f) == 256);
 }
 
 TEST_CASE("SCC68070 MMU register fields mask reserved bits and compose byte lanes", "[emu][machine][scc68070][mmu]")

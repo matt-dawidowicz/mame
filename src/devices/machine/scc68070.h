@@ -13,11 +13,13 @@
 
 STATUS:
 
-- Skeleton.  Just enough for the CD-i to run.
+- Partial implementation. CD-i and Magicard boot paths are supported, but
+  several SCC68070 peripherals remain incomplete.
 
 TODO:
 
 - Proper handling of the 68070's internal devices (UART, DMA, Timers, etc.)
+- I2C could do with re-visiting.
 
 *******************************************************************************/
 
@@ -153,13 +155,14 @@ public:
 
 		uint8_t reserved1[3];
 
-		uint16_t transfer_counter;
-
-		uint32_t memory_address_counter;
+		// MTCH/MTCL, MAC and DAC are not affected by SCC68070 RESET.  Give
+		// them deterministic power-on values, then preserve them on reset.
+		uint16_t transfer_counter = 0;
+		uint32_t memory_address_counter = 0;
 
 		uint8_t reserved2[4];
 
-		uint32_t device_address_counter;
+		uint32_t device_address_counter = 0;
 
 		uint8_t reserved3[40];
 	};
@@ -188,20 +191,10 @@ public:
 		mmu_desc_t desc[8];
 	};
 
-	bool dma_channel_active(unsigned channel) const;
-	bool dma_channel_transfer(unsigned channel, uint16_t &data);
-
-	// Read-only state exposed to peripheral-side DMA clients.
-	bool dma_channel_memory_to_device(unsigned channel) const;
-	bool dma_channel_word_transfer(unsigned channel) const;
-	bool dma_channel_memory_increment(unsigned channel, bool &increment) const;
-	uint16_t dma_channel_remaining(unsigned channel) const;
-	uint32_t dma_channel_memory_address(unsigned channel) const;
-	bool dma_channel_external_start(unsigned channel);
-
-	// Compatibility wrappers for the existing channel-1 peripheral path.
-	bool dma_channel1_active() const { return dma_channel_active(0); }
-	bool dma_channel1_transfer(uint16_t &data) { return dma_channel_transfer(0, data); }
+	// Preserve the existing CDIC-facing interface in the SCC-only
+	// prerequisite.  A typed peripheral DMA interface belongs with the
+	// later DVC integration, where it has an actual consumer.
+	dma_regs_t& dma() { return m_dma; }
 
 protected:
 	// device_t implementation
