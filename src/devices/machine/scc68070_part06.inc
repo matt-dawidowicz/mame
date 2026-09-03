@@ -160,8 +160,6 @@ void scc68070_device::ucr_w(uint8_t data)
 		controls = (controls & ~0x0cU) | (transmitter_command << 2);
 	m_uart.command_register = controls;
 
-	if (receiver_command == 2)
-		m_uart.status_register &= ~USR_RXRDY;
 	const uint8_t mode = m_uart.mode_register & UMR_OM;
 	if (transmitter_command == 1 && m_uart.transmit_pointer < 0
 		&& mode != UMR_OM_ECHO && mode != UMR_OM_RLOOP)
