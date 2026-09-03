@@ -130,6 +130,18 @@ bool scc68070_device::dma_channel_transfer(unsigned channel, uint16_t &data)
 	return true;
 }
 
+bool scc68070_device::dma_channel_device_terminate(unsigned channel)
+{
+	if (!dma_channel_active(channel))
+		return false;
+
+	dma_channel_t &dma = m_dma.channel[channel];
+	dma.channel_status = scc68070::dma_status_after_device_termination(dma.channel_status);
+	dma.channel_error = CER_NONE;
+	update_ipl();
+	return true;
+}
+
 bool scc68070_device::dma_channel_external_start(unsigned channel)
 {
 	// DREQ is only a request/gate.  START/CA ownership stays in the SCC.

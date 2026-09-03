@@ -203,6 +203,7 @@ public:
 	dma_regs_t& dma() { return m_dma; }
 	bool dma_channel_active(unsigned channel) const;
 	bool dma_channel_transfer(unsigned channel, uint16_t &data);
+	bool dma_channel_device_terminate(unsigned channel);
 	bool dma_channel_external_start(unsigned channel);
 	bool dma_channel_memory_to_device(unsigned channel) const;
 	bool dma_channel_word_transfer(unsigned channel) const;
