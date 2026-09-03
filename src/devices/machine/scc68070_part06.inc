@@ -76,6 +76,17 @@ void scc68070_device::umr_w(uint8_t data)
 {
 	LOGMASKED(LOG_MORE_UART, "%s: UART Mode Register Write: %02x\n", machine().describe_context(), data);
 	m_uart.mode_register = data & ~0x20U;
+
+	const uint8_t mode = m_uart.mode_register & UMR_OM;
+	if (mode == UMR_OM_ECHO || mode == UMR_OM_RLOOP)
+	{
+		m_uart.status_register &= ~(USR_TXRDY | USR_TXEMT);
+		m_uart_tx_int = false;
+	}
+	else if (((m_uart.command_register >> 2) & 3) == 1 && m_uart.transmit_pointer < 0)
+		m_uart.status_register |= USR_TXRDY | USR_TXEMT;
+
+	update_ipl();
 	update_uart_timing();
 }
 
@@ -151,8 +162,15 @@ void scc68070_device::ucr_w(uint8_t data)
 
 	if (receiver_command == 2)
 		m_uart.status_register &= ~USR_RXRDY;
-	if (transmitter_command == 1 && m_uart.transmit_pointer < 0)
+	const uint8_t mode = m_uart.mode_register & UMR_OM;
+	if (transmitter_command == 1 && m_uart.transmit_pointer < 0
+		&& mode != UMR_OM_ECHO && mode != UMR_OM_RLOOP)
 		m_uart.status_register |= USR_TXRDY | USR_TXEMT;
+	if (mode == UMR_OM_ECHO || mode == UMR_OM_RLOOP)
+	{
+		m_uart.status_register &= ~(USR_TXRDY | USR_TXEMT);
+		m_uart_tx_int = false;
+	}
 
 	const uint8_t misc_command = (data >> 4) & 0x07;
 	switch (misc_command)
@@ -199,6 +217,8 @@ void scc68070_device::ucr_w(uint8_t data)
 	default:
 		break;
 	}
+
+	update_ipl();
 }
 
 TIMER_CALLBACK_MEMBER(scc68070_device::uart_break_timer_callback)
