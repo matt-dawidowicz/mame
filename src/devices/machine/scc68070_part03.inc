@@ -228,7 +228,10 @@ void scc68070_device::uart_ctsn(int state)
 
 void scc68070_device::uart_queue_receive(uint8_t data, bool framing_error, bool parity_error, bool break_received)
 {
-	if ((m_uart.command_register & 3) != 1)
+	const uint8_t mode = m_uart.mode_register & UMR_OM;
+	// Local loopback feeds the receive datapath internally even when the
+	// normal receiver-enable command is clear.
+	if ((m_uart.command_register & 3) != 1 && mode != UMR_OM_LOOPBACK)
 		return;
 
 	if (m_uart.receive_pointer >= int16_t(std::size(m_uart.receive_buffer) - 1))
@@ -254,21 +257,41 @@ void scc68070_device::uart_rx(uint8_t data)
 
 void scc68070_device::uart_rx(uint8_t data, bool framing_error, bool parity_error, bool break_received)
 {
-	switch (m_uart.mode_register & UMR_OM)
+	const uint8_t mode = m_uart.mode_register & UMR_OM;
+	const bool receiver_enabled = (m_uart.command_register & 3) == 1;
+	const uint8_t character = data & scc68070::uart_character_mask(m_uart.mode_register);
+
+	switch (mode)
 	{
 	case UMR_OM_NORMAL:
-		uart_queue_receive(data, framing_error, parity_error, break_received);
+		uart_queue_receive(character, framing_error, parity_error, break_received);
 		break;
 	case UMR_OM_ECHO:
-		uart_queue_receive(data, framing_error, parity_error, break_received);
-		uart_tx(data);
+		// Auto-echo uses the receive path/clock.  CPU-to-transmitter is
+		// disconnected and normal transmitter enable/CTS do not gate echo.
+		if (receiver_enabled)
+		{
+			uart_queue_receive(character, framing_error, parity_error, break_received);
+			m_uart_tx_callback(character);
+		}
 		break;
 	case UMR_OM_LOOPBACK:
-		// Local loopback disconnects the external receiver input.
+		// Local loopback ignores the external receiver input.
 		break;
 	case UMR_OM_RLOOP:
-		// Remote loopback retransmits received data without presenting it to CPU.
-		uart_tx(data);
+		// Remote loopback also uses the receive path/clock, but received data
+		// is not made visible to the local CPU.  Receive error status remains
+		// meaningful even though RxRDY stays inactive.
+		if (receiver_enabled)
+		{
+			if (framing_error)
+				m_uart.status_register |= USR_FE;
+			if (parity_error)
+				m_uart.status_register |= USR_PE;
+			if (break_received)
+				m_uart.status_register |= USR_RB;
+			m_uart_tx_callback(character);
+		}
 		break;
 	}
 }
@@ -285,7 +308,8 @@ void scc68070_device::uart_tx(uint8_t data)
 
 TIMER_CALLBACK_MEMBER(scc68070_device::rx_callback)
 {
-	if ((m_uart.command_register & 3) != 1 || m_uart.receive_pointer < 0)
+	const uint8_t mode = m_uart.mode_register & UMR_OM;
+	if ((((m_uart.command_register & 3) != 1) && mode != UMR_OM_LOOPBACK) || m_uart.receive_pointer < 0)
 	{
 		m_uart.status_register &= ~USR_RXRDY;
 		return;
@@ -299,6 +323,21 @@ TIMER_CALLBACK_MEMBER(scc68070_device::rx_callback)
 
 TIMER_CALLBACK_MEMBER(scc68070_device::tx_callback)
 {
+	const uint8_t mode = m_uart.mode_register & UMR_OM;
+
+	// In automatic echo and remote loopback, the normal transmitter datapath
+	// is bypassed and its ready/empty status and interrupt are inactive.
+	if (mode == UMR_OM_ECHO || mode == UMR_OM_RLOOP)
+	{
+		m_uart.status_register &= ~(USR_TXEMT | USR_TXRDY);
+		if (m_uart_tx_int)
+		{
+			m_uart_tx_int = false;
+			update_ipl();
+		}
+		return;
+	}
+
 	if (((m_uart.command_register >> 2) & 3) != 1 || m_uart.break_active || m_uart.break_release_pending)
 		return;
 	if (m_uart.transmit_pointer < 0)
@@ -306,11 +345,13 @@ TIMER_CALLBACK_MEMBER(scc68070_device::tx_callback)
 		m_uart.status_register |= USR_TXEMT | USR_TXRDY;
 		return;
 	}
-	if (m_uart.transmit_ctsn && BIT(m_uart.mode_register, 4))
+	// External CTS gates only normal transmission.  Local loopback is an
+	// internal diagnostic path and ignores the external handshake input.
+	if (mode == UMR_OM_NORMAL && m_uart.transmit_ctsn && BIT(m_uart.mode_register, 4))
 		return;
 
 	m_uart.transmit_holding_register = m_uart.transmit_buffer[0];
-	if ((m_uart.mode_register & UMR_OM) == UMR_OM_LOOPBACK)
+	if (mode == UMR_OM_LOOPBACK)
 		uart_queue_receive(m_uart.transmit_holding_register, false, false, false);
 	else
 		m_uart_tx_callback(m_uart.transmit_holding_register);
