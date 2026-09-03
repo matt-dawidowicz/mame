@@ -65,6 +65,7 @@ project("mametests")
 		MAME_DIR .. "tests/main.cpp",
 		MAME_DIR .. "tests/emu/machine/scc68070.cpp",
 		MAME_DIR .. "tests/emu/philips/cdicdic.cpp",
+		MAME_DIR .. "tests/emu/philips/cdicdic_audio.cpp",
 		MAME_DIR .. "tests/emu/philips/mcd212_video.cpp",
 		MAME_DIR .. "tests/emu/philips/cdidvc.cpp",
 		MAME_DIR .. "tests/emu/philips/cdidvc_timing.cpp",
