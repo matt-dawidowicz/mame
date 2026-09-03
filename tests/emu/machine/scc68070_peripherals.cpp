@@ -111,13 +111,17 @@ TEST_CASE("SCC68070 DMA fixed and increment address modes are exact", "[emu][mac
 	}
 }
 
-TEST_CASE("SCC68070 DMA transfer count and termination state are documented", "[emu][machine][scc68070][dma]")
+TEST_CASE("SCC68070 DMA count spans the full 1-to-65536 operand range", "[emu][machine][scc68070][dma]")
 {
-	REQUIRE_FALSE(scc68070::dma_count_after_transfer(0).valid);
+	// MTC=0 represents 65536 operands, so the first successful transfer wraps
+	// the register to ffff without terminating the channel.
+	auto result = scc68070::dma_count_after_transfer(0);
+	REQUIRE(result.remaining == 0xffff);
+	REQUIRE_FALSE(result.complete);
+
 	for (unsigned counter = 1; counter <= 0xffff; ++counter)
 	{
-		const auto result = scc68070::dma_count_after_transfer(std::uint16_t(counter));
-		REQUIRE(result.valid);
+		result = scc68070::dma_count_after_transfer(std::uint16_t(counter));
 		REQUIRE(result.remaining == std::uint16_t(counter - 1));
 		REQUIRE(result.complete == (counter == 1));
 	}
