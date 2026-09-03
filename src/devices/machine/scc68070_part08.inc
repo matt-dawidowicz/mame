@@ -153,6 +153,30 @@ bool scc68070_device::dma_channel_device_terminate(unsigned channel)
 	return true;
 }
 
+bool scc68070_device::dma_channel_memory_bus_error(unsigned channel)
+{
+	if (!dma_channel_active(channel))
+		return false;
+
+	dma_channel_t &dma = m_dma.channel[channel];
+	dma.channel_status = scc68070::dma_status_after_error(dma.channel_status);
+	dma.channel_error = CER_BUSERR_MEM;
+	update_ipl();
+	return true;
+}
+
+bool scc68070_device::dma_channel_device_bus_error(unsigned channel)
+{
+	if (!dma_channel_active(channel))
+		return false;
+
+	dma_channel_t &dma = m_dma.channel[channel];
+	dma.channel_status = scc68070::dma_status_after_error(dma.channel_status);
+	dma.channel_error = CER_BUSERR_DEV;
+	update_ipl();
+	return true;
+}
+
 bool scc68070_device::dma_channel_external_start(unsigned channel)
 {
 	// DREQ is only a request/gate.  START/CA ownership stays in the SCC.
