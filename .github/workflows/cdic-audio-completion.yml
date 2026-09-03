@@ -52,11 +52,29 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y libsdl2-dev libsdl2-ttf-dev libfontconfig-dev libasound2-dev libxinerama-dev libxi-dev qt6-base-dev qt6-base-dev-tools
     - name: Build Philips CD-i driver
+      id: live_build
       env:
         SOURCES: src/mame/philips/cdi.cpp
         REGENIE: 1
         TOOLS: 0
-      run: make -j3
+      run: |
+        set -o pipefail
+        make -j3 2>&1 | tee cdic-build.log
+    - name: Persist compiler diagnostic on failure
+      if: failure() && steps.live_build.outcome == 'failure'
+      run: |
+        mkdir -p .github
+        {
+          echo "CD-i audio live-build failure"
+          echo "workflow head: ${GITHUB_SHA}"
+          echo
+          tail -n 240 cdic-build.log
+        } > .github/audio-build-error.txt
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git add .github/audio-build-error.txt
+        git commit -m "ci: capture CD-i audio build failure"
+        git push origin HEAD:cdi-audio-completion
 
   commit-audio-completion:
     needs:
@@ -73,6 +91,7 @@ jobs:
       run: |
         rm .github/scripts/cdic_audio_completion.py
         rm .github/workflows/cdic-audio-completion.yml
+        rm -f .github/audio-build-error.txt
     - name: Verify patch cleanliness
       run: |
         git diff --check
