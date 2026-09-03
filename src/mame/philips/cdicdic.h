@@ -9,7 +9,7 @@
     written by Ryan Holtz
 
 
-*******************************************************************************
+*******************************************************************************/
 
 STATUS:
 
@@ -195,17 +195,22 @@ private:
 	// Audio Attenuation (L->L, L->R, R->R, R->L)
 	uint8_t m_atten[4];
 	int16_t m_xa_last[4];
+	bool m_deemphasis_enabled;
+	uint32_t m_deemphasis_rate;
+	double m_deemphasis_previous_input[2];
+	double m_deemphasis_previous_output[2];
 	std::unique_ptr<uint8_t[]> m_ram;
 	std::unique_ptr<int16_t[]> m_samples[2];
 
-	void decode_xa_unit(const uint8_t param, int16_t sample, int16_t &sample0, int16_t &sample1, int16_t &out_buffer);
+	void decode_xa_unit(uint8_t param, uint8_t maximum_range, int16_t sample, int16_t &sample0, int16_t &sample1, int16_t &out_buffer);
 	void decode_8bit_xa_unit(int channel, uint8_t param, const uint8_t *data, int16_t *out_buffer);
 	void decode_4bit_xa_unit(int channel, uint8_t param, const uint8_t *data, uint8_t shift, int16_t *out_buffer);
-	void play_raw_group(const uint8_t *data);
-	void play_xa_group(const uint8_t coding, const uint8_t *data, const uint16_t idx);
-	void play_audio_sector(const uint8_t coding, const uint8_t *data);
+	void play_xa_group(uint8_t coding, const uint8_t *data, uint16_t idx);
+	void play_audio_sector(uint8_t coding, const uint8_t *data);
 	void play_cdda_sector(const uint8_t *data);
 	void process_audio_map();
+	void reset_deemphasis();
+	void apply_deemphasis(int16_t &left, int16_t &right, bool enabled, uint32_t sample_rate);
 
 	void descramble_sector(uint8_t *buffer);
 	bool is_valid_sector(const uint8_t *buffer);
