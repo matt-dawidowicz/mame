@@ -60,6 +60,12 @@ constexpr coding_info decode_coding(uint8_t coding)
 	};
 }
 
+constexpr uint8_t normalize_sound_parameter(uint8_t parameter, uint8_t maximum_range)
+{
+	const uint8_t range = parameter & 0x0f;
+	return uint8_t((parameter & 0xf0) | (range > maximum_range ? maximum_range : range));
+}
+
 constexpr int16_t clip_sample(int64_t sample)
 {
 	return int16_t(sample < -32768 ? -32768 : sample > 32767 ? 32767 : sample);
