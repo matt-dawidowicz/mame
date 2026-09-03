@@ -229,25 +229,28 @@ void scc68070_device::uart_ctsn(int state)
 void scc68070_device::uart_queue_receive(uint8_t data, bool framing_error, bool parity_error, bool break_received)
 {
 	const uint8_t mode = m_uart.mode_register & UMR_OM;
-	// Local loopback feeds the receive datapath internally even when the
-	// normal receiver-enable command is clear.
+	// uart_rx() and local-loopback injection both occur when a complete serial
+	// character has arrived.  Transfer it directly into RHR instead of adding a
+	// second character-time delay inside the SCC.
 	if ((m_uart.command_register & 3) != 1 && mode != UMR_OM_LOOPBACK)
 		return;
 
-	if (m_uart.receive_pointer >= int16_t(std::size(m_uart.receive_buffer) - 1))
-	{
+	// The SCC has a receive holding register, not an unbounded guest-visible
+	// FIFO.  If software has not consumed the previous character when the next
+	// complete character arrives, report overrun and replace the old RHR value.
+	if (m_uart.status_register & USR_RXRDY)
 		m_uart.status_register |= USR_OE;
-		return;
-	}
-
-	m_uart.receive_pointer++;
-	m_uart.receive_buffer[m_uart.receive_pointer] = data & scc68070::uart_character_mask(m_uart.mode_register);
+	m_uart.receive_holding_register = data & scc68070::uart_character_mask(m_uart.mode_register);
+	m_uart.status_register |= USR_RXRDY;
 	if (framing_error)
 		m_uart.status_register |= USR_FE;
 	if (parity_error)
 		m_uart.status_register |= USR_PE;
 	if (break_received)
 		m_uart.status_register |= USR_RB;
+
+	m_uart_rx_int = true;
+	update_ipl();
 }
 
 void scc68070_device::uart_rx(uint8_t data)
@@ -308,17 +311,10 @@ void scc68070_device::uart_tx(uint8_t data)
 
 TIMER_CALLBACK_MEMBER(scc68070_device::rx_callback)
 {
-	const uint8_t mode = m_uart.mode_register & UMR_OM;
-	if ((((m_uart.command_register & 3) != 1) && mode != UMR_OM_LOOPBACK) || m_uart.receive_pointer < 0)
-	{
-		m_uart.status_register &= ~USR_RXRDY;
-		return;
-	}
-
-	m_uart.receive_holding_register = m_uart.receive_buffer[0];
-	m_uart.status_register |= USR_RXRDY;
-	m_uart_rx_int = true;
-	update_ipl();
+	// Character completion is delivered synchronously by uart_rx() or by the
+	// TX character timer in local loopback.  Keep this legacy timer inert until
+	// its state is removed in the consolidation cleanup.
+	m_uart.rx_timer->adjust(attotime::never);
 }
 
 TIMER_CALLBACK_MEMBER(scc68070_device::tx_callback)
