@@ -24,8 +24,6 @@ constexpr std::uint32_t UART_UMR_ADDRESS = 0x80002019;
 constexpr std::uint32_t UART_UCR_ADDRESS = 0x8000201d;
 constexpr std::uint32_t UART_UCS_ADDRESS = 0x8000201f;
 
-// SCC68070 DMA address counters are 24-bit.  Their high-word register only
-// exposes bits 23-16 in the low byte; the upper byte is reserved.
 constexpr std::uint32_t dma_address_high_write(std::uint32_t current, std::uint16_t data, std::uint16_t mem_mask)
 {
 	const std::uint32_t mask = std::uint32_t(mem_mask & 0x00ff) << 16;
@@ -44,9 +42,6 @@ struct dma_address_result
 	std::uint32_t address;
 };
 
-// Sequence-control address modes implemented by the SCC68070 are fixed and
-// increment.  The remaining encodings are reserved and must not silently act
-// as decrement modes.
 constexpr dma_address_result dma_address_after_transfer(std::uint32_t address, std::uint8_t mode, std::uint32_t operand_size)
 {
 	switch (mode & 0x03)
@@ -62,43 +57,33 @@ constexpr dma_address_result dma_address_after_transfer(std::uint32_t address, s
 
 struct dma_count_result
 {
-	bool valid;
 	std::uint16_t remaining;
 	bool complete;
 };
 
-// MTC is decremented once for each successfully transferred memory operand.
-// A programmed zero count is not a transferable operand; completion occurs
-// when a non-zero count is decremented to zero.
+// MTC is a 16-bit down-counter representing blocks of 1..65536 operands.
+// Programming 0 means 65536 operands: the first transfer wraps it to ffff.
+// Count termination occurs only when a pre-transfer value of 1 reaches zero.
 constexpr dma_count_result dma_count_after_transfer(std::uint16_t counter)
 {
-	if (!counter)
-		return { false, 0, false };
-	const std::uint16_t remaining = std::uint16_t(counter - 1);
-	return { true, remaining, remaining == 0 };
+	return { std::uint16_t(counter - 1), counter == 1 };
 }
 
 constexpr std::uint8_t dma_status_after_count(std::uint8_t status, bool complete)
 {
-	// CSR: COC=0x80, CA=0x08.
 	return complete ? std::uint8_t((status & ~0x08U) | 0x80U) : status;
 }
 
 constexpr std::uint8_t dma_status_after_device_termination(std::uint8_t status)
 {
-	// Device termination completes the current operand and sets NDT + COC.
 	return std::uint8_t((status & ~0x08U) | 0xa0U);
 }
 
 constexpr std::uint8_t dma_status_after_error(std::uint8_t status)
 {
-	// Bus error/software abort terminate the operation with ERR + COC.
 	return std::uint8_t((status & ~0x08U) | 0x90U);
 }
 
-// Philips documents MTCH/MTCL, MAC and DAC as not affected by RESET.  Keep
-// the resettable controller fields together so production code cannot
-// accidentally zero the transfer/address counters while resetting them.
 template <typename Channel>
 constexpr void reset_dma_control_state(Channel &channel, std::uint8_t device_control, std::uint8_t operation_control, std::uint8_t sequence_control)
 {
@@ -143,29 +128,19 @@ constexpr interrupt_source first_interrupt_source(const std::array<std::uint8_t,
 
 constexpr std::uint8_t i2c_status_after_data_access(std::uint8_t status)
 {
-	// IDR access sets PIN and clears AL and AAS.
 	return (status | 0x10) & ~std::uint8_t(0x0c);
 }
 
 constexpr std::uint8_t uart_status_read_value(std::uint8_t status)
 {
-	// USR bit 1 is unused and reads as zero in the Philips programming model.
 	return status & ~std::uint8_t(0x02);
 }
 
 constexpr std::uint8_t uart_control_after_misc_command(std::uint8_t control)
 {
-	// UCR miscellaneous commands are strobes; receiver/transmitter controls persist.
 	return control & 0x0f;
 }
 
-// UMR/RMR format from the Philips specification:
-// bit 0: 0=7 data bits, 1=8 data bits
-// bit 1: 0=1 stop bit, 1=2 stop bits
-// bit 2: parity type (0=odd, 1=even)
-// bit 3: parity control (0=inhibited, 1=enabled)
-// bit 4: CTS controls transmitter when set
-// bits 7:6: normal/auto-echo/local-loopback/remote-loopback.
 constexpr unsigned uart_character_bits(std::uint8_t mode)
 {
 	return 7U + (mode & 0x01U);
