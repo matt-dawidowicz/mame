@@ -8,9 +8,15 @@ This document is the current engineering status for preparing the Philips CD-i a
 
 - `cdi-dvc-reference-20260824` — frozen research reference at `6b55ed1ed611d70a846fd2df311d917f12791991`. Do not rewrite this branch; it preserves the complete validated research implementation and its historical instrumentation.
 - `cdi-upstream-scc68070-foundation` — clean SCC68070 prerequisite branch based on then-current upstream MAME `81c45c5bdf00904cf5b20c03e9b89d3a75994cdb`. Current pushed head: `48a0270aaf590d40f3f2bae59a155b162cd1c24c`.
-- `cdi-dvc-upstream-cleanup` — subtractive cleanup branch based on the frozen research reference. Cleanup commits through this review are `9927b533f7f6f706feba83b50aa7cecd7c10b72a`, `3639dc7c9cf7b1249f883701bd31198cf966ec77`, `62172912fec1c4f816e56890f296d3da242416dc`, and `83f521d79eee4ce6c8863ef8bebbe2797ecc9be2`.
+- `cdi-dvc-upstream-cleanup` — subtractive cleanup branch based on the frozen research reference. Cleanup commits through this review are `9927b533f7f6f706feba83b50aa7cecd7c10b72a`, `3639dc7c9cf7b1249f883701bd31198cf966ec77`, `62172912fec1c4f816e56890f296d3da242416dc`, `83f521d79eee4ce6c8863ef8bebbe2797ecc9be2`, `fd32f14541b36eaf080312a01f5b817da0372f4b`, `f6075e705b7eb77f6a3b71b4e85b132e0fabcff7`, and `652585ca469ba4a04233e1a5a37134b8259854c9`.
 
 The old `cdi-dvc-modernization` branch remains a research branch. It should not be used directly as the base of an upstream pull request.
+
+## Cleanup measurement
+
+Relative to the frozen research reference, the cleanup branch has removed 718 lines of code/test material while adding 22 replacement lines in the same code/test paths, for a net reduction of 696 lines. The old 448-line research status diary was separately replaced with this shorter upstream-focused document.
+
+Seven paths that appeared in the original project diff have been eliminated entirely from the upstream preparation diff, including the two SDL modifications, the global test-runner modification, both Mono-II-only files, and the standalone DVC audio replay regression. The frozen reference retains all removed material for provenance.
 
 ## Evidence labels
 
@@ -63,11 +69,20 @@ Removed:
 
 Mono-II is a separate platform effort and is not required to add Digital Video Cartridge support to Mono-I. It should return only as an independently reviewable series with ROM/runtime evidence.
 
-#### Standalone DVC audio save-replay regression
+#### DVC save-replay-only tests
 
-Removed in `83f521d79eee4ce6c8863ef8bebbe2797ecc9be2`.
+Removed in `83f521d79eee4ce6c8863ef8bebbe2797ecc9be2`, `f6075e705b7eb77f6a3b71b4e85b132e0fabcff7`, and `652585ca469ba4a04233e1a5a37134b8259854c9`.
 
-`tests/emu/philips/cdidvc_audio_replay.cpp` specifically validated reconstruction of opaque PL_MPEG state from a replay journal. DVC machines do not currently advertise save-state support, so this regression is not part of the initial upstream target.
+Removed:
+
+- `tests/emu/philips/cdidvc_audio_replay.cpp`;
+- save-mirror capacity, saved-frame storage, and replay-pump boundary cases from `cdi_hardening.cpp`;
+- replay-pump encoding and restored-presentation storage cases from the main DVC helper test;
+- test-only `cdidvc_save_state.h` includes made unnecessary by those deletions.
+
+The retained DVC tests continue to cover command decoding, FIFO/status semantics, timestamp wrap, picture event ordering, MPEG audio format behavior, PES parsing, clock conversion, and timing. DVC machines do not currently advertise save-state support, so replay reconstruction is not part of the initial upstream test contract.
+
+Research-title-specific comments in retained generic DVC tests were also replaced with descriptions of the actual decoder/backend condition being tested.
 
 ## SCC68070 prerequisite status
 
@@ -107,7 +122,7 @@ These areas still need extraction into a smaller upstream series; retention here
 
 ## Code still to remove or refactor before the first DVC PR
 
-### DVC save-state reconstruction — deferred removal/refactor
+### DVC save-state reconstruction — source-level refactor required
 
 The production DVC source still contains a large save-state reconstruction mechanism. This was present from the initial DVC import and later became interwoven with MPEG parser and presentation fixes, so it cannot be safely removed by reverting a historical commit.
 
@@ -121,7 +136,7 @@ The current mechanism reserves fixed mirrors including approximately:
 
 It also reconstructs opaque PL_MPEG decoder state by replaying elementary-stream data after state load.
 
-This is not a first-DVC-PR requirement because DVC machines do not advertise `MACHINE_SUPPORTS_SAVE`. The intended upstream extraction should remove the replay mirrors, pre/post-save reconstruction callbacks, replay journals, and save-only tests, while preserving ordinary reset/runtime state. That change must be performed as a source-level refactor rather than a whole-file historical rollback.
+This is not a first-DVC-PR requirement because DVC machines do not advertise `MACHINE_SUPPORTS_SAVE`. The save-only external test contract has now been removed from the cleanup branch. The intended upstream extraction should next remove the replay mirrors, pre/post-save reconstruction callbacks, replay journals, and replay-only helper header from production source while preserving ordinary reset/runtime state. That change must be performed as a source-level refactor rather than a whole-file historical rollback.
 
 ### Research telemetry in DVC hot paths
 
@@ -224,14 +239,17 @@ The frozen 2026-08-24 reference branch recorded extensive local validation, incl
 
 They do **not** certify the reconstructed SCC branch or the subtractive cleanup branch. Every reconstructed upstream candidate must be rebuilt and retested after extraction.
 
+The current cleanup head also has no GitHub commit-status checks attached. Treat this branch as statically reviewed until it has been compiled and exercised locally.
+
 ## Immediate next actions
 
 1. Compile and run `mametests` for `cdi-upstream-scc68070-foundation`.
 2. Reconstruct SCC changes into reviewer-sized commits if the build passes.
-3. Continue subtractive cleanup of DVC research telemetry without reverting later functional MPEG/presentation fixes.
-4. Refactor save-state reconstruction out of the first DVC candidate rather than historically rolling back `cdidvc.cpp`.
+3. Perform the source-level DVC save-reconstruction removal on top of the cleanup branch, preserving live MPEG/parser/presentation behavior.
+4. Remove or fully disable research telemetry in DVC hot paths.
 5. Introduce a generic SCC peripheral-DMA interface and prove it first with CDIC, then DVC.
-6. Add SCC-to-DVC and IRQ4 integration fixtures.
-7. Re-run PAL/NTSC runtime smoke tests after each extracted series.
+6. Remove the PL_MPEG-private-state dependency from guest-visible FIFO accounting.
+7. Add SCC-to-DVC and IRQ4 integration fixtures.
+8. Re-run PAL/NTSC runtime smoke tests after each extracted series.
 
 The objective is no longer to add more CD-i behavior to the research branch. The objective is to preserve the validated behavior while reducing scope, coupling, unsupported features, instrumentation, and review risk until each upstream change has one defensible purpose.
