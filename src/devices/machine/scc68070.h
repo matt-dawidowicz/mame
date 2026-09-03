@@ -9,18 +9,6 @@
     written by Ryan Holtz
 
 
-*******************************************************************************
-
-STATUS:
-
-- Partial implementation. CD-i and Magicard boot paths are supported, but
-  several SCC68070 peripherals remain incomplete.
-
-TODO:
-
-- Proper handling of the 68070's internal devices (UART, DMA, Timers, etc.)
-- I2C could do with re-visiting.
-
 *******************************************************************************/
 
 #ifndef MAME_MACHINE_SCC68070_H
@@ -56,7 +44,10 @@ public:
 	auto iack7_callback() { return m_iack7_callback.bind(); }
 	auto uart_tx_callback() { return m_uart_tx_callback.bind(); }
 	auto uart_rtsn_callback() { return m_uart_rtsn_callback.bind(); }
+	auto uart_break_callback() { return m_uart_break_callback.bind(); }
 	void set_uart_external_clock(uint32_t clock) { m_uart_external_clock = clock; }
+	auto timer1_out_callback() { return m_timer1_out_callback.bind(); }
+	auto timer2_out_callback() { return m_timer2_out_callback.bind(); }
 	auto i2c_scl_w() { return m_i2c_scl_callback.bind(); }
 	auto i2c_sda_w() { return m_i2c_sdaw_callback.bind(); }
 	auto i2c_sda_r() { return m_i2c_sdar_callback.bind(); }
@@ -68,15 +59,21 @@ public:
 	void int1_w(int state);
 	void int2_w(int state);
 
+	void timer1_w(int state);
+	void timer2_w(int state);
 	void write_scl(int state);
 
 	TIMER_CALLBACK_MEMBER(timer0_callback);
+	TIMER_CALLBACK_MEMBER(timer1_match_callback);
+	TIMER_CALLBACK_MEMBER(timer2_match_callback);
 	TIMER_CALLBACK_MEMBER(rx_callback);
 	TIMER_CALLBACK_MEMBER(tx_callback);
+	TIMER_CALLBACK_MEMBER(uart_break_timer_callback);
 	TIMER_CALLBACK_MEMBER(i2c_callback);
 
 	// external callbacks
 	void uart_rx(uint8_t data);
+	void uart_rx(uint8_t data, bool framing_error, bool parity_error, bool break_received);
 	void uart_ctsn(int state);
 
 	// register structures
@@ -127,7 +124,10 @@ public:
 		int16_t transmit_pointer;
 		uint8_t transmit_buffer[32768];
 		emu_timer* tx_timer;
+		emu_timer* break_timer;
 		bool transmit_ctsn;
+		bool break_active;
+		bool break_release_pending;
 	};
 
 	struct timer_regs_t
@@ -139,6 +139,12 @@ public:
 		uint16_t timer1;
 		uint16_t timer2;
 		emu_timer* timer0_timer;
+		emu_timer* timer1_match_timer;
+		emu_timer* timer2_match_timer;
+		bool timer1_input;
+		bool timer2_input;
+		bool timer1_output;
+		bool timer2_output;
 	};
 
 	struct dma_channel_t
@@ -191,10 +197,18 @@ public:
 		mmu_desc_t desc[8];
 	};
 
-	// Preserve the existing CDIC-facing interface in the SCC-only
-	// prerequisite.  A typed peripheral DMA interface belongs with the
-	// later DVC integration, where it has an actual consumer.
+	// Raw register access remains for the existing CDIC integration.  The
+	// transfer helpers below keep sequencing/count/completion ownership in the
+	// SCC rather than duplicating that logic in peripherals.
 	dma_regs_t& dma() { return m_dma; }
+	bool dma_channel_active(unsigned channel) const;
+	bool dma_channel_transfer(unsigned channel, uint16_t &data);
+	bool dma_channel_external_start(unsigned channel);
+	bool dma_channel_memory_to_device(unsigned channel) const;
+	bool dma_channel_word_transfer(unsigned channel) const;
+	bool dma_channel_memory_increment(unsigned channel, bool &increment) const;
+	uint16_t dma_channel_remaining(unsigned channel) const;
+	uint32_t dma_channel_memory_address(unsigned channel) const;
 
 protected:
 	// device_t implementation
@@ -251,10 +265,18 @@ private:
 	uint8_t uth_r();
 	void uth_w(uint8_t data);
 	uint8_t urh_r();
+	void update_uart_timing();
+	attotime uart_tx_bit_period() const;
+	void uart_queue_receive(uint8_t data, bool framing_error, bool parity_error, bool break_received);
 
 	// Timers
 	uint16_t timer_r(offs_t offset, uint16_t mem_mask);
 	void timer_w(offs_t offset, uint16_t data, uint16_t mem_mask);
+	uint16_t timer0_current() const;
+	void timer_set_status(uint8_t status_bit);
+	void timer_set_output(unsigned channel, bool state);
+	void timer_schedule_match(unsigned channel);
+	void timer_input_w(unsigned channel, int state);
 
 	// DMA controller
 	uint16_t dma_r(offs_t offset, uint16_t mem_mask);
@@ -277,6 +299,9 @@ private:
 	devcb_read8 m_iack7_callback;
 	devcb_write8 m_uart_tx_callback;
 	devcb_write_line m_uart_rtsn_callback;
+	devcb_write_line m_uart_break_callback;
+	devcb_write_line m_timer1_out_callback;
+	devcb_write_line m_timer2_out_callback;
 	devcb_write_line m_i2c_scl_callback;
 	devcb_write_line m_i2c_sdaw_callback;
 	devcb_read8 m_i2c_sdar_callback;
