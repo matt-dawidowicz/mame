@@ -27,8 +27,6 @@
 #include <algorithm>
 #include <cassert>
 #include <cmath>
-#include <cstdlib>
-#include <cstring>
 #include <list>
 #include <memory>
 
@@ -64,32 +62,6 @@
 #endif
 
 #define SDL_VERSION_EQUALS(v1, vnum2) (SDL_VERSIONNUM(v1.major, v1.minor, v1.patch) == vnum2)
-
-
-static bool wsl_x11_warp_mouse() noexcept
-{
-#if defined(SDLMAME_X11)
-	char const *const driver = SDL_GetCurrentVideoDriver();
-
-	return
-		driver &&
-		!std::strcmp(driver, "x11") &&
-		(std::getenv("WSL_INTEROP") || std::getenv("WSL_DISTRO_NAME"));
-#else
-	return false;
-#endif
-}
-
-static SDL_Cursor *wsl_x11_invisible_cursor()
-{
-	static Uint8 const data[8] = { 0, 0, 0, 0, 0, 0, 0, 0 };
-	static Uint8 const mask[8] = { 0, 0, 0, 0, 0, 0, 0, 0 };
-
-	static SDL_Cursor *const cursor =
-		SDL_CreateCursor(data, mask, 8, 8, 0, 0);
-
-	return cursor;
-}
 
 
 
@@ -163,14 +135,6 @@ void sdl_window_info::capture_pointer()
 {
 	if (!m_mouse_captured)
 	{
-		if (wsl_x11_warp_mouse())
-		{
-			SDL_SetHintWithPriority(
-					SDL_HINT_MOUSE_RELATIVE_MODE_WARP,
-					"1",
-					SDL_HINT_OVERRIDE);
-		}
-
 		SDL_SetWindowGrab(platform_window(), SDL_TRUE);
 		SDL_SetRelativeMouseMode(SDL_TRUE);
 		m_mouse_captured = true;
@@ -192,16 +156,6 @@ void sdl_window_info::hide_pointer()
 	if (!m_mouse_hidden)
 	{
 		SDL_ShowCursor(SDL_DISABLE);
-
-		// VcXsrv may continue drawing the warped host cursor even after
-		// SDL_ShowCursor(SDL_DISABLE).  Use a genuinely transparent cursor
-		// while WSL/X11 warp-relative mode owns the pointer.
-		if (wsl_x11_warp_mouse())
-		{
-			if (SDL_Cursor *const cursor = wsl_x11_invisible_cursor())
-				SDL_SetCursor(cursor);
-		}
-
 		m_mouse_hidden = true;
 	}
 }
@@ -210,10 +164,6 @@ void sdl_window_info::show_pointer()
 {
 	if (m_mouse_hidden)
 	{
-		// Restore SDL's normal system cursor before making it visible again.
-		if (wsl_x11_warp_mouse())
-			SDL_SetCursor(nullptr);
-
 		SDL_ShowCursor(SDL_ENABLE);
 		m_mouse_hidden = false;
 	}
@@ -347,18 +297,7 @@ void sdl_window_info::update_cursor_state()
 			capture_pointer();
 		}
 
-		// Keep the transparent cursor installed while WSL/X11 owns the
-		// pointer.  Resetting it to nullptr here would expose the physical
-		// cursor sitting at SDL's warp center every frame.
-		if (m_mouse_hidden && wsl_x11_warp_mouse())
-		{
-			if (SDL_Cursor *const cursor = wsl_x11_invisible_cursor())
-				SDL_SetCursor(cursor);
-		}
-		else
-		{
-			SDL_SetCursor(nullptr);
-		}
+		SDL_SetCursor(nullptr); // Force an update in case the underlying driver has changed visibility
 	}
 #endif
 }

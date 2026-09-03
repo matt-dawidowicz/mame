@@ -26,17 +26,6 @@
 
 namespace {
 
-bool cdi_hle_pointer_machine(running_machine const &machine)
-{
-	char const *const name = machine.system().name;
-
-	return
-		!std::strcmp(name, "cdimono1") ||
-		!std::strcmp(name, "cdi200") ||
-		!std::strcmp(name, "cdimono1dvc") ||
-		!std::strcmp(name, "cdimono1dvcntsc");
-}
-
 //============================================================
 //  defines_verbose
 //============================================================
@@ -464,13 +453,8 @@ bool sdl_osd_interface::should_hide_mouse()
 	if (machine().paused())
 		return false;
 
-	// CD-i Mono-I pointer software owns the visible cursor and may reposition
-	// it itself.  Keep the host cursor captured/hidden for every machine that
-	// uses the shared SLAVE-HLE pointer path, even when -mouse was not supplied.
-	bool const cdi_pointer = cdi_hle_pointer_machine(machine());
-
-	// For other systems retain normal MAME mouse/lightgun capture policy.
-	if (!cdi_pointer && !options().mouse() && !options().lightgun())
+	// if neither mice nor lightguns are enabled in the core, then no
+	if (!options().mouse() && !options().lightgun())
 		return false;
 
 	if (!mouse_over_window())
