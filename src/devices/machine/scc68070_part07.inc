@@ -41,8 +41,11 @@ void scc68070_device::timer_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 		break;
 	case 0x2/2:
 		// TRR writes update the next Timer-0 reload value; they do not re-phase
-		// the currently running Timer-0 interval.
+		// the currently running Timer-0 interval.  They do change any match
+		// delay that crosses the next overflow, so recompute those callbacks.
 		COMBINE_DATA(&m_timers.reload_register);
+		timer_schedule_match(1);
+		timer_schedule_match(2);
 		break;
 	case 0x4/2:
 		COMBINE_DATA(&m_timers.timer0);
