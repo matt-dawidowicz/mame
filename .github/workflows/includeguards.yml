@@ -3,14 +3,18 @@ name: 'Check #include guards'
 on:
   push:
     paths:
-    - '.github/workflows/**'
+    - '.github/workflows/includeguards.yml'
     - 'src/devices/**.h'
     - 'src/mame/**.h'
   pull_request:
     paths:
-    - '.github/workflows/**'
+    - '.github/workflows/includeguards.yml'
     - 'src/devices/**.h'
     - 'src/mame/**.h'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
