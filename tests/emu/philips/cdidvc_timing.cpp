@@ -3,6 +3,7 @@
 
 #include "catch.hpp"
 
+#include "cdidvc_fidelity.h"
 #include "cdidvc_utils.h"
 
 TEST_CASE("CD-i DVC anchored MPEG clock advances from 45 kHz DCLK", "[emu][philips][dvc]")
@@ -80,6 +81,55 @@ TEST_CASE("CD-i DVC DCLK delays convert to output samples with ceiling semantics
 	REQUIRE(cdi_dvc::dclk_delay_to_samples(45'000, 44'100) == 44'100);
 	REQUIRE(cdi_dvc::dclk_delay_to_samples(1, 48'000) == 2);
 	REQUIRE(cdi_dvc::dclk_delay_to_samples(15, 48'000) == 16);
+}
+
+TEST_CASE("CD-i DVC audio sample clock compares directly with SCR PTS and DCLK", "[emu][philips][dvc][audio][avsync][clock]")
+{
+	constexpr uint64_t anchor90 = 123'456;
+
+	// Exact one-second boundaries must agree in all three timing domains.
+	for (uint32_t rate : { 44'100U, 48'000U })
+	{
+		uint64_t const frames = rate;
+		uint64_t const clock90 = cdi_dvc::audio_sample_clock90(anchor90, frames, rate);
+		REQUIRE(clock90 == cdi_dvc::mpeg_timestamp_normalize(anchor90 + 90'000));
+		auto const observed = cdi_dvc::observe_audio_clock(
+			anchor90, frames, rate, clock90, clock90,
+			uint32_t((clock90 >> 1) & 0xffffffffU));
+		REQUIRE(observed.sample_clock90 == clock90);
+		REQUIRE(observed.sample_minus_scr90 == 0);
+		REQUIRE(observed.sample_minus_pts90 == 0);
+		REQUIRE(observed.sample_minus_dclk45 == 0);
+	}
+
+	// Thirty minutes of exact-rate audio must not accumulate arithmetic drift.
+	for (uint32_t rate : { 44'100U, 48'000U })
+	{
+		uint64_t const frames = uint64_t(rate) * 30U * 60U;
+		uint64_t const expected90 = cdi_dvc::mpeg_timestamp_normalize(
+			anchor90 + uint64_t(90'000) * 30U * 60U);
+		uint64_t const observed90 = cdi_dvc::audio_sample_clock90(anchor90, frames, rate);
+		REQUIRE(observed90 == expected90);
+		auto const observed = cdi_dvc::observe_audio_clock(
+			anchor90, frames, rate, expected90, expected90,
+			uint32_t((expected90 >> 1) & 0xffffffffU));
+		REQUIRE(observed.sample_minus_scr90 == 0);
+		REQUIRE(observed.sample_minus_pts90 == 0);
+		REQUIRE(observed.sample_minus_dclk45 == 0);
+	}
+
+	// The observation signs are explicit: positive means the emitted sample
+	// clock is ahead of the timing reference.
+	auto ahead = cdi_dvc::observe_audio_clock(
+		anchor90, 48'000, 48'000,
+		anchor90 + 89'990, anchor90 + 89'980,
+		uint32_t(((anchor90 + 89'970) >> 1) & 0xffffffffU));
+	REQUIRE(ahead.sample_minus_scr90 == 10);
+	REQUIRE(ahead.sample_minus_pts90 == 20);
+	REQUIRE(ahead.sample_minus_dclk45 == 15);
+
+	REQUIRE(cdi_dvc::audio_sample_clock90(anchor90, 1234, 0) ==
+		cdi_dvc::mpeg_timestamp_normalize(anchor90));
 }
 
 TEST_CASE("CD-i DVC Full Motion picture-rate codes expose exact rational rates", "[emu][philips][dvc]")
