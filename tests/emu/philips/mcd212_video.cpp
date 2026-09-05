@@ -85,6 +85,28 @@ TEST_CASE("MCD212 external-video eligibility requires two transparent planes and
 	REQUIRE_FALSE(mcd212_video::external_video_eligible(true, true, true, true));
 }
 
+TEST_CASE("MCD212 mosaic source selection is defined for zero and nonzero hold counts", "[emu][philips][mcd212][mosaic]")
+{
+	using mcd212_video::mosaic_source_x;
+
+	// Zero is an evidence-bounded compatibility case: no hold, never modulo zero.
+	for (std::size_t x = 0; x < 768; ++x)
+		REQUIRE(mosaic_source_x(x, 0) == x);
+
+	for (std::size_t hold = 1; hold <= 510; ++hold)
+	{
+		for (std::size_t x : { std::size_t(0), std::size_t(1), std::size_t(31),
+				std::size_t(255), std::size_t(511), std::size_t(767) })
+		{
+			std::size_t const source = mosaic_source_x(x, hold);
+			INFO("x=" << x << " hold=" << hold);
+			REQUIRE(source <= x);
+			REQUIRE(source % hold == 0);
+			REQUIRE(x - source < hold);
+		}
+	}
+}
+
 TEST_CASE("MCD212 QHY line decoder expands single, finite-run, and end-of-line pairs", "[emu][philips][mcd212][qhy]")
 {
 	constexpr std::array<uint8_t, 5> encoded =
