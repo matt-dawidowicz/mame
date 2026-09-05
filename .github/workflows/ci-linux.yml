@@ -4,6 +4,7 @@ on:
   push:
     paths:
     - '.github/workflows/ci-linux.yml'
+    - '.cdi-full-ci-trigger'
     - '3rdparty/**'
     - 'hash/**'
     - 'scripts/**'
