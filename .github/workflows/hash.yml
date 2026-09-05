@@ -3,16 +3,20 @@ name: XML/JSON validation
 on:
   push:
     paths:
-    - '.github/workflows/**'
+    - '.github/workflows/hash.yml'
     - 'ctrlr/*'
     - 'hash/*'
     - 'plugins/**'
   pull_request:
     paths:
-    - '.github/workflows/**'
+    - '.github/workflows/hash.yml'
     - 'ctrlr/*'
     - 'hash/*'
     - 'plugins/**'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
