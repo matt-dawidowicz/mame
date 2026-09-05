@@ -1,8 +1,8 @@
 # Philips CD-i modernization status
 
-Last reviewed: 2026-08-24
+Last reviewed: 2026-09-05
 
-Branch: `cdi-dvc-modernization`
+Branch: `audio/cdi-fidelity-100-campaign-20260905`
 
 Phase-A checkpoint: `63fbd31f6934cbd60956b1a0899d75ea5c31a871`
 Phase-B checkpoint: `2b05d1314a3fd2de2c5d03216b9a732f376ba6c9`
@@ -58,7 +58,7 @@ Implemented in this checkpoint:
 
 Scope: make the Mono-I CDIC HLE an explicit, auditable command/sector/buffer/audio/IRQ state model without attempting an unsupported MCU LLE rewrite. No title-, LBA-, BIOS-, or checksum-specific path was added.
 
-Evidence boundary: no public IMS66490 data sheet was found. Board-level interrupt, DMA, clock, SRAM, and audio-DSP topology is supported by the Philips CD-i 210/20/25 service manual. Register observations, first-buffer order, command traces, and AUDCTL/IRQ behavior are independently recorded in the MiSTer CD-i core at revision `8894b795f0b85956127372e5172b73278aea3655`; those are **R/S**, not a substitute for a chip specification. The six-sector seek delay and synthesized TOC remain explicit **C** behavior.
+Evidence boundary: no public IMS66490 data sheet was found. Board-level interrupt, DMA, clock, SRAM, and audio-DSP topology is supported by the Philips CD-i 210/20/25 service manual. Reproducible CD-i 210/05 programs and retained captures in `Slamy/CDIC_BlackBoxAnalyzer` revision `e861f76ece477b3aff0e9c4c70f5c6ba1715e60a` now provide **R** evidence for the implemented AUDCTL, ABUF, sound-map, XA-buffer, and CD-DA cadence behavior. MiSTer CD-i revision `1d0d29b164a05d11db0094564feacf0f66c1d4e4` and E-Di revision `b98537fddf3b6199554b2d289840a6704c344c81` provide implementation cross-checks, not replacement specifications. The six-sector seek delay and synthesized TOC/Q contents remain explicit **C** behavior.
 
 Implemented in this checkpoint:
 
@@ -68,7 +68,9 @@ Implemented in this checkpoint:
 - independent data and audio double-buffer selectors: first data delivery uses buffer 1, while first audio delivery uses buffer 0;
 - CPU-visible buffer completion separated from audio decode/playback;
 - XBUF IRQ gated by DBUF enable, ABUF IRQ gated by AUDCTL bit 13, and read-to-clear source acknowledgements;
-- AUDCTL bit 0 changed from a synthetic read toggle to decoder-termination read-to-clear status;
+- AUDCTL bit 11 playback ownership, bit 13 ABUF-IRQ gating, bit 0 decoder-termination read-to-clear status, and measured reset/post-write readback patterns;
+- separate save-stateable sound-map and CD-fed audio states, including `$2800`/`$3200` XA buffering, exact coding cadence, startup gating, starvation/refill, and sound-map abort/termination edges;
+- 75 Hz CD-DA PCM delivery with PCM bypassing CDIC RAM and synthesized Q stored at the measured `$924` trailer offset;
 - failed sector reads terminate the HLE command instead of delivering a fabricated zero sector;
 - XA predictor arithmetic and supported coding duration moved to tested pure helpers without changing the established coefficient model;
 - DSEL and new transport/buffer selectors receive deterministic reset values.
@@ -80,7 +82,7 @@ Implemented in this checkpoint:
 | `0x23` Reset Mode 1 | Partial: does not start a read; while active, the live command stops after the next physical sector. | Stop is checked after physical arrival even when filtering suppresses delivery. | R, S, T (`[cdic][command]`, `[cdic][reset]`). Exact command-complete status and idle behavior are **U**. |
 | `0x24` Reset Mode 2 | Same modeled stop semantics as `0x23`. | Same physical-sector boundary. | R, S, T. Exact distinction from `0x23` outside an active read is **U**. |
 | `0x27` Fetch TOC | Partial: enters TOC operation and synthesizes Q packets from MAME TOC metadata. | Uses the compatibility seek delay; XBUF follows visible buffer completion. | S, C. Packet ordering, lead-in cadence, mixed-mode descriptors, and stored subcode use are not hardware-proven. |
-| `0x28` Play CDDA | Partial: reads raw sectors, decodes CDDA each sector, exposes a CPU buffer once per second. | 75 Hz physical scheduling; visible XBUF at fraction zero. | R, S. Exact CDDA start/stop and subcode timing remain **U/C**. |
+| `0x28` Play CDDA | Partial: reads every raw audio sector, exposes an alternating CPU subcode buffer each sector, and gates PCM on AUDCTL bit 11. | 75 Hz physical scheduling and XBUF cadence; 588 stereo frames per sector; first sector waits for guest `$0800`. | R, S, T (`[cdic][audio][cdda]`). Exact audible sample edge, track/lead handling, and synthesized subcode contents remain **U/C**. |
 | `0x29` Read Mode 1 | Implemented HLE read at BCD MSF, with data double buffering. | Six-sector startup delay is **C**; each successful physical read advances LBA. | S, T. Error/status and servo seek completion are **U**. |
 | `0x2a` Read Mode 2 | Implemented HLE read with file/channel filtering, standards-conformant sector classification, and separate audio-buffer selection. | Filtered/malformed sectors advance physically without a visible buffer or IRQ; a selected-channel EOF stops after accepted delivery. | Standards, S, T (`[cdic][sector]`, `[cdic][malformed]`, `[cdic][buffer]`). Exact CDIC malformed-sector status remains unknown. |
 | `0x2b` Stop CDDA | Cancels the current disc operation immediately. | No modeled completion IRQ. | S. Whether it also flushes all audio pipeline state is **U**. |
@@ -101,7 +103,7 @@ Implemented in this checkpoint:
 | ABUF `0x3ff4` | 16-bit R/W; reset zero; bit 15 read-to-clear. | IRQ source only when AUDCTL bit 13 enables it. | R, S, T (`[cdic][irq]`). Remaining low bits are unexplained storage. |
 | XBUF `0x3ff6` | 16-bit R/W; reset zero; bit 15 read-to-clear. | Set on CPU-visible sector completion; IRQ requires DBUF bit 14. | R, S, T (`[cdic][irq]`). Remaining low bits are unexplained storage. |
 | DMACTL `0x3ff8` | 16-bit R/W; reset zero. | Address selects CDIC SRAM operand; SCC68070 channel 1 owns memory cycles and completion. | H, S, prior SCC tests. Address masks and request-edge timing remain incomplete. |
-| AUDCTL `0x3ffa` | 16-bit R/W; reset zero; bit 0 read-to-clear. | Bit 13 gates ABUF IRQ in this HLE; bit 0 reports `0xff` sound-map termination. Existing sound-map arm/address interpretation is retained. | R, S, T. Bit 11/13 playback ownership and low-bit read behavior still need direct traces. |
+| AUDCTL `0x3ffa` | Word access; reset reads `$c7fe`, a post-write zero reads `$d7fe`, and bit 0 is read-to-clear. | Bit 13 gates ABUF IRQ, bit 11 starts/stops playback, and bit 0 reports `$ff` sound-map termination. `$2800` starts the fixed first sound-map buffer; read-one status bits are not treated as an address. | R, T (`[cdic][audio][audctl]`, exhaustive 65,536-write oracle). Bit 12's reset-to-written transition is measured but unexplained; DAC flush/mute edges remain **U**. |
 | IVEC `0x3ffc` | 16-bit R/W; compatibility reset `0x000f`. | Low byte is returned on IACK; no acknowledge side effect. | H for daisy-chain topology, S. Reset value and IACK edge timing are **C/U**. |
 | DBUF `0x3ffe` | 16-bit R/W; reset zero. | Bit 15 accepts a command then clears; bit 14 enables reading/XBUF IRQ; bits 2/0 identify audio/data and buffer; clearing bit 14 cancels transport and resets selectors. | R, S, T (`[cdic][command]`, `[cdic][buffer]`, `[cdic][irq]`, `[cdic][reset]`). Other bits are unexplained storage. |
 
@@ -113,18 +115,18 @@ Implemented in this checkpoint:
 | Mode 1 | Raw sector is copied without Mode 2 filters into alternating data buffers. | S, T (`[cdic][buffer]`). | Mode mismatch, EDC/ECC status, and error flags are not modeled. |
 | Mode 2 filters | File must match; Trigger is global within the file; EOF/EOR apply only to selected channels; empty/message sectors are skipped unless carrying Trigger or selected EOF/EOR. Audio reaches the decoder only through both main and audio masks. Invalid channel/type/form/coding combinations and unresolved duplicate subheaders are dropped. | Standards, S, T (`[cdic][filter]`, `[cdic][malformed]`, exhaustive 67,108,864-state oracle). | The image interface lacks CIRC byte-reliability flags; exact CDIC error/status signaling needs hardware traces. |
 | Buffer completion | Data and audio each alternate independently and report the just-completed buffer through DBUF. XBUF asserts only for delivered sectors. | R, S, T (`[cdic][buffer]`, `[cdic][irq]`). | CPU/DSP/SRAM contention is not cycle-accurate. |
-| XA ADPCM | One pure production decoder validates every redundant sound parameter, rejects reserved width-specific filter/range values, decodes all 4/8-bit mono/stereo layouts, updates clipped predictor history, and preserves malformed-group duration as silence without contaminating history. The 16 coding-field-valid bytes still cover emphasis, width, channels, and both rates. | Standards, independent FFmpeg/jPSXdec source, S, T (`[cdic][xa]`: 2,449,377 assertions; exact 16,128-byte FFmpeg PCM fixture). | The silence/held-history error concealment is explicit **C** behavior; de-emphasis and physical CDIC accumulator, rounding, status, and IRQ behavior still need hardware evidence. |
-| CDDA/XA transitions | A new disc audio sector stops sound-map decoding; sound-map termination status is explicit. Headerless CD-DA samples bypass Mode 1/2 validation and descrambling. | S, T. | DAC queue flush/mute edges and exact AUDCTL playback gating remain **U**. |
-| TOC/subcode | Existing Q synthesis is retained and audited as **C**. | S, C. | No claim of exact lead-in packet order, P-W delivery, CRC polynomial initialization, or multi-session behavior. |
+| XA ADPCM | One pure production decoder uses the hardware-selected redundant parameters (8-bit bytes 12-15; 4-bit bytes 4-7 and 12-15), reports disagreements, rejects reserved selected values, decodes all layouts, updates clipped history, and preserves invalid-selected duration as silence. | Standards, 210/05 parameter-corruption capture, independent FFmpeg/jPSXdec source, T (`[cdic][xa]`; exact 16,128-byte FFmpeg PCM fixture). | Invalid-selected silence/held-history remains **C**; coding `$14` fails on captured 210/05 hardware but its related-value scope is unknown. De-emphasis and silicon arithmetic/status remain open. |
+| CDDA/XA transitions | CD-fed XA and CD-DA receipt are distinct from playback and wait for bit 11. XA alternates `$2800`/`$3200` and preserves buffer order over starvation/refill; CPU sound maps have priority. CD-DA PCM bypasses CDIC RAM. | R, corroborating RTL/emulator source, T (`[cdic][audio][audctl][buffer]`). | Exact DAC queue depth and hold/zero/ramp/flush behavior on stop, reset, underrun, or replacement remain **U**. |
+| TOC/subcode | Existing Q synthesis is retained as **C**. CD-DA now delivers a buffer every sector and stores Q at measured byte offset `$924`. | R for cadence/location; S, C for contents. | No claim of exact lead-in packet order, R-W/P-W acquisition, track/index transitions, CRC error status, or multi-session behavior. |
 | End of disc | Failed image reads stop the operation without delivering zero data. | S, T at helper/state boundary. | Hardware error/status/IRQ response is **U**. |
 | Attenuation | Four cross-mix attenuation bytes remain logarithmic float scaling. | S. | Quantization, mute timing, and DSP saturation are not hardware-captured. |
 
 CDIC confidence after this checkpoint:
 
 - Functional: `[#######---] 70%`
-- Hardware fidelity: `[#####-----] 50%`
-- Evidence: service-manual topology, third-party hardware observations, independent RTL, source history, synthetic tests, and compatibility models explicitly marked above.
-- Remaining: authoritative register documentation; seek/command completion; TOC/subcode; EDC/ECC/error status; exact AUDCTL/audio timing; cycle-level DMA/IRQ behavior.
+- Hardware fidelity: `[######----] 60%`
+- Evidence: service-manual topology, direct 210/05 capture programs, independent RTL/source cross-checks, synthetic tests, and compatibility models explicitly marked above.
+- Remaining: an IMS66490 specification; seek/command completion; exact Q/R-W and track/lead behavior; EDC/ECC/error status; DAC queue/sample-edge behavior; long-run audio timing; cycle-level DMA/IRQ behavior.
 
 ## Phase D checkpoint
 
@@ -276,7 +278,7 @@ Mono-II confidence after this checkpoint:
 | --- | ---: | --- | --- |
 | SCC68070 internal peripherals | `[######----] 60%` | Register audit plus focused DMA/IRQ/I2C/UART/MMU tests. | Implement Timer 1/2 only after input routing is identified; trace MMU-enabled firmware before translation. |
 | MCD212 video | `[#######---] 70%` | Primary-document audit, QHY vectors, timing/control tests, and linked CD-i validation target. | Capture QHY, cursor, transparency, region, and interlace field output from Extended Case hardware. |
-| CDIC | `[#######---] 70%` functional / `[#####-----] 50%` fidelity | Command/register audit, independent state/filter/buffer/IRQ/XA tests, and SCC-owned DMA client. | Capture seek completion, AUDCTL, TOC/subcode, and error/IRQ behavior on hardware. |
+| CDIC | `[#######---] 70%` functional / `[######----] 60%` fidelity | Command/register audit, direct 210/05 AUDCTL/audio captures, independent state/filter/buffer/IRQ/XA tests, and SCC-owned DMA client. | Capture seek completion, DAC sample/flush edges, full Q/R-W/track transitions, and malformed/error IRQ behavior. |
 | SLAVE/HLE | `[#######---] 65%` functional / `[####------] 45%` fidelity | Complete classified command map, bounded parser, documented revision response, and pointer/transport/readiness/IRQ2 tests. | Add keyboard and SERVO/X-bus behavior only from MCU, firmware, or bus-trace evidence. |
 | SERVO/MCU | `[###-------] 30%` | Mostly existing HLE/integration behavior. | Capture command/response timing from a known firmware/disc pair. |
 | DVC | `[#####-----] 50%` | Broad native DVC tests and SCC-owned DMA path; prior runtime vertical-slice evidence. | Compare PES/DMA/status/IRQ traces at the first failing scene; no title-specific bypasses. |
@@ -306,7 +308,7 @@ Mono-II confidence after this checkpoint:
 - CDIC `0x2c` Seek remains equivalent to starting Mode 1 delivery. A seek-only completion state must not be invented without firmware/hardware evidence.
 - CDIC Fetch TOC remains synthesized from image metadata. Packet order, mixed-mode/multi-session behavior, P-W subcode, and exact completion signaling are unresolved.
 - CDIC end-of-disc now terminates without a fabricated sector, but the hardware error/status/IRQ response is unknown.
-- CDIC DSEL, IVEC reset, unused ABUF/XBUF/DBUF bits, and some AUDCTL fields remain stored or fixed compatibility values.
+- CDIC DSEL, IVEC reset, and unused ABUF/XBUF/DBUF bits remain stored or fixed compatibility values. AUDCTL bits 13/11/0 are measured; the fixed read-one fields and reset/post-write bit-12 difference are retained without an invented function.
 - Mono-II SERVO-SLAVE SPI is documented but not connected because the current MC68HC05 core has no external SPI-pin interface.
 - Mono-II SLAVE host-mailbox LLE remains blocked on asynchronous SCC68070 `/DTACK`; the historical driver-local wait-state shortcut was not restored.
 - The Mono-II DSP56001 is a disabled board placeholder. MAME's current core does not execute instructions or expose the host interface, and no replacement HLE was added.

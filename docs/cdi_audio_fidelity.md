@@ -140,13 +140,15 @@ and reserved-range coercion with one validated, testable group decoder.
 
 1. The Green Book's 128-byte sound group contains 16 parameter bytes followed by
    112 sample-data bytes.  In 8-bit mode each of four sound-unit parameters occurs
-   four times; in 4-bit mode each of eight parameters occurs twice.  MAME now checks
-   every copy before decoding and reports per-unit masks for contradiction, reserved
-   filter values, and reserved ranges (9-15 for 8-bit, 13-15 for 4-bit).
-2. A malformed group is not decoded through an arbitrary copy.  Raw-image input has
-   no per-byte CIRC reliability with which to choose one, so MAME emits the correct
-   number of zero samples and retains the last reliable predictor history.  This is
-   an explicit concealment model.  No physical CDIC status/IRQ behavior is claimed.
+   four times; in 4-bit mode each of eight parameters occurs twice.  MAME reports
+   per-unit masks for contradiction, selected-copy reserved values, and invalid
+   values confined to redundant copies (ranges 9-15 for 8-bit, 13-15 for 4-bit).
+2. Subsequent Mono-I hardware measurements resolve which redundant parameters the
+   CDIC actually consumes: bytes 12-15 in 8-bit mode, and bytes 4-7 plus 12-15 in
+   4-bit mode.  MAME now decodes those selected copies even when another copy differs.
+   Only an invalid selected value receives duration-preserving silence with held
+   history; that response remains an explicit concealment model.  No undocumented
+   physical CDIC status or IRQ is fabricated.
 3. Sign extension, predictor arithmetic, final 16-bit clipping, channel interleave,
    and history updates now live in the pure helper used by production.  Device reset
    and audio-map start use the same tested history-reset helper.  Reserved ranges are
@@ -184,6 +186,66 @@ assertions in 111 cases, and the extended pure mametests gate passes 5,044,352
 assertions in 118 cases.  The generated native MAME C++20 `release64` CD-i production
 archive also compiles after the refactor.
 
+## CDIC audio transport and AUDCTL checkpoint (2026-09-05)
+
+The fifth campaign batch replaces inherited CDIC playback shortcuts with a
+save-stateable model anchored to reproducible CD-i 210/05 captures.
+
+1. AUDCTL bit 11, not bit 13, owns playback.  Bit 13 only gates completed
+   sound-map-buffer interrupts, and bit 0 is the read-to-clear `$ff` termination
+   latch.  A full-word `$2800` write begins a CPU sound map at fixed buffer `$2800`;
+   the observed `$fffe` readback is status and must not be reused as an address.
+   Sound maps alternate `$2800`/`$3200`, set ABUF on each completed prior buffer,
+   clear bit 11 on `$ff`, and finish an in-flight interval without an IRQ when the
+   guest aborts by writing zero.
+2. Service test paths consistently distinguish reset readback `$c7fe` from the
+   `$d7fe` value observed after software writes zero.  MAME models both values but
+   does not assign a function to their unexplained bit-12 difference.  Every 16-bit
+   write value, both termination-latch states, and active/idle source states are
+   covered by the pure register/action regression.
+3. CD-fed XA receipt is now separate from playback.  The first two selected sectors
+   fill `$2800`/`$3200` and report DBUF low nibbles 4/5.  Playback waits for the
+   guest's `$0800` write, consumes the halves in order, preserves the expected half
+   during starvation, and resumes from a later refill without replaying a consumed
+   buffer.  The timing state is included in save states.
+4. The duration of every coding-field-valid XA sector is an exact rational identity:
+   the samples per channel at `CLOCK2/512` or `CLOCK2/1024` occupy exactly
+   2, 4, 8, or 16 periods of the 75 Hz sector clock.  This removes duplicated
+   arithmetic but does not claim the unresolved phase between MAME's two timers or
+   prove long-duration disc/timestamp drift.
+5. CD-DA now submits all 588 stereo sample frames from each physical sector and
+   exposes a CPU buffer/subcode event every 1/75 second.  Its PCM bypasses CDIC RAM;
+   the currently synthesized Q bytes are placed at the captured byte offset `$924`.
+   Playback waits for `$0800`.  Retaining the first sector received before that write
+   is a deterministic HLE bridge between the measured first IRQ and playback start,
+   corroborated by another emulator, not a claim about the CDIC's hidden queue depth.
+6. The parameter-corruption capture also reports that coding `$14` does not play on
+   the tested 210/05.  MAME still classifies it according to the Green Book coding
+   fields because the capture does not establish whether the restriction applies to
+   related emphasis/stereo values or what status/timing the chip exposes.  This is a
+   named unresolved hardware limitation, not generalized into a guessed rejection.
+
+The new pure states cover sustained alternation, startup, refill, starvation,
+interrupt-masked abort, `$ff`, immediate replacement, and all CD-DA receive-gating
+combinations.  The focused optimized and unoptimized gates each pass 3,425,276
+assertions in 20 cases; the same focused gate passes under AddressSanitizer and
+UndefinedBehaviorSanitizer with LeakSanitizer disabled in the ptraced campaign
+container.  The standalone Philips gate passes 5,757,723 assertions in 116 cases,
+and the extended pure gate passes 5,758,793 assertions in 123 cases.  Its permanent
+selections pass as follows: `[audio]` 1,702,246/14, `[dvc]` 2,324,790/54,
+`[dvc][audio]` 1,046,230/9, `[xa]` 2,507,802/6, `[save]` 63/4,
+`[scc68070][dma]` 8/1, `[timing][audio]` 618/2, and `[cdda]` 8/1.
+
+The native C++20 `release64` CDIC/DVC production archive compiles from this tree.
+The container cannot link the live integration executable because its SDL OSD
+dependency stops at the unavailable `SDL2/SDL.h`; neither `sdl2-config` nor the
+header exists in the standard include paths.  This is a recorded host prerequisite,
+not an audio-source or test failure.  The previously certified Windows live
+DVC-to-SCC DMA fixture (three assertions in one case) remains an unchanged mandatory
+local gate.  The extended pure gate needed C++20 plus warning demotions for the
+unrepaired scratch copy of `rgbutil.cpp`; the user's intentional Windows repair is
+preserved and no RGB source is part of this checkpoint.
+
 ## Evidence register
 
 | ID | Class | Source | Supported claim | Limit |
@@ -201,7 +263,12 @@ archive also compiles after the refactor.
 | XA-STD-003 | Standards-derived | [Philips/Sony CD-i Green Book, May 1994 Release 2](https://archive.org/download/cdi_may94_r2/cdi_may94_r2.pdf), Appendix II audio coding and decoder sections | Defines the 128-byte sound-group layouts for 4/8-bit and mono/stereo, redundant parameter positions, legal filters/ranges, exact predictor coefficients, 16-bit output, and clipping. | It specifies neither private CDIC malformed-group signaling nor observable accumulator/rounding circuitry. |
 | XA-REF-002 | Independently corroborated | [FFmpeg `adpcm.c` at `ef5929f`](https://github.com/FFmpeg/FFmpeg/blob/ef5929f4ebb158ae689845055513a5725f5de28c/libavcodec/adpcm.c) and [PSX STR demuxer](https://github.com/FFmpeg/FFmpeg/blob/ef5929f4ebb158ae689845055513a5725f5de28c/libavformat/psxstr.c) | Independently corroborates 4-bit group/channel layout, rational predictor coefficients, clipped-history feedback, add-half/arithmetic-shift rounding, and exact PCM for the retained two-sector fixture. | Supports 4-bit XA only and does not validate redundant parameter copies; software agreement is not CDIC silicon proof. |
 | XA-REF-003 | Independently corroborated | [jPSXdec `XaAdpcmDecoder` at `fd54036`](https://github.com/m35/jpsxdec/blob/fd5403629ac81aaca0feff0dc89e6cadd6353b26/jpsxdec/src/jpsxdec/adpcm/XaAdpcmDecoder.java) and [`XaAdpcmSoundUnit`](https://github.com/m35/jpsxdec/blob/fd5403629ac81aaca0feff0dc89e6cadd6353b26/jpsxdec/src/jpsxdec/adpcm/XaAdpcmSoundUnit.java) | Independently corroborates both width layouts and explicitly collects redundant sound parameters. | Its majority selection, invalid-filter repair, double-precision predictor history, and final rounding are extraction/compatibility choices rather than hardware facts. |
-| XA-MODEL-001 | Current implementation model | `cdic_hle::decode_xa_group` and `[cdic][xa][group][malformed]` | Contradictory/reserved groups retain their sample duration as silence while leaving the last reliable predictor history intact. | Physical CDIC concealment, status, and interrupt behavior require hardware evidence. |
+| XA-HW-001 | Hardware-confirmed | [CDIC Black Box Analyzer parameter-corruption test at `e861f76`](https://github.com/Slamy/CDIC_BlackBoxAnalyzer/blob/e861f76ece477b3aff0e9c4c70f5c6ba1715e60a/src/test_audiomap.c) | The tested CD-i 210/05 consumes parameter bytes 12-15 in 8-bit mode and bytes 4-7 plus 12-15 in 4-bit mode. | One player revision; `$14` failed, but related coding values and invalid-selected-parameter signaling were not characterized. |
+| XA-MODEL-001 | Current implementation model | `cdic_hle::decode_xa_group` and `[cdic][xa][group][malformed]` | A redundant-copy disagreement is diagnostic and the hardware-selected copy is decoded.  An invalid selected value retains its sample duration as silence without changing predictor history. | Silence/held-history concealment and physical error/status signaling remain unmeasured. |
+| CDIC-HW-001 | Hardware-confirmed | [CDIC register observations](https://github.com/Slamy/CDIC_BlackBoxAnalyzer/blob/e861f76ece477b3aff0e9c4c70f5c6ba1715e60a/doc/registers.md), [sound-map captures](https://github.com/Slamy/CDIC_BlackBoxAnalyzer/blob/e861f76ece477b3aff0e9c4c70f5c6ba1715e60a/src/test_audiomap.c), and [usage manual](https://github.com/Slamy/CDIC_BlackBoxAnalyzer/blob/e861f76ece477b3aff0e9c4c70f5c6ba1715e60a/doc/cdic_manual.md) | On the measured 210/05, AUDCTL bits 13/11/0 control ABUF IRQ, playback, and `$ff` termination; CPU maps start at `$2800`, alternate with `$3200`, and exhibit the captured normal/abort/termination readback and IRQ edges. | Does not reveal the internal PCM queue, accumulator, or all fixed-bit causes. |
+| CDIC-HW-002 | Hardware-confirmed | [XA playback capture](https://github.com/Slamy/CDIC_BlackBoxAnalyzer/blob/e861f76ece477b3aff0e9c4c70f5c6ba1715e60a/src/test_xa_play.c) and [CD-DA playback/R-W capture](https://github.com/Slamy/CDIC_BlackBoxAnalyzer/blob/e861f76ece477b3aff0e9c4c70f5c6ba1715e60a/src/test_cdda_play.c) | CD-fed XA first reports buffers 4/5 at `$2800`/`$3200`; XA and CD-DA require `$0800`; CD-DA produces per-sector buffer/subcode events and its PCM is not stored in CDIC RAM. | Captures use one player and discs; exact DAC start sample, track/lead transitions, and complete P-W semantics remain unresolved. |
+| CDIC-REF-001 | Independently corroborated | [MiSTer CD-i CDIC RTL at `1d0d29b`](https://github.com/MiSTer-devel/CDi_MiSTer/blob/1d0d29b164a05d11db0094564feacf0f66c1d4e4/rtl/cdic.sv), [audio decoder](https://github.com/MiSTer-devel/CDi_MiSTer/blob/1d0d29b164a05d11db0094564feacf0f66c1d4e4/rtl/audiodecoder.sv), and [audio player](https://github.com/MiSTer-devel/CDi_MiSTer/blob/1d0d29b164a05d11db0094564feacf0f66c1d4e4/rtl/audioplayer.sv) | Independently implements bits 13/11/0, `$2800`/`$3200` buffering, and the same measured 4/8-bit parameter offsets. | The RTL incorporates reverse-engineering evidence and is corroboration, not an IMS66490 specification. |
+| CDIC-MODEL-001 | Current implementation model | [E-Di CDIC model at `b98537f`](https://github.com/whatever-industries/edi_emulator/blob/b98537fddf3b6199554b2d289840a6704c344c81/crates/cdi-core/src/cdic.rs) | A separately maintained emulator uses distinct sound-map/realtime states, two ready XA halves, and one pending pre-start CD-DA sector; this cross-checks MAME's state decomposition. | It cites the same Mono-I evidence and therefore is not independent hardware confirmation. |
 
 ## Explicit implementation boundaries
 
@@ -223,12 +290,13 @@ archive also compiles after the refactor.
 - **Resynchronization:** accepting a structurally valid indexed header after
   junk is a software streaming model.  The exact VMPEG false-sync and error-event
   policy has not been measured.
-- **Malformed XA signaling:** deterministic MAME behavior now rejects contradictory
-  duplicated subheaders, invalid CD-i sector/coding combinations, contradictory
-  sound-parameter copies, and reserved sound parameters.  Malformed groups keep their
-  time slot as silence and do not alter predictor history.  Which CDIC status bit,
-  interrupt, or concealment response physical hardware exposes remains unknown, so
-  this policy is not mislabeled as hardware error signaling.
+- **Malformed XA signaling:** deterministic MAME behavior rejects contradictory
+  duplicated subheaders and invalid CD-i sector/coding combinations.  For sound
+  groups it follows the measured Mono-I copy selection, treating disagreement in a
+  redundant copy as diagnostic.  An invalid selected parameter keeps its time slot
+  as silence and does not alter predictor history.  Which CDIC status bit, interrupt,
+  or concealment response physical hardware exposes remains unknown, so this policy
+  is not mislabeled as hardware error signaling.
 - **XA rounding/saturation:** the Green Book fixes the predictor coefficients, output
   width, and final clipping.  FFmpeg independently agrees bit-for-bit with MAME's
   current fixed-point result over the retained 4-bit fixture and the exhaustive oracle.
@@ -241,14 +309,32 @@ archive also compiles after the refactor.
 - **8-bit/18.9 kHz:** the Green Book coding-bit table permits the field combination,
   while its named quality overview lists only Level A (8-bit/37.8), Level B
   (4-bit/37.8), and Level C (4-bit/18.9).  MAME accepts the field combination but
-  makes no claim that it has a fourth named quality level.
+  makes no claim that it has a fourth named quality level.  A direct 210/05 capture
+  reports that mono/no-emphasis coding `$14` does not work; the exact response and
+  scope across related coding values remain unresolved.
+- **AUDCTL fixed bits:** service tests report `$c7fe` on reset and `$d7fe` after an
+  initialization path; Mono-I writes/captures corroborate `$d7fe`, `$dffe`, `$fffe`,
+  and `$f7ff` state changes.  Bit 12's cause is unknown.  MAME preserves the observed
+  readback distinction without assigning that bit an invented feature.
+- **CDIC DAC/queue boundary:** AUDCTL gating and transfer-completion events are
+  measured, but the exact first/last audible sample, internal queue depth, and
+  hold/zero/ramp/flush response on stop, underrun, replacement, or reset are not.
+- **CD-DA subcode:** Q location and 75 Hz delivery are captured.  MAME still
+  synthesizes Q from simplified disc assumptions and does not reproduce captured
+  R-W, multi-track/index, lead-in/lead-out, pause, or seek transitions.
 
 ## Completion status
 
-No audio area is declared 100% at this checkpoint.  The indexed MPEG-1 Layer II
-header space, explicit rejection classes, malformed resynchronization, legal
-bitrate/channel-mode transitions, backend exact/partial-frame termination, and
-independent non-silent decoder comparison now have deterministic coverage.
-Remaining blockers include CRC policy, VMPEG-specific header/update events,
-stream-switch edges, CDIC silicon rounding/error signaling, XA de-emphasis/timing,
-and the hardware-dependent matrix areas listed in the campaign specification.
+AUDCTL fidelity is the first narrowly scoped campaign area declared at a defensible
+100%.  All behavior MAME exposes from the register is tied to the retained 210/05
+captures or service-test readback, all 65,536 writes and both latch/source states are
+deterministic, the inherited bit-13-as-playback and readback-as-address defects are
+removed, and the unexplained bit-12 transition is explicitly isolated rather than
+assigned a function.  This certification does not include the separately listed DAC
+mute/flush edge area.
+
+No other incomplete matrix area is promoted to 100% by this checkpoint.  Remaining
+blockers include VMPEG CRC and stream-transition behavior, DVC queue/save/clock
+runtime gates, CDIC invalid-coding/error signaling, XA/CD-DA de-emphasis, silicon
+rounding and attenuation, exact DAC sample edges, long-duration A/V drift, and full
+CD-DA Q/R-W/track/seek behavior.

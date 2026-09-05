@@ -112,13 +112,13 @@ in-stream rate-change, and DSP-rounding evidence limits.
 
 The sector-level portion now exhausts 67,108,864 file/channel/submode/channel-mask
 states, all 256 coding bytes, and every unequal pair of duplicated subheader byte
-values.  Sound-group validation now checks all two copies of each 4-bit parameter and
-all four copies of each 8-bit parameter, identifies the affected sound units, and
-classifies reserved filters and width-specific ranges.  Because raw-image reads lack
-the CIRC reliability evidence needed to choose a contradictory copy, the current MAME
-model preserves the group's duration as silence without advancing predictor history.
-No undocumented CDIC status bit or interrupt is fabricated; the physical error signal
-remains an explicit hardware-evidence limitation.
+values.  Sound-group validation checks every redundant parameter position and all
+256 values in each position.  Direct CD-i 210/05 measurements establish the copies
+selected by the CDIC: bytes 12-15 for 8-bit groups and bytes 4-7 plus 12-15 for
+4-bit groups.  A disagreement is therefore diagnostic rather than a reason to mute
+an otherwise valid selected parameter.  Reserved values in the selected copy retain
+their duration as silence without advancing predictor history; that concealment and
+any physical error/status signal remain explicit implementation/evidence limitations.
 
 ### 7. XA ADPCM decode
 
@@ -138,10 +138,18 @@ by FFmpeg; it is not yet promoted to silicon-confirmed behavior.
 
 ### 8. XA/CDIC timing and buffering
 
-- [ ] Validate double-buffer sequence and IRQ/termination boundaries under sustained audio.
-- [ ] Validate sector cadence for every legal coding mode.
+- [x] Validate double-buffer sequence and IRQ/termination boundaries under sustained audio.
+- [x] Validate sector cadence for every legal coding mode.
 - [ ] Validate restart timing after stop/reset/update/read transitions.
 - [ ] Measure long-run drift against sector timestamps.
+
+Mono-I captures establish first/second CD-fed XA buffers `$2800`/`$3200`, the
+per-buffer sound-map ABUF boundary, read-to-clear termination, and interrupt-masked
+abort behavior.  The save-stateable transport tests cover initial wait, alternating
+refill, starvation, restart, `$ff`, and abort state.  For all 16 coding-field-valid
+bytes, the decoded samples and 37.8/18.9 kHz clock produce exactly the corresponding
+2/4/8/16 sector periods at 75 Hz.  Timer phase relative to sector arrival, all command
+transitions, and long-run timestamp drift remain open, so this area is not 100%.
 
 ### 9. A/V synchronization and decoder clock
 
@@ -161,10 +169,19 @@ by FFmpeg; it is not yet promoted to silicon-confirmed behavior.
 
 ### 11. AUDCTL fidelity
 
-- [ ] Map every implemented/read/written AUDCTL bit to documented or measured behavior.
-- [ ] Identify unknown bits explicitly.
-- [ ] Add bitwise behavioral tests for gating, mute, channel, and source-selection effects.
-- [ ] Remove compatibility guesses where hardware evidence contradicts them.
+- [x] Map every implemented/read/written AUDCTL bit to documented or measured behavior.
+- [x] Identify unknown bits explicitly.
+- [x] Add bitwise behavioral tests for gating, mute, channel, and source-selection effects.
+- [x] Remove compatibility guesses where hardware evidence contradicts them.
+
+Bit 13 gates ABUF interrupts, bit 11 owns playback, and bit 0 is the `$ff`
+termination latch.  The register has no measured mute or channel selector; those
+functions belong to the separate SLAVE/attenuation path.  All 65,536 write values,
+both termination-latch states, and active/idle source states are covered.  Reset
+`$c7fe` and post-write `$d7fe` fixed-bit behavior are retained from service/manual
+test paths and Mono-I captures.  The cause of the observed bit-12 transition remains
+unknown and is not assigned a fabricated function.  AUDCTL itself meets this matrix
+gate; DAC queue/flush behavior controlled through it remains separately open below.
 
 ### 12. DAC mute and flush edges
 
@@ -198,11 +215,21 @@ or rounding have been measured.
 - [ ] Validate sample start/stop alignment and seek-latency model.
 - [ ] Exercise mixed-mode discs.
 
+The known CDIC defects in this path are closed: CD-DA PCM bypasses CDIC RAM,
+playback waits for bit 11, 588 stereo frames are submitted per 1/75-second sector,
+and a buffer/subcode event is delivered for every sector rather than once per second.
+The unchecked transport/track/seek edges prevent a 100% claim.
+
 ### 16. CD-DA subcode
 
 - [ ] Validate Q-channel position/status behavior.
 - [ ] Validate track/index/time updates during play, pause, seek, lead-in, and lead-out.
 - [ ] Add synthetic subcode/reference fixtures where feasible.
+
+Mono-I captures place Q data at byte offset `$924` in each alternating data buffer
+and show a 75 Hz delivery cadence; MAME now matches those two facts.  Its Q contents
+are still synthesized from one-track assumptions, and R-W, track/index transitions,
+lead-in/lead-out, pause, and seek behavior remain unresolved.
 
 ### 17. Audio decoder termination, starvation, and stream switching
 
@@ -211,6 +238,11 @@ or rounding have been measured.
 - [ ] Rapid stop/start and stream-ID changes.
 - [ ] Interactive-FMV branch changes.
 - [ ] Simultaneous audio/video state-transition regression.
+
+The CDIC portion now has deterministic `$ff`, interrupt-masked abort, immediate
+replacement, XA double-buffer starvation/refill, and pre-start CD-DA coverage.
+These checks do not close the DVC packet/frame boundaries, interactive branching,
+or exact DAC flush rules required by this combined row.
 
 ## Evidence hierarchy
 
@@ -244,7 +276,7 @@ Before merging any substantive audio batch:
 - [ ] Source fixes/refactors with no title-specific hacks.
 - [ ] New deterministic unit/regression fixtures.
 - [ ] Runtime telemetry only where needed, removed or reduced after evidence is captured.
-- [ ] `docs/cdi_audio_fidelity.md` documenting confirmed behavior, inferred models, evidence sources, and unresolved hardware questions.
+- [x] `docs/cdi_audio_fidelity.md` documenting confirmed behavior, inferred models, evidence sources, and unresolved hardware questions.
 - [ ] Compatibility matrix for representative XA/CDDA/DVC titles.
 - [ ] Final certification report showing every matrix item at 100% or explicitly blocked by unavailable hardware evidence.
 

@@ -169,10 +169,10 @@ private:
 	uint8_t m_next_audio_buffer;
 
 	emu_timer *m_audio_timer;
-	uint8_t m_audio_sector_counter;
-	uint8_t m_audio_format_sectors;
-	bool m_decoding_audio_map;
-	uint16_t m_decode_addr;
+	cdic_hle::audio_map_state m_audio_map;
+	cdic_hle::realtime_audio_state m_realtime_audio;
+	bool m_cdda_pending;
+	std::unique_ptr<uint8_t[]> m_cdda_pending_data;
 
 	// Audio Attenuation (L->L, L->R, R->R, R->L)
 	uint8_t m_atten[4];
@@ -183,6 +183,10 @@ private:
 	void play_xa_group(const cdic_hle::xa_coding &coding, const uint8_t *data, const uint16_t idx);
 	void play_audio_sector(const uint8_t coding, const uint8_t *data);
 	void play_cdda_sector(const uint8_t *data);
+	void receive_cdda_sector(const uint8_t *data);
+	void try_play_realtime_audio();
+	void start_realtime_audio();
+	void stop_realtime_audio();
 	void process_audio_map();
 
 	void descramble_sector(uint8_t *buffer);

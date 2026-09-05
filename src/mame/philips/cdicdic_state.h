@@ -35,6 +35,16 @@ enum class disc_operation : uint8_t
 	toc
 };
 
+constexpr uint16_t CDIC_SUBCODE_BYTE_OFFSET = 0x0924;
+
+constexpr bool stores_sector_payload_in_ram(disc_operation operation)
+{
+	// CD-DA PCM is routed directly to the audio processor.  The Q bytes that
+	// this HLE currently synthesizes still occupy the alternating-buffer
+	// trailer; R-W acquisition remains outside this helper's claim.
+	return operation != disc_operation::cdda;
+}
+
 constexpr bool validates_sector_header(disc_operation operation)
 {
 	return operation == disc_operation::mode1 ||
@@ -118,6 +128,45 @@ struct xa_coding
 	constexpr bool valid() const { return status == xa_coding_status::valid; }
 };
 
+constexpr uint16_t AUDCTL_TERMINATED = 0x0001;
+constexpr uint16_t AUDCTL_PLAY = 0x0800;
+constexpr uint16_t AUDCTL_AUDIO_IRQ = 0x2000;
+constexpr uint16_t AUDCTL_WRITABLE = AUDCTL_PLAY | AUDCTL_AUDIO_IRQ;
+constexpr uint16_t AUDCTL_RESET_READBACK = 0xc7fe;
+constexpr uint16_t AUDCTL_WRITTEN_READBACK = 0xd7fe;
+constexpr uint16_t AUDIO_MAP_FIRST_ADDRESS = 0x2800;
+
+enum class audio_control_action : uint8_t
+{
+	none,
+	stop,
+	start_realtime,
+	start_sound_map
+};
+
+constexpr uint16_t merge_audio_control(uint16_t current, uint16_t data, uint16_t mem_mask)
+{
+	// Bit zero is a CDIC-owned, read-to-clear termination latch.  A CPU write
+	// changes bits 13/11 but cannot invent or discard that status.  Mono-I
+	// captures read all other bits high after a write; service tests distinguish
+	// the $c7fe reset path from the $d7fe post-initialization state.
+	const uint16_t combined = (current & ~mem_mask) | (data & mem_mask);
+	return AUDCTL_WRITTEN_READBACK |
+		(combined & AUDCTL_WRITABLE) |
+		(current & AUDCTL_TERMINATED);
+}
+
+constexpr audio_control_action classify_audio_control(uint16_t control, bool sound_map_active)
+{
+	if (!(control & AUDCTL_PLAY))
+		return audio_control_action::stop;
+	if (sound_map_active)
+		return audio_control_action::none;
+	return (control & AUDCTL_AUDIO_IRQ)
+		? audio_control_action::start_sound_map
+		: audio_control_action::start_realtime;
+}
+
 constexpr xa_coding decode_xa_coding(uint8_t coding)
 {
 	const bool emphasis = bool(coding & 0x40);
@@ -161,6 +210,179 @@ constexpr xa_coding decode_xa_coding(uint8_t coding)
 constexpr uint8_t xa_sector_count(uint8_t coding)
 {
 	return decode_xa_coding(coding).sector_periods;
+}
+
+constexpr uint16_t xa_samples_per_sector_per_channel(const xa_coding &coding)
+{
+	if (!coding.valid())
+		return 0;
+	const uint16_t units = coding.bits_per_sample == 8 ? 4 : 8;
+	return uint16_t(18 * 28 * units / coding.channels);
+}
+
+constexpr uint32_t xa_sample_rate(const xa_coding &coding, uint32_t clock2)
+{
+	return coding.valid() ? clock2 / coding.clock_divisor : 0;
+}
+
+struct audio_map_state
+{
+	uint8_t periods_remaining = 0;
+	uint8_t format_periods = 0;
+	bool active = false;
+	bool stop_requested = false;
+	uint16_t next_address = 0xffff;
+};
+
+enum class audio_map_tick_action : uint8_t
+{
+	none,
+	consume_buffer,
+	abort_before_buffer,
+	abort_complete
+};
+
+constexpr bool start_audio_map(audio_map_state &state, uint16_t control)
+{
+	if (state.active || !(control & AUDCTL_PLAY) || !(control & AUDCTL_AUDIO_IRQ))
+		return false;
+
+	state.periods_remaining = 1;
+	state.format_periods = 0;
+	state.active = true;
+	state.stop_requested = false;
+	// AUDCTL is a control/status register, not a sound-map address register.
+	// A $2800 write starts playback at the fixed $2800 buffer, but the observed
+	// readback is $fffe.  Never derive the address from those read-one bits.
+	state.next_address = AUDIO_MAP_FIRST_ADDRESS;
+	return true;
+}
+
+constexpr void request_audio_map_stop(audio_map_state &state)
+{
+	if (state.active)
+		state.stop_requested = true;
+	else
+		state.next_address = 0xffff;
+}
+
+constexpr audio_map_tick_action advance_audio_map(audio_map_state &state)
+{
+	if (state.periods_remaining && --state.periods_remaining)
+		return audio_map_tick_action::none;
+	if (!state.active)
+		return audio_map_tick_action::none;
+	if (!state.stop_requested)
+		return audio_map_tick_action::consume_buffer;
+
+	const bool buffer_in_flight = state.format_periods != 0;
+	state.format_periods = 0;
+	state.active = false;
+	state.stop_requested = false;
+	state.next_address = 0xffff;
+	return buffer_in_flight
+		? audio_map_tick_action::abort_complete
+		: audio_map_tick_action::abort_before_buffer;
+}
+
+struct audio_map_buffer_result
+{
+	bool previous_buffer_complete;
+	bool terminated;
+	bool coding_valid;
+};
+
+constexpr audio_map_buffer_result consume_audio_map_buffer(audio_map_state &state, uint8_t coding)
+{
+	const bool previous_buffer_complete = state.format_periods != 0;
+	state.next_address ^= 0x1a00;
+
+	if (coding == 0xff)
+	{
+		state.periods_remaining = 0;
+		state.format_periods = 0;
+		state.active = false;
+		state.stop_requested = false;
+		state.next_address = 0xffff;
+		return { previous_buffer_complete, true, true };
+	}
+
+	state.format_periods = xa_sector_count(coding);
+	state.periods_remaining = state.format_periods;
+	return { previous_buffer_complete, false, state.format_periods != 0 };
+}
+
+constexpr uint8_t NO_AUDIO_BUFFER = 0xff;
+
+struct realtime_audio_state
+{
+	std::array<bool, 2> ready{};
+	uint8_t next_play = 0;
+	uint8_t periods_remaining = 0;
+	bool enabled = false;
+};
+
+constexpr void reset_realtime_audio_buffers(realtime_audio_state &state)
+{
+	state.ready = { false, false };
+	state.next_play = 0;
+	state.periods_remaining = 0;
+}
+
+constexpr void stop_realtime_audio(realtime_audio_state &state)
+{
+	state.enabled = false;
+	state.periods_remaining = 0;
+}
+
+constexpr void start_realtime_audio(realtime_audio_state &state)
+{
+	state.enabled = true;
+}
+
+constexpr void mark_realtime_audio_ready(realtime_audio_state &state, uint8_t index)
+{
+	state.ready[index & 1] = true;
+}
+
+constexpr uint8_t take_realtime_audio_buffer(realtime_audio_state &state)
+{
+	const uint8_t index = state.next_play & 1;
+	if (!state.enabled || state.periods_remaining || !state.ready[index])
+		return NO_AUDIO_BUFFER;
+
+	state.ready[index] = false;
+	state.next_play = index ^ 1;
+	return index;
+}
+
+constexpr void begin_realtime_audio_buffer(realtime_audio_state &state, uint8_t periods)
+{
+	state.periods_remaining = periods;
+}
+
+constexpr bool advance_realtime_audio(realtime_audio_state &state)
+{
+	if (state.periods_remaining)
+		--state.periods_remaining;
+	return state.enabled && !state.periods_remaining;
+}
+
+enum class cdda_receive_action : uint8_t
+{
+	play,
+	buffer,
+	retain_buffered
+};
+
+constexpr cdda_receive_action classify_cdda_receive(
+		const realtime_audio_state &state,
+		bool sound_map_active,
+		bool pending)
+{
+	if (state.enabled && !sound_map_active)
+		return cdda_receive_action::play;
+	return pending ? cdda_receive_action::retain_buffered : cdda_receive_action::buffer;
 }
 
 enum class sector_target : uint8_t
@@ -350,11 +572,13 @@ struct xa_group_parameters
 	uint8_t copy_mismatch = 0;
 	uint8_t reserved_filter = 0;
 	uint8_t reserved_range = 0;
+	uint8_t redundant_reserved_filter = 0;
+	uint8_t redundant_reserved_range = 0;
 	bool supported_sample_width = false;
 
 	constexpr bool valid() const
 	{
-		return supported_sample_width && !copy_mismatch && !reserved_filter && !reserved_range;
+		return supported_sample_width && !reserved_filter && !reserved_range;
 	}
 };
 
@@ -392,20 +616,28 @@ constexpr xa_group_parameters inspect_xa_group_parameters(const uint8_t *data, u
 		return result;
 
 	const uint8_t maximum_range = xa_maximum_range(bits_per_sample);
+	const uint8_t selected_copy = copy_count - 1;
 	for (uint8_t unit = 0; unit < result.unit_count; unit++)
 	{
 		const uint8_t mask = uint8_t(1U << unit);
-		const uint8_t first = data[xa_parameter_copy_offset(bits_per_sample, unit, 0)];
-		result.value[unit] = first;
+		const uint8_t selected = data[xa_parameter_copy_offset(bits_per_sample, unit, selected_copy)];
+		result.value[unit] = selected;
 		for (uint8_t copy = 0; copy < copy_count; copy++)
 		{
 			const uint8_t parameter = data[xa_parameter_copy_offset(bits_per_sample, unit, copy)];
-			if (parameter != first)
+			if (parameter != selected)
 				result.copy_mismatch |= mask;
+
+			uint8_t &filter_mask = copy == selected_copy
+				? result.reserved_filter
+				: result.redundant_reserved_filter;
+			uint8_t &range_mask = copy == selected_copy
+				? result.reserved_range
+				: result.redundant_reserved_range;
 			if ((parameter >> 4) > 3)
-				result.reserved_filter |= mask;
+				filter_mask |= mask;
 			if ((parameter & 0x0f) > maximum_range)
-				result.reserved_range |= mask;
+				range_mask |= mask;
 		}
 	}
 
@@ -491,10 +723,10 @@ inline xa_group_decode_result decode_xa_group(
 	if (!samples_per_channel)
 		return result;
 
-	// Raw-image reads do not expose the CIRC reliability needed to choose a
-	// contradictory copy.  Preserve the group duration without allowing an
-	// untrusted parameter to contaminate predictor history.  This is MAME's
-	// explicit concealment policy, not a claim about physical CDIC silicon.
+	// Mono-I hardware measurements show that the CDIC uses bytes 12-15 in
+	// 8-bit mode, and bytes 4-7 plus 12-15 in 4-bit mode.  Those are the final
+	// redundant copies selected above.  A disagreement is diagnostic only;
+	// an invalid selected parameter retains the group's duration as silence.
 	if (!parameters.valid())
 	{
 		for (uint16_t sample = 0; sample < samples_per_channel; sample++)

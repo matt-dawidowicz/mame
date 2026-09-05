@@ -270,12 +270,18 @@ void cdicdic_device::play_xa_group(const cdic_hle::xa_coding &coding, const uint
 		m_xa_last,
 		&m_samples[0][idx],
 		&m_samples[1][idx]);
+	if (result.parameters.copy_mismatch)
+	{
+		LOGMASKED(LOG_SECTORS,
+			"XA sound-parameter copies disagree at sample %u (width %u, units %02x); using Mono-I-selected copies\n",
+			unsigned(idx), unsigned(coding.bits_per_sample), unsigned(result.parameters.copy_mismatch));
+	}
 	if (!result.valid())
 	{
 		LOGMASKED(LOG_SECTORS,
-			"Malformed XA sound group at sample %u (width %u, copy %02x, filter %02x, range %02x), substituting silence\n",
+			"Invalid selected XA sound parameter at sample %u (width %u, filter %02x, range %02x), substituting silence\n",
 			unsigned(idx), unsigned(coding.bits_per_sample),
-			unsigned(result.parameters.copy_mismatch), unsigned(result.parameters.reserved_filter),
+			unsigned(result.parameters.reserved_filter),
 			unsigned(result.parameters.reserved_range));
 	}
 }
@@ -314,7 +320,7 @@ void cdicdic_device::play_audio_sector(const uint8_t coding, const uint8_t *data
 		// TODO: Emphasis is commonly used. Do not throw a fatal error.
 	}
 
-	const int32_t sample_frequency = clock2() / coding_info.clock_divisor;
+	const int32_t sample_frequency = cdic_hle::xa_sample_rate(coding_info, clock2());
 
 	LOGMASKED(LOG_SECTORS, "Coding %02x, %u channels, %u bits, %08x frequency\n",
 		unsigned(coding), unsigned(coding_info.channels), unsigned(coding_info.bits_per_sample), unsigned(sample_frequency));
@@ -324,9 +330,7 @@ void cdicdic_device::play_audio_sector(const uint8_t coding, const uint8_t *data
 	m_dmadac[0]->set_volume(0x100);
 	m_dmadac[1]->set_volume(0x100);
 
-	const uint16_t bps = coding_info.bits_per_sample == 8;
-	const uint16_t chan = coding_info.channels == 2;
-	const uint16_t num_samples = 8 >> (bps + chan);
+	const uint16_t num_samples = cdic_hle::xa_samples_per_sector_per_channel(coding_info) / (18 * 28);
 
 	uint16_t offset = 0;
 	for (uint16_t i = 0; i < SECTOR_AUDIO_SIZE; i += 128, data += 128)
@@ -354,73 +358,136 @@ void cdicdic_device::play_audio_sector(const uint8_t coding, const uint8_t *data
 	}
 }
 
-TIMER_CALLBACK_MEMBER( cdicdic_device::audio_tick )
+void cdicdic_device::receive_cdda_sector(const uint8_t *data)
 {
-	if (m_audio_sector_counter > 0)
+	switch (cdic_hle::classify_cdda_receive(m_realtime_audio, m_audio_map.active, m_cdda_pending))
 	{
-		m_audio_sector_counter--;
-		if (m_audio_sector_counter > 0)
-		{
-			LOGMASKED(LOG_SAMPLES, "Audio sector counter %d, deducting and skipping\n", m_audio_sector_counter);
-			return;
-		}
-		LOGMASKED(LOG_SAMPLES, "Audio sector counter now 0, deducting and playing\n");
+	case cdic_hle::cdda_receive_action::play:
+		play_cdda_sector(data);
+		break;
+
+	case cdic_hle::cdda_receive_action::buffer:
+		memcpy(m_cdda_pending_data.get(), data, SECTOR_SIZE);
+		m_cdda_pending = true;
+		break;
+
+	case cdic_hle::cdda_receive_action::retain_buffered:
+		// Retaining the first pre-start sector is the deterministic HLE model
+		// used to bridge the measured first-buffer IRQ to the later bit-11
+		// start.  Later sectors still produce their measured 75 Hz
+		// buffer/subcode events without overwriting that startup sector.
+		break;
+	}
+}
+
+void cdicdic_device::try_play_realtime_audio()
+{
+	if (m_audio_map.active || m_disc_mode == DISC_CDDA)
+		return;
+
+	const uint8_t index = cdic_hle::take_realtime_audio_buffer(m_realtime_audio);
+	if (index == cdic_hle::NO_AUDIO_BUFFER)
+		return;
+
+	uint8_t *const ram = &m_ram[(4 + index) * 0x0a00];
+	const uint8_t coding = ram[(SECTOR_CODING2 - SECTOR_HEADER) ^ 1];
+	const uint8_t periods = get_sector_count_for_coding(coding);
+	if (!periods)
+	{
+		LOGMASKED(LOG_SECTORS, "Buffered XA sector has invalid coding %02x; dropping\n", unsigned(coding));
+		return;
 	}
 
-	if (m_decoding_audio_map)
+	uint8_t swapped_data[SECTOR_AUDIO_SIZE];
+	const uint8_t *const encoded = ram + (SECTOR_DATA - SECTOR_HEADER);
+	for (uint16_t i = 0; i < SECTOR_AUDIO_SIZE; i++)
+		swapped_data[i ^ 1] = encoded[i];
+
+	cdic_hle::begin_realtime_audio_buffer(m_realtime_audio, periods);
+	play_audio_sector(coding, swapped_data);
+}
+
+void cdicdic_device::start_realtime_audio()
+{
+	cdic_hle::start_realtime_audio(m_realtime_audio);
+	if (m_disc_mode == DISC_CDDA)
 	{
+		if (m_cdda_pending)
+		{
+			play_cdda_sector(m_cdda_pending_data.get());
+			m_cdda_pending = false;
+		}
+		return;
+	}
+
+	try_play_realtime_audio();
+}
+
+void cdicdic_device::stop_realtime_audio()
+{
+	cdic_hle::stop_realtime_audio(m_realtime_audio);
+	m_cdda_pending = false;
+}
+
+TIMER_CALLBACK_MEMBER( cdicdic_device::audio_tick )
+{
+	if (cdic_hle::advance_realtime_audio(m_realtime_audio))
+		try_play_realtime_audio();
+
+	switch (cdic_hle::advance_audio_map(m_audio_map))
+	{
+	case cdic_hle::audio_map_tick_action::consume_buffer:
 		process_audio_map();
+		break;
+
+	case cdic_hle::audio_map_tick_action::abort_complete:
+		// A cleared bit 13 masks the completion interrupt, but Mono-I leaves
+		// ABUF bit 15 set after the current transfer interval finishes.
+		m_audio_buffer |= 0x8000;
+		update_interrupt_state();
+		break;
+
+	case cdic_hle::audio_map_tick_action::abort_before_buffer:
+	case cdic_hle::audio_map_tick_action::none:
+		break;
 	}
 }
 
 void cdicdic_device::process_audio_map()
 {
-	if (m_decode_addr == 0xffff)
-	{
-		m_audio_sector_counter = 0;
-		m_audio_format_sectors = 0;
-		m_decoding_audio_map = false;
+	if (m_audio_map.next_address == 0xffff)
 		return;
-	}
 
-	LOGMASKED(LOG_SAMPLES, "Procesing audio map from %04x\n", m_decode_addr);
+	LOGMASKED(LOG_SAMPLES, "Processing audio map from %04x\n", m_audio_map.next_address);
 
-	uint8_t *ram = &m_ram[m_decode_addr & 0x3ffe];
-	m_decode_addr ^= 0x1a00;
-
-	const bool was_decoding = (m_audio_format_sectors != 0);
+	uint8_t *ram = &m_ram[m_audio_map.next_address & 0x3ffe];
 
 	const uint8_t coding = ram[(SECTOR_CODING2 - SECTOR_HEADER) ^ 1];
+	const cdic_hle::audio_map_buffer_result result = cdic_hle::consume_audio_map_buffer(m_audio_map, coding);
 	LOGMASKED(LOG_SAMPLES, "Coding is %02x\n", coding);
-	if (coding != 0xff)
+	if (!result.terminated)
 	{
-		m_decoding_audio_map = true;
-		m_audio_format_sectors = get_sector_count_for_coding(coding);
-		m_audio_sector_counter = m_audio_format_sectors;
-
-		ram += SECTOR_DATA - SECTOR_HEADER;
-		uint8_t swapped_data[(SECTOR_SIZE - (SECTOR_DATA - SECTOR_HEADER))];
-		for (uint16_t i = 0; i < (SECTOR_SIZE - (SECTOR_DATA - SECTOR_HEADER)); i++)
+		if (result.coding_valid)
 		{
-			swapped_data[i ^ 1] = ram[i];
+			ram += SECTOR_DATA - SECTOR_HEADER;
+			uint8_t swapped_data[SECTOR_AUDIO_SIZE];
+			for (uint16_t i = 0; i < SECTOR_AUDIO_SIZE; i++)
+				swapped_data[i ^ 1] = ram[i];
+			play_audio_sector(coding, swapped_data);
 		}
-		play_audio_sector(coding, swapped_data);
+		else
+		{
+			LOGMASKED(LOG_SECTORS, "Sound-map buffer has invalid coding %02x; retaining buffer cadence only\n", unsigned(coding));
+		}
 	}
 	else
 	{
-		// A 0xff coding byte ends the current sound map, but the
-		// previously decoded buffer still occupies the audio processor
-		// for one playback period.  Keep that countdown running while
-		// allowing a following sound map to be armed immediately.
-		m_decode_addr = 0xffff;
-		m_audio_sector_counter = m_audio_format_sectors;
-		m_audio_format_sectors = 0;
-		m_decoding_audio_map = false;
 		// Bit 0 reports decoder termination; bit 11 is playback enable.
-		m_z_buffer = (m_z_buffer & ~0x0800) | 0x0001;
+		m_z_buffer = (m_z_buffer & ~cdic_hle::AUDCTL_PLAY) | cdic_hle::AUDCTL_TERMINATED;
+		cdic_hle::stop_realtime_audio(m_realtime_audio);
 	}
 
-	if (was_decoding)
+	if (result.previous_buffer_complete)
 	{
 		m_audio_buffer |= 0x8000;
 		update_interrupt_state();
@@ -680,38 +747,24 @@ void cdicdic_device::process_disc_sector()
 
 		audio_sector = decision.target == cdic_hle::sector_target::audio;
 		if (audio_sector)
-		{
 			LOGMASKED(LOG_SECTORS, "Audio is selected\n");
-			m_audio_sector_counter = get_sector_count_for_coding(buffer[SECTOR_CODING2]);
-			m_decoding_audio_map = false;
-
-			play_audio_sector(buffer[SECTOR_CODING2], buffer + SECTOR_DATA);
-		}
 	}
 	else if (m_disc_mode == DISC_CDDA)
 	{
-		m_audio_sector_counter = 2;
-		m_decoding_audio_map = false;
-
 		// Byteswap if not already detected as byteswapped
 		if (!m_cd_byteswap)
 		{
-			uint8_t swapped_buffer[2560];
-			for (uint16_t i = 0; i < 2560; i += 2)
+			uint8_t swapped_buffer[SECTOR_SIZE];
+			for (uint16_t i = 0; i < SECTOR_SIZE; i += 2)
 			{
 				swapped_buffer[i + 1] = buffer[i + 0];
 				swapped_buffer[i + 0] = buffer[i + 1];
 			}
-			play_cdda_sector(swapped_buffer);
+			receive_cdda_sector(swapped_buffer);
 		}
 		else
 		{
-			play_cdda_sector(buffer);
-		}
-
-		if (frac != 0)
-		{
-			return;
+			receive_cdda_sector(buffer);
 		}
 	}
 
@@ -861,17 +914,32 @@ void cdicdic_device::process_sector_data(const uint8_t *buffer, const uint8_t *s
 	m_next_audio_buffer = completion.next_audio_buffer;
 	uint16_t *dev_buffer = reinterpret_cast<uint16_t *>(&m_ram[completion.byte_offset]);
 
-	for (int i = SECTOR_HEADER; i < SECTOR_FILE2; i += 2)
-		*dev_buffer++ = ((uint16_t)buffer[i] << 8) | buffer[i + 1];
+	if (!cdic_hle::stores_sector_payload_in_ram(cdic_hle::disc_operation(m_disc_mode)))
+	{
+		// Mono-I captures show that CD-DA PCM bypasses CDIC RAM.  Only its
+		// subcode is written at byte offset $924 in the alternating buffers.
+		dev_buffer += cdic_hle::CDIC_SUBCODE_BYTE_OFFSET / 2;
+	}
+	else
+	{
+		for (int i = SECTOR_HEADER; i < SECTOR_FILE2; i += 2)
+			*dev_buffer++ = ((uint16_t)buffer[i] << 8) | buffer[i + 1];
 
-	for (int i = SECTOR_FILE2; i < SECTOR_SIZE; i += 2)
-		*dev_buffer++ = ((uint16_t)buffer[i] << 8) | buffer[i + 1];
+		for (int i = SECTOR_FILE2; i < SECTOR_SIZE; i += 2)
+			*dev_buffer++ = ((uint16_t)buffer[i] << 8) | buffer[i + 1];
+	}
 
 	for (int i = SUBCODE_Q_CONTROL; i <= SUBCODE_Q_CRC1; i++)
 		*dev_buffer++ = subcode_buffer[i];
 
 	m_x_buffer |= 0x8000;
 	update_interrupt_state();
+
+	if (audio_sector)
+	{
+		cdic_hle::mark_realtime_audio_ready(m_realtime_audio, completion.data_buffer & 1);
+		try_play_realtime_audio();
+	}
 
 }
 
@@ -1050,33 +1118,31 @@ void cdicdic_device::regs_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 		}
 
 		case 0x3ffa/2:
+		{
 			LOGMASKED(LOG_WRITES, "%s: cdic_w: Z-Buffer Register Write: %04x & %04x\n", machine().describe_context(), data, mem_mask);
-			COMBINE_DATA(&m_z_buffer);
-			if (!(m_z_buffer & 0x2000))
+			m_z_buffer = cdic_hle::merge_audio_control(m_z_buffer, data, mem_mask);
+			switch (cdic_hle::classify_audio_control(m_z_buffer, m_audio_map.active))
 			{
-				// Stop accepting buffers for this map immediately.  Do not
-				// discard an outstanding playback countdown: the audio
-				// processor can still be finishing the previous buffer.
-				m_decode_addr = 0xffff;
-				m_audio_format_sectors = 0;
-				m_decoding_audio_map = false;
-			}
-			else if (!m_decoding_audio_map)
-			{
-				m_decode_addr = m_z_buffer & 0x3a00;
-				m_audio_format_sectors = 0;
+			case cdic_hle::audio_control_action::stop:
+				stop_realtime_audio();
+				cdic_hle::request_audio_map_stop(m_audio_map);
+				break;
 
-				// An immediately following sound map reuses the remaining
-				// playback interval.  Only an idle processor needs the
-				// initial one-sector startup delay.
-				if (!m_audio_sector_counter)
-					m_audio_sector_counter = 1;
+			case cdic_hle::audio_control_action::start_sound_map:
+				if (cdic_hle::start_audio_map(m_audio_map, m_z_buffer))
+					cdic_hle::reset_xa_history(m_xa_last);
+				break;
 
-				m_decoding_audio_map = true;
-				cdic_hle::reset_xa_history(m_xa_last);
+			case cdic_hle::audio_control_action::start_realtime:
+				start_realtime_audio();
+				break;
+
+			case cdic_hle::audio_control_action::none:
+				break;
 			}
 			update_interrupt_state();
 			break;
+		}
 
 		case 0x3ffc/2:
 			LOGMASKED(LOG_WRITES, "%s: cdic_w: Interrupt Vector Register = %04x & %04x\n", machine().describe_context(), data, mem_mask);
@@ -1147,6 +1213,10 @@ void cdicdic_device::init_disc_read(uint8_t disc_mode)
 	m_disc_mode = disc_mode;
 	m_disc_state = uint8_t(cdic_hle::disc_state::seeking);
 	m_curr_lba = lba_from_time();
+	if (disc_mode == DISC_MODE2)
+		cdic_hle::reset_realtime_audio_buffers(m_realtime_audio);
+	else if (disc_mode == DISC_CDDA)
+		m_cdda_pending = false;
 	logerror(
 			"CDIC_TRACE begin cmd=%04x mode=%u time=%08x lba=%u "
 			"file=%04x channel=%08x audio=%04x dsel=%04x data=%04x ctx=%s\n",
@@ -1201,6 +1271,7 @@ void cdicdic_device::handle_cdic_command()
 			break;
 		case cdic_hle::command::stop_cdda:
 			LOGMASKED(LOG_WRITES, "%s: cdic_w: Stop CDDA command\n", machine().describe_context());
+			stop_realtime_audio();
 			cancel_disc_read();
 			break;
 		case cdic_hle::command::update:
@@ -1257,10 +1328,12 @@ cdicdic_device::cdicdic_device(const machine_config &mconfig, const char *tag, d
 void cdicdic_device::device_start()
 {
 	m_ram = std::make_unique<uint8_t[]>(0x4000);
+	m_cdda_pending_data = std::make_unique<uint8_t[]>(SECTOR_SIZE);
 	m_samples[0] = std::make_unique<int16_t[]>(s_samples_per_sector * 8 + 16);
 	m_samples[1] = std::make_unique<int16_t[]>(s_samples_per_sector * 8 + 16);
 
 	save_pointer(NAME(m_ram), 0x4000);
+	save_pointer(NAME(m_cdda_pending_data), SECTOR_SIZE);
 	save_pointer(NAME(m_samples[0]), s_samples_per_sector * 8 + 16);
 	save_pointer(NAME(m_samples[1]), s_samples_per_sector * 8 + 16);
 
@@ -1286,10 +1359,16 @@ void cdicdic_device::device_start()
 	save_item(NAME(m_next_data_buffer));
 	save_item(NAME(m_next_audio_buffer));
 
-	save_item(NAME(m_audio_sector_counter));
-	save_item(NAME(m_audio_format_sectors));
-	save_item(NAME(m_decoding_audio_map));
-	save_item(NAME(m_decode_addr));
+	save_item(NAME(m_audio_map.periods_remaining));
+	save_item(NAME(m_audio_map.format_periods));
+	save_item(NAME(m_audio_map.active));
+	save_item(NAME(m_audio_map.stop_requested));
+	save_item(NAME(m_audio_map.next_address));
+	save_item(NAME(m_realtime_audio.ready));
+	save_item(NAME(m_realtime_audio.next_play));
+	save_item(NAME(m_realtime_audio.periods_remaining));
+	save_item(NAME(m_realtime_audio.enabled));
+	save_item(NAME(m_cdda_pending));
 
 	save_item(NAME(m_atten));
 	save_item(NAME(m_xa_last));
@@ -1316,7 +1395,7 @@ void cdicdic_device::device_reset()
 	m_audio_buffer = 0;
 	m_x_buffer = 0;
 	m_dma_control = 0;
-	m_z_buffer = 0;
+	m_z_buffer = cdic_hle::AUDCTL_RESET_READBACK;
 	m_interrupt_vector = 0x0f;
 	m_data_buffer = 0;
 
@@ -1330,10 +1409,10 @@ void cdicdic_device::device_reset()
 	m_next_data_buffer = cdic_hle::RESET_NEXT_DATA_BUFFER;
 	m_next_audio_buffer = cdic_hle::RESET_NEXT_AUDIO_BUFFER;
 
-	m_audio_sector_counter = 0;
-	m_audio_format_sectors = 0;
-	m_decoding_audio_map = false;
-	m_decode_addr = 0;
+	m_audio_map = {};
+	m_realtime_audio = {};
+	m_cdda_pending = false;
+	std::fill_n(m_cdda_pending_data.get(), SECTOR_SIZE, 0);
 
 	m_audio_timer->adjust(attotime::from_hz(75), 0, attotime::from_hz(75));
 	m_sector_timer->adjust(attotime::from_hz(75), 0, attotime::from_hz(75));

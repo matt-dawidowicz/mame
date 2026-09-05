@@ -70,8 +70,8 @@ uint16_t reference_decode_xa_group(
 		const uint8_t channel = channels == 2 ? unit & 1 : 0;
 		const uint16_t output_offset = uint16_t(unit / channels) * 28;
 		const uint8_t parameter_offset = bits_per_sample == 8
-			? unit
-			: uint8_t((unit < 4 ? 0 : 8) + (unit & 3));
+			? uint8_t(12 + unit)
+			: uint8_t((unit < 4 ? 4 : 12) + (unit & 3));
 		const uint8_t parameter = group[parameter_offset];
 
 		for (uint8_t sample = 0; sample < 28; sample++)
@@ -417,6 +417,184 @@ TEST_CASE("CDIC reset and status acknowledgements return to an idle non-IRQ stat
 	REQUIRE_FALSE(cdic_hle::interrupt_asserted(0, 0, 0, 0));
 }
 
+TEST_CASE("CDIC AUDCTL write and source selection exhaust the register space", "[emu][philips][cdic][audio][audctl][hardware][exhaustive]")
+{
+	using cdic_hle::audio_control_action;
+
+	for (const uint16_t latched : { uint16_t(0), cdic_hle::AUDCTL_TERMINATED })
+	{
+		const uint16_t current = uint16_t(0xa5a0 | latched);
+		for (uint32_t raw = 0; raw <= 0xffff; raw++)
+		{
+			const uint16_t data = uint16_t(raw);
+			const uint16_t merged = cdic_hle::merge_audio_control(current, data, 0xffff);
+			INFO("latched=" << latched << " data=" << data);
+			REQUIRE(merged == uint16_t(cdic_hle::AUDCTL_WRITTEN_READBACK |
+				(data & cdic_hle::AUDCTL_WRITABLE) | latched));
+
+			for (const bool active : { false, true })
+			{
+				audio_control_action expected;
+				if (!(data & cdic_hle::AUDCTL_PLAY))
+					expected = audio_control_action::stop;
+				else if (active)
+					expected = audio_control_action::none;
+				else if (data & cdic_hle::AUDCTL_AUDIO_IRQ)
+					expected = audio_control_action::start_sound_map;
+				else
+					expected = audio_control_action::start_realtime;
+				REQUIRE(cdic_hle::classify_audio_control(data, active) == expected);
+				REQUIRE(cdic_hle::classify_audio_control(merged, active) == expected);
+			}
+		}
+	}
+
+	REQUIRE(cdic_hle::AUDCTL_RESET_READBACK == 0xc7fe);
+	REQUIRE(cdic_hle::merge_audio_control(0, 0x0000, 0xffff) == 0xd7fe);
+	REQUIRE(cdic_hle::merge_audio_control(0, 0x0800, 0xffff) == 0xdffe);
+	REQUIRE(cdic_hle::merge_audio_control(0, 0x2800, 0xffff) == 0xfffe);
+	REQUIRE(cdic_hle::merge_audio_control(0xd7ff, 0x2800, 0xffff) == 0xffff);
+	REQUIRE(cdic_hle::merge_audio_control(0xa5a1, 0x0000, 0x00ff) == 0xf7ff);
+	REQUIRE(cdic_hle::merge_audio_control(0xa5a0, 0x5a00, 0xff00) == 0xdffe);
+	REQUIRE(cdic_hle::classify_audio_control(0x2000, false) == audio_control_action::stop);
+	REQUIRE(cdic_hle::classify_audio_control(0x0800, false) == audio_control_action::start_realtime);
+	REQUIRE(cdic_hle::classify_audio_control(0x2800, false) == audio_control_action::start_sound_map);
+}
+
+TEST_CASE("CDIC sound-map timing reproduces start completion abort and FF edges", "[emu][philips][cdic][audio][audctl][buffer][timing][hardware]")
+{
+	using cdic_hle::audio_map_tick_action;
+	constexpr uint8_t CODING = 0x04;
+	const uint8_t periods = cdic_hle::xa_sector_count(CODING);
+	REQUIRE(periods == 16);
+
+	cdic_hle::audio_map_state state;
+	REQUIRE_FALSE(cdic_hle::start_audio_map(state, 0x2000));
+	REQUIRE(cdic_hle::start_audio_map(state, 0x2800));
+	cdic_hle::request_audio_map_stop(state);
+	REQUIRE(cdic_hle::advance_audio_map(state) == audio_map_tick_action::abort_before_buffer);
+	REQUIRE_FALSE(state.active);
+
+	state = {};
+	// The hardware's post-$2800-write readback is $fffe.  Fixed read-one bits
+	// must not move the first map away from its measured $2800 buffer.
+	REQUIRE(cdic_hle::start_audio_map(state, 0xfffe));
+	REQUIRE(state.active);
+	REQUIRE(state.next_address == cdic_hle::AUDIO_MAP_FIRST_ADDRESS);
+	REQUIRE(state.next_address == 0x2800);
+	REQUIRE(state.periods_remaining == 1);
+	REQUIRE(cdic_hle::advance_audio_map(state) == audio_map_tick_action::consume_buffer);
+
+	auto consumed = cdic_hle::consume_audio_map_buffer(state, CODING);
+	REQUIRE_FALSE(consumed.previous_buffer_complete);
+	REQUIRE_FALSE(consumed.terminated);
+	REQUIRE(consumed.coding_valid);
+	REQUIRE(state.next_address == 0x3200);
+	for (uint8_t tick = 1; tick < periods; tick++)
+		REQUIRE(cdic_hle::advance_audio_map(state) == audio_map_tick_action::none);
+	REQUIRE(cdic_hle::advance_audio_map(state) == audio_map_tick_action::consume_buffer);
+
+	consumed = cdic_hle::consume_audio_map_buffer(state, CODING);
+	REQUIRE(consumed.previous_buffer_complete);
+	REQUIRE(state.next_address == 0x2800);
+	cdic_hle::request_audio_map_stop(state);
+	REQUIRE(state.active);
+	REQUIRE(state.stop_requested);
+	for (uint8_t tick = 1; tick < periods; tick++)
+		REQUIRE(cdic_hle::advance_audio_map(state) == audio_map_tick_action::none);
+	REQUIRE(cdic_hle::advance_audio_map(state) == audio_map_tick_action::abort_complete);
+	REQUIRE_FALSE(state.active);
+	REQUIRE_FALSE(state.stop_requested);
+	REQUIRE(state.next_address == 0xffff);
+
+	state = {};
+	REQUIRE(cdic_hle::start_audio_map(state, 0x2800));
+	REQUIRE(cdic_hle::advance_audio_map(state) == audio_map_tick_action::consume_buffer);
+	consumed = cdic_hle::consume_audio_map_buffer(state, CODING);
+	for (uint8_t tick = 0; tick < periods; tick++)
+	{
+		const audio_map_tick_action expected = tick + 1 == periods
+			? audio_map_tick_action::consume_buffer
+			: audio_map_tick_action::none;
+		REQUIRE(cdic_hle::advance_audio_map(state) == expected);
+	}
+	consumed = cdic_hle::consume_audio_map_buffer(state, 0xff);
+	REQUIRE(consumed.previous_buffer_complete);
+	REQUIRE(consumed.terminated);
+	REQUIRE_FALSE(state.active);
+	REQUIRE(state.periods_remaining == 0);
+
+	// A replacement map starts from its one-tick priming interval; the ended
+	// map does not leave a fictitious full-sector delay behind.
+	REQUIRE(cdic_hle::start_audio_map(state, 0x2800));
+	REQUIRE(state.periods_remaining == 1);
+	REQUIRE(cdic_hle::advance_audio_map(state) == audio_map_tick_action::consume_buffer);
+	consumed = cdic_hle::consume_audio_map_buffer(state, 0xff);
+	REQUIRE_FALSE(consumed.previous_buffer_complete);
+	REQUIRE(consumed.terminated);
+}
+
+TEST_CASE("CDIC realtime audio double buffer waits refills and resumes deterministically", "[emu][philips][cdic][audio][audctl][buffer][starvation][hardware]")
+{
+	cdic_hle::realtime_audio_state state;
+	cdic_hle::mark_realtime_audio_ready(state, 0);
+	REQUIRE(cdic_hle::take_realtime_audio_buffer(state) == cdic_hle::NO_AUDIO_BUFFER);
+
+	cdic_hle::start_realtime_audio(state);
+	REQUIRE(cdic_hle::take_realtime_audio_buffer(state) == 0);
+	cdic_hle::begin_realtime_audio_buffer(state, 4);
+	cdic_hle::mark_realtime_audio_ready(state, 1);
+	for (uint8_t tick = 0; tick < 3; tick++)
+	{
+		REQUIRE_FALSE(cdic_hle::advance_realtime_audio(state));
+		REQUIRE(cdic_hle::take_realtime_audio_buffer(state) == cdic_hle::NO_AUDIO_BUFFER);
+	}
+	REQUIRE(cdic_hle::advance_realtime_audio(state));
+	REQUIRE(cdic_hle::take_realtime_audio_buffer(state) == 1);
+
+	// Starvation holds the expected half without duplicating the prior one;
+	// a later refill becomes consumable immediately.
+	REQUIRE(cdic_hle::take_realtime_audio_buffer(state) == cdic_hle::NO_AUDIO_BUFFER);
+	cdic_hle::mark_realtime_audio_ready(state, 0);
+	REQUIRE(cdic_hle::take_realtime_audio_buffer(state) == 0);
+	cdic_hle::begin_realtime_audio_buffer(state, 8);
+	cdic_hle::mark_realtime_audio_ready(state, 1);
+	cdic_hle::stop_realtime_audio(state);
+	REQUIRE_FALSE(state.enabled);
+	REQUIRE(state.periods_remaining == 0);
+	REQUIRE(cdic_hle::take_realtime_audio_buffer(state) == cdic_hle::NO_AUDIO_BUFFER);
+	cdic_hle::start_realtime_audio(state);
+	REQUIRE(cdic_hle::take_realtime_audio_buffer(state) == 1);
+
+	cdic_hle::reset_realtime_audio_buffers(state);
+	REQUIRE(state.enabled);
+	REQUIRE(state.next_play == 0);
+	REQUIRE_FALSE(state.ready[0]);
+	REQUIRE_FALSE(state.ready[1]);
+}
+
+TEST_CASE("CDIC CDDA receive gating models first pre-start sector retention", "[emu][philips][cdic][audio][cdda][audctl][buffer][model][exhaustive]")
+{
+	using cdic_hle::cdda_receive_action;
+
+	for (const bool enabled : { false, true })
+	{
+		for (const bool sound_map_active : { false, true })
+		{
+			for (const bool pending : { false, true })
+			{
+				cdic_hle::realtime_audio_state state;
+				state.enabled = enabled;
+				const cdda_receive_action expected = enabled && !sound_map_active
+					? cdda_receive_action::play
+					: (pending ? cdda_receive_action::retain_buffered : cdda_receive_action::buffer);
+				INFO("enabled=" << enabled << " map=" << sound_map_active << " pending=" << pending);
+				REQUIRE(cdic_hle::classify_cdda_receive(state, sound_map_active, pending) == expected);
+			}
+		}
+	}
+}
+
 TEST_CASE("CDIC command time converts BCD MSF and whole-second seeks to logical LBA", "[emu][philips][cdic][command][sector]")
 {
 	REQUIRE(cdic_hle::lba_from_time(0x00020000) == 0);
@@ -501,7 +679,7 @@ TEST_CASE("CDIC XA predictor exhausts every legal filter range and code", "[emu]
 	}
 }
 
-TEST_CASE("CDIC XA sound-group parameter copies and reserved values are classified", "[emu][philips][cdic][xa][group][malformed][exhaustive]")
+TEST_CASE("CDIC XA sound-group parameter selection matches Mono-I captures", "[emu][philips][cdic][xa][group][malformed][hardware][exhaustive]")
 {
 	for (const uint8_t bits_per_sample : { uint8_t(4), uint8_t(8) })
 	{
@@ -522,8 +700,16 @@ TEST_CASE("CDIC XA sound-group parameter copies and reserved values are classifi
 		REQUIRE(valid.copy_mismatch == 0);
 		REQUIRE(valid.reserved_filter == 0);
 		REQUIRE(valid.reserved_range == 0);
+		REQUIRE(valid.redundant_reserved_filter == 0);
+		REQUIRE(valid.redundant_reserved_range == 0);
 		for (uint8_t unit = 0; unit < units; unit++)
+		{
 			REQUIRE(valid.value[unit] == parameters[unit]);
+			const uint8_t expected_offset = bits_per_sample == 8
+				? uint8_t(12 + unit)
+				: uint8_t((unit < 4 ? 4 : 12) + (unit & 3));
+			REQUIRE(cdic_hle::xa_parameter_copy_offset(bits_per_sample, unit, copies - 1) == expected_offset);
+		}
 
 		for (uint8_t unit = 0; unit < units; unit++)
 		{
@@ -538,8 +724,11 @@ TEST_CASE("CDIC XA sound-group parameter copies and reserved values are classifi
 					cdic_hle::inspect_xa_group_parameters(contradictory.data(), bits_per_sample);
 				INFO("width " << unsigned(bits_per_sample) << ", unit " << unsigned(unit)
 					<< ", copy " << unsigned(copy));
-				REQUIRE_FALSE(inspected.valid());
+				REQUIRE(inspected.valid());
 				REQUIRE(inspected.copy_mismatch == uint8_t(1U << unit));
+				REQUIRE(inspected.value[unit] == (copy == copies - 1
+					? uint8_t(parameters[unit] ^ 1)
+					: parameters[unit]));
 			}
 		}
 
@@ -553,7 +742,39 @@ TEST_CASE("CDIC XA sound-group parameter copies and reserved values are classifi
 			REQUIRE(inspected.copy_mismatch == 0);
 			REQUIRE(inspected.reserved_filter == ((raw >> 4) > 3 ? valid_mask : 0));
 			REQUIRE(inspected.reserved_range == ((raw & 0x0f) > maximum_range ? valid_mask : 0));
+			REQUIRE(inspected.redundant_reserved_filter == ((raw >> 4) > 3 ? valid_mask : 0));
+			REQUIRE(inspected.redundant_reserved_range == ((raw & 0x0f) > maximum_range ? valid_mask : 0));
 			REQUIRE(inspected.valid() == ((raw >> 4) <= 3 && (raw & 0x0f) <= maximum_range));
+		}
+
+		// Exercise every byte value independently in every redundant position.
+		parameters.fill(0);
+		for (uint8_t unit = 0; unit < units; unit++)
+		{
+			for (uint8_t copy = 0; copy < copies; copy++)
+			{
+				for (uint16_t raw = 0; raw <= 0xff; raw++)
+				{
+					write_reference_group_parameters(group, bits_per_sample, parameters);
+					group[cdic_hle::xa_parameter_copy_offset(bits_per_sample, unit, copy)] = uint8_t(raw);
+					const cdic_hle::xa_group_parameters inspected =
+						cdic_hle::inspect_xa_group_parameters(group.data(), bits_per_sample);
+					const uint8_t mask = uint8_t(1U << unit);
+					const bool selected = copy == copies - 1;
+					const bool bad_filter = (raw >> 4) > 3;
+					const bool bad_range = (raw & 0x0f) > maximum_range;
+
+					INFO("width " << unsigned(bits_per_sample) << ", unit " << unsigned(unit)
+						<< ", copy " << unsigned(copy) << ", value " << raw);
+					REQUIRE(inspected.copy_mismatch == (raw ? mask : 0));
+					REQUIRE(inspected.value[unit] == (selected ? raw : 0));
+					REQUIRE(inspected.reserved_filter == (selected && bad_filter ? mask : 0));
+					REQUIRE(inspected.reserved_range == (selected && bad_range ? mask : 0));
+					REQUIRE(inspected.redundant_reserved_filter == (!selected && bad_filter ? mask : 0));
+					REQUIRE(inspected.redundant_reserved_range == (!selected && bad_range ? mask : 0));
+					REQUIRE(inspected.valid() == (!selected || (!bad_filter && !bad_range)));
+				}
+			}
 		}
 	}
 
@@ -571,22 +792,43 @@ TEST_CASE("CDIC XA sound-group parameter copies and reserved values are classifi
 	REQUIRE(compound.copy_mismatch == 0x04);
 	REQUIRE(compound.reserved_filter == 0x84);
 	REQUIRE(compound.reserved_range == 0x24);
+	REQUIRE(compound.redundant_reserved_filter == 0x80);
+	REQUIRE(compound.redundant_reserved_range == 0x20);
 
 	std::array<uint8_t, 128> group{};
+	for (uint8_t i = 16; i < group.size(); i++)
+		group[i] = uint8_t(i * 37 + 11);
+	std::array<int16_t, 225> clean_left{};
+	std::array<int16_t, 225> clean_right{};
+	std::array<int16_t, 225> mismatch_left{};
+	std::array<int16_t, 225> mismatch_right{};
+	std::array<int16_t, 4> clean_history{ 1234, -2345, -3000, 4000 };
+	std::array<int16_t, 4> mismatch_history = clean_history;
+	const cdic_hle::xa_group_decode_result clean = cdic_hle::decode_xa_group(
+		8, 2, group.data(), clean_history.data(), clean_left.data(), clean_right.data());
+	group[0] = 0x31;
+	const cdic_hle::xa_group_decode_result mismatch = cdic_hle::decode_xa_group(
+		8, 2, group.data(), mismatch_history.data(), mismatch_left.data(), mismatch_right.data());
+	REQUIRE(clean.valid());
+	REQUIRE(mismatch.valid());
+	REQUIRE(mismatch.parameters.copy_mismatch == 0x01);
+	REQUIRE(mismatch_left == clean_left);
+	REQUIRE(mismatch_right == clean_right);
+	REQUIRE(mismatch_history == clean_history);
+
+	group.fill(0);
 	std::array<int16_t, 225> left;
 	std::array<int16_t, 225> right;
 	left.fill(0x5555);
 	right.fill(0x5555);
 	std::array<int16_t, 4> history{ 1234, -2345, -3000, 4000 };
 	const std::array<int16_t, 4> original_history = history;
-	group[0] = 0x00;
-	group[4] = 0x01;
-	group[8] = 0x00;
-	group[12] = 0x00;
+	group[12] = 0x40;
 	const cdic_hle::xa_group_decode_result malformed = cdic_hle::decode_xa_group(
 		8, 2, group.data(), history.data(), left.data(), right.data());
 	REQUIRE_FALSE(malformed.valid());
 	REQUIRE(malformed.parameters.copy_mismatch == 0x01);
+	REQUIRE(malformed.parameters.reserved_filter == 0x01);
 	REQUIRE(malformed.samples_per_channel == 56);
 	REQUIRE(history == original_history);
 	for (uint16_t sample = 0; sample < malformed.samples_per_channel; sample++)
@@ -786,4 +1028,40 @@ TEST_CASE("CDIC XA coding exhausts all supported and reserved byte combinations"
 	}
 
 	REQUIRE(valid_count == 16);
+}
+
+TEST_CASE("CDIC XA and CDDA sector durations are exact rational clock identities", "[emu][philips][cdic][audio][timing][exhaustive]")
+{
+	constexpr uint32_t CLOCK2 = 45'158'400U * 3 / 7;
+	REQUIRE(CLOCK2 == 19'353'600);
+	REQUIRE(CLOCK2 / 512 == 37'800);
+	REQUIRE(CLOCK2 / 1024 == 18'900);
+
+	uint16_t valid_count = 0;
+	for (uint16_t raw = 0; raw <= 0xff; raw++)
+	{
+		const cdic_hle::xa_coding coding = cdic_hle::decode_xa_coding(uint8_t(raw));
+		const uint16_t samples = cdic_hle::xa_samples_per_sector_per_channel(coding);
+		const uint32_t rate = cdic_hle::xa_sample_rate(coding, CLOCK2);
+		INFO("coding=" << raw);
+		if (coding.valid())
+		{
+			valid_count++;
+			REQUIRE(samples != 0);
+			REQUIRE(rate != 0);
+			REQUIRE(uint32_t(samples) * 75 == rate * coding.sector_periods);
+		}
+		else
+		{
+			REQUIRE(samples == 0);
+			REQUIRE(rate == 0);
+		}
+	}
+
+	REQUIRE(valid_count == 16);
+	REQUIRE(588 * 75 == 44'100);
+	REQUIRE(cdic_hle::CDIC_SUBCODE_BYTE_OFFSET == (2352 - 12));
+	REQUIRE_FALSE(cdic_hle::stores_sector_payload_in_ram(cdic_hle::disc_operation::cdda));
+	REQUIRE(cdic_hle::stores_sector_payload_in_ram(cdic_hle::disc_operation::mode1));
+	REQUIRE(cdic_hle::stores_sector_payload_in_ram(cdic_hle::disc_operation::mode2));
 }
