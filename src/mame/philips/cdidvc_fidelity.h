@@ -6,6 +6,8 @@
 
 #pragma once
 
+#include "cdidvc_utils.h"
+
 #include <cstddef>
 #include <cstdint>
 
@@ -76,6 +78,54 @@ constexpr int64_t clock90_delta_microseconds(int64_t delta90)
 constexpr int64_t sample_delta_microseconds(int64_t samples, uint32_t sample_rate)
 {
 	return sample_rate ? (samples * 1'000'000LL) / int64_t(sample_rate) : 0;
+}
+
+// Convert a cumulative emitted stereo-frame count into the MPEG 90 kHz clock
+// domain without accumulating per-sample rounding error.  The quotient and
+// remainder split also avoids multiplying the entire 64-bit frame count by
+// 90,000 in one operation.
+constexpr uint64_t audio_sample_clock90(
+		uint64_t anchor90, uint64_t emitted_frames, uint32_t sample_rate)
+{
+	if (!sample_rate)
+		return mpeg_timestamp_normalize(anchor90);
+
+	uint64_t const whole_seconds = emitted_frames / sample_rate;
+	uint64_t const remainder_frames = emitted_frames % sample_rate;
+	uint64_t const fractional90 =
+		(remainder_frames * MPEG_SYSTEM_CLOCK_HZ + sample_rate / 2U) / sample_rate;
+	return mpeg_timestamp_normalize(
+		anchor90 + whole_seconds * MPEG_SYSTEM_CLOCK_HZ + fractional90);
+}
+
+struct audio_clock_observation
+{
+	uint64_t sample_clock90;
+	int64_t sample_minus_scr90;
+	int64_t sample_minus_pts90;
+	int32_t sample_minus_dclk45;
+};
+
+// Put the emitted-audio sample counter, current SCR-derived 90 kHz clock,
+// current audio PTS, and raw 45 kHz DCLK into one observation.  This is
+// measurement-only telemetry math; it does not adjust scheduling or audio.
+constexpr audio_clock_observation observe_audio_clock(
+		uint64_t sample_anchor90,
+		uint64_t emitted_frames,
+		uint32_t sample_rate,
+		uint64_t scr_clock90,
+		uint64_t audio_pts90,
+		uint32_t dclk45)
+{
+	uint64_t const sample90 = audio_sample_clock90(
+		sample_anchor90, emitted_frames, sample_rate);
+	uint32_t const sample45 = uint32_t((sample90 >> 1) & 0xffffffffU);
+	return {
+		sample90,
+		mpeg_timestamp_delta(sample90, scr_clock90),
+		mpeg_timestamp_delta(sample90, audio_pts90),
+		signed_wrap_delta32(sample45, dclk45)
+	};
 }
 
 } // namespace cdi_dvc
