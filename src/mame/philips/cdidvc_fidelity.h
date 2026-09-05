@@ -128,6 +128,30 @@ constexpr audio_clock_observation observe_audio_clock(
 	};
 }
 
+struct packet_schedule_deltas
+{
+	int64_t play90;
+	int64_t decode90;
+	int32_t play45;
+	int32_t decode45;
+};
+
+// Packet presentation/decode timestamps are compared with the live MPEG clock,
+// not merely the most recently parsed SCR value.  The caller is responsible for
+// advancing its SCR anchor through DCLK before supplying current_clock90.
+constexpr packet_schedule_deltas measure_packet_schedule(
+		uint64_t play_timestamp90,
+		uint64_t decode_timestamp90,
+		uint64_t current_clock90)
+{
+	return {
+		mpeg_timestamp_delta(play_timestamp90, current_clock90),
+		mpeg_timestamp_delta(decode_timestamp90, current_clock90),
+		mpeg_dclk_delta(play_timestamp90, current_clock90),
+		mpeg_dclk_delta(decode_timestamp90, current_clock90)
+	};
+}
+
 } // namespace cdi_dvc
 
 #endif // MAME_PHILIPS_CDIDVC_FIDELITY_H
