@@ -103,6 +103,63 @@ TEST_CASE("CD-i host PCM saturation and half-way rounding are explicit", "[emu][
 		-std::numeric_limits<double>::infinity()) == -32768);
 }
 
+TEST_CASE("CDIC XA arithmetic floor shifts are explicit over their signed domain", "[emu][philips][audio][xa][rounding][portability]")
+{
+	auto const reference_floor_shift = [](int32_t value, uint8_t shift)
+	{
+		if (!shift)
+			return value;
+		if (shift >= 31)
+			return value < 0 ? int32_t(-1) : int32_t(0);
+
+		int64_t const divisor = int64_t(1) << shift;
+		int64_t quotient = int64_t(value) / divisor;
+		int64_t const remainder = int64_t(value) % divisor;
+		if (remainder < 0)
+			--quotient;
+		return int32_t(quotient);
+	};
+
+	for (unsigned shift = 0; shift <= 15; ++shift)
+	{
+		for (int32_t value = -32768; value <= 32767; ++value)
+		{
+			INFO("value=" << value << " shift=" << shift);
+			REQUIRE(cdic_hle::floor_shift_right(value, uint8_t(shift)) ==
+				reference_floor_shift(value, uint8_t(shift)));
+		}
+	}
+
+	constexpr std::array<int32_t, 11> boundaries =
+	{
+		std::numeric_limits<int32_t>::min(),
+		-1073741825,
+		-1073741824,
+		-65537,
+		-1,
+		0,
+		1,
+		65537,
+		1073741823,
+		1073741824,
+		std::numeric_limits<int32_t>::max()
+	};
+	for (unsigned shift = 0; shift <= 31; ++shift)
+	{
+		for (int32_t value : boundaries)
+		{
+			INFO("boundary value=" << value << " shift=" << shift);
+			REQUIRE(cdic_hle::floor_shift_right(value, uint8_t(shift)) ==
+				reference_floor_shift(value, uint8_t(shift)));
+		}
+	}
+
+	REQUIRE(cdic_hle::floor_shift_right(-3, 1) == -2);
+	REQUIRE(cdic_hle::floor_shift_right(-1, 31) == -1);
+	REQUIRE(cdic_hle::floor_shift_right(std::numeric_limits<int32_t>::min(), 31) == -1);
+	REQUIRE(cdic_hle::floor_shift_right(std::numeric_limits<int32_t>::max(), 31) == 0);
+}
+
 TEST_CASE("CDIC XA predictor rounding ties toward positive infinity before saturation", "[emu][philips][audio][xa][rounding][saturation]")
 {
 	auto positive_tie = cdic_hle::decode_xa_sample(0x10, 0, 8, 0);
