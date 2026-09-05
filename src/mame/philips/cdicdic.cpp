@@ -557,9 +557,9 @@ bool cdicdic_device::is_valid_sector(const uint8_t *buffer)
 cdic_hle::sector_decision cdicdic_device::mode2_sector_decision(const uint8_t *buffer) const
 {
 	return cdic_hle::select_mode2_sector(
-		m_file,
-		m_channel,
-		m_audio_channel,
+		m_mode2_filter.file,
+		m_mode2_filter.channels,
+		m_mode2_filter.audio_channels,
 		{ buffer[SECTOR_FILE2], buffer[SECTOR_CHAN2], buffer[SECTOR_SUBMODE2], buffer[SECTOR_CODING2] });
 }
 
@@ -1195,6 +1195,13 @@ void cdicdic_device::atten_w(uint32_t state)
 	m_atten[3] = (state & 0x000000ff);
 }
 
+void cdicdic_device::update_mode2_filters(cdic_hle::mode2_filter_boundary boundary)
+{
+	cdic_hle::apply_mode2_filter_boundary(
+		m_mode2_filter, m_realtime_audio, m_next_audio_buffer,
+		boundary, m_file, m_channel, m_audio_channel);
+}
+
 void cdicdic_device::init_disc_read(uint8_t disc_mode)
 {
 	m_disc_command = m_command;
@@ -1202,7 +1209,7 @@ void cdicdic_device::init_disc_read(uint8_t disc_mode)
 	m_disc_state = uint8_t(cdic_hle::disc_state::seeking);
 	m_curr_lba = lba_from_time();
 	if (disc_mode == DISC_MODE2)
-		cdic_hle::reset_realtime_audio_buffers(m_realtime_audio);
+		update_mode2_filters(cdic_hle::mode2_filter_boundary::new_read);
 	else if (disc_mode == DISC_CDDA)
 		m_cdda_pending = false;
 	logerror(
@@ -1264,6 +1271,10 @@ void cdicdic_device::handle_cdic_command()
 			break;
 		case cdic_hle::command::update:
 			LOGMASKED(LOG_WRITES, "%s: cdic_w: Update command\n", machine().describe_context());
+			// Captured channel changes take effect only after $2e.  The trace
+			// does not distinguish reset from continuous buffer alternation,
+			// so preserve the active ingress and DAC state here.
+			update_mode2_filters(cdic_hle::mode2_filter_boundary::update);
 			break;
 		case cdic_hle::command::fetch_toc:
 			init_disc_read(DISC_TOC);
@@ -1330,6 +1341,9 @@ void cdicdic_device::device_start()
 	save_item(NAME(m_file));
 	save_item(NAME(m_channel));
 	save_item(NAME(m_audio_channel));
+	save_item(NAME(m_mode2_filter.file));
+	save_item(NAME(m_mode2_filter.channels));
+	save_item(NAME(m_mode2_filter.audio_channels));
 	save_item(NAME(m_data_select));
 	save_item(NAME(m_audio_buffer));
 	save_item(NAME(m_x_buffer));
@@ -1379,6 +1393,7 @@ void cdicdic_device::device_reset()
 	m_file = 0;
 	m_channel = 0xffffffff;
 	m_audio_channel = 0xffff;
+	m_mode2_filter = {};
 	m_data_select = 0;
 	m_audio_buffer = 0;
 	m_x_buffer = 0;

@@ -451,6 +451,49 @@ local gate.  The extended pure gate needed C++20 plus warning demotions for the
 unrepaired scratch copy of `rgbutil.cpp`; the user's intentional Windows repair is
 preserved and no RGB source is part of this checkpoint.
 
+## CDIC Mode-2 restart and clock checkpoint (2026-09-05)
+
+The eleventh campaign batch closes two observable CD-fed XA lifecycle defects without
+claiming the CDIC's hidden DAC or predictor boundary.
+
+1. The retained 210/05 `test_xa_channel_change` capture says command `$2e` is
+   essential after changing FILE/CHAN/ACHAN.  MAME previously applied programming
+   register writes immediately instead of respecting that command boundary.  The
+   capture observes an even 20 sectors before each update, so its following selector
+   four (`$2800`) cannot distinguish reset from continuous alternation; MAME preserves
+   the active audio-ingress state rather than guessing.
+2. The same hardware program's `test_xa_read_during_read` capture issues a new Mode-2
+   read during active playback.  The first selected sector after the seek again reports
+   selector four, and its timestamp returns to the requested disc position.  MAME now
+   latches programmed filters on both commands, and gives only a new Mode-2 read the
+   hardware-supported ingress transition: discard stale ready flags/countdown and
+   restart both delivery and playback ownership at `$2800`.
+3. The transition intentionally preserves AUDCTL bit 11, already-submitted DMADAC
+   samples, and XA predictor history.  The capture shows playback remains enabled but
+   does not expose the first/last analogue sample, decoder-history reset, or queue
+   flush.  Resetting any of those would convert an evidence gap into a fabricated
+   specification.
+4. The steady clock is integer-exact rather than periodically corrected.  For all 16
+   coding-field-valid bytes, 37,800 or 18,900 samples per second divides exactly into
+   504 or 252 samples per 75 Hz tick, and each sector contains precisely 2, 4, 8, or
+   16 such periods.  A deterministic 135,000-tick (30-minute) simulation uses the
+   production realtime-buffer helpers in the device's audio-before-sector order and
+   proves zero sample-count error, exact alternating ownership, and no duplicate/drop
+   at simultaneous refill boundaries.
+5. This is a software-clock proof, not a physical drift capture.  The six-tick seek
+   delay remains a compatibility model, and exact timer phase, stop/reset response,
+   host sound scheduling, real-media timestamps, and analogue long-run drift remain
+   open.
+
+Focused optimized, unoptimized, and GCC AddressSanitizer/UndefinedBehaviorSanitizer
+CDIC gates each pass **3,430,298 assertions in 22 cases**.  The new restart and
+long-run selections pass **4,909/1** and **113/1**.  The complete standalone gate
+passes **11,885,283/143**; permanent selections pass `[philips]`
+**11,884,487/137**, `[audio]` **7,824,918/36**, `[dvc][audio]`
+**7,161,826/27**, `[save]` **72,966/11**, `[xa]` **2,507,802/6**,
+`[timing][audio]` **731/3**, `[scc68070][dma]` **8/1**, and `[cdda]`
+**8/1**.  The native C++20 `release64` CDIC/DVC production archive compiles.
+
 ## Evidence register
 
 | ID | Class | Source | Supported claim | Limit |
@@ -477,7 +520,7 @@ preserved and no RGB source is part of this checkpoint.
 | XA-HW-001 | Hardware-confirmed | [CDIC Black Box Analyzer parameter-corruption test at `e861f76`](https://github.com/Slamy/CDIC_BlackBoxAnalyzer/blob/e861f76ece477b3aff0e9c4c70f5c6ba1715e60a/src/test_audiomap.c) | The tested CD-i 210/05 consumes parameter bytes 12-15 in 8-bit mode and bytes 4-7 plus 12-15 in 4-bit mode. | One player revision; `$14` failed, but related coding values and invalid-selected-parameter signaling were not characterized. |
 | XA-MODEL-001 | Current implementation model | `cdic_hle::decode_xa_group` and `[cdic][xa][group][malformed]` | A redundant-copy disagreement is diagnostic and the hardware-selected copy is decoded.  An invalid selected value retains its sample duration as silence without changing predictor history. | Silence/held-history concealment and physical error/status signaling remain unmeasured. |
 | CDIC-HW-001 | Hardware-confirmed | [CDIC register observations](https://github.com/Slamy/CDIC_BlackBoxAnalyzer/blob/e861f76ece477b3aff0e9c4c70f5c6ba1715e60a/doc/registers.md), [sound-map captures](https://github.com/Slamy/CDIC_BlackBoxAnalyzer/blob/e861f76ece477b3aff0e9c4c70f5c6ba1715e60a/src/test_audiomap.c), and [usage manual](https://github.com/Slamy/CDIC_BlackBoxAnalyzer/blob/e861f76ece477b3aff0e9c4c70f5c6ba1715e60a/doc/cdic_manual.md) | On the measured 210/05, AUDCTL bits 13/11/0 control ABUF IRQ, playback, and `$ff` termination; CPU maps start at `$2800`, alternate with `$3200`, and exhibit the captured normal/abort/termination readback and IRQ edges. | Does not reveal the internal PCM queue, accumulator, or all fixed-bit causes. |
-| CDIC-HW-002 | Hardware-confirmed | [XA playback capture](https://github.com/Slamy/CDIC_BlackBoxAnalyzer/blob/e861f76ece477b3aff0e9c4c70f5c6ba1715e60a/src/test_xa_play.c) and [CD-DA playback/R-W capture](https://github.com/Slamy/CDIC_BlackBoxAnalyzer/blob/e861f76ece477b3aff0e9c4c70f5c6ba1715e60a/src/test_cdda_play.c) | CD-fed XA first reports buffers 4/5 at `$2800`/`$3200`; XA and CD-DA require `$0800`; CD-DA produces per-sector buffer/subcode events and its PCM is not stored in CDIC RAM. | Captures use one player and discs; exact DAC start sample, track/lead transitions, and complete P-W semantics remain unresolved. |
+| CDIC-HW-002 | Hardware-confirmed | [XA playback, channel-update, and replacement-read captures](https://github.com/Slamy/CDIC_BlackBoxAnalyzer/blob/e861f76ece477b3aff0e9c4c70f5c6ba1715e60a/src/test_xa_play.c) and [CD-DA playback/R-W capture](https://github.com/Slamy/CDIC_BlackBoxAnalyzer/blob/e861f76ece477b3aff0e9c4c70f5c6ba1715e60a/src/test_cdda_play.c) | CD-fed XA first reports buffers 4/5 at `$2800`/`$3200`; `$2e` commits channel-filter changes; a replacement Mode-2 read restarts at buffer four and the requested timestamp; XA and CD-DA require `$0800`; CD-DA produces per-sector buffer/subcode events and its PCM is not stored in CDIC RAM. | Captures use one player and discs; the update trace's even 20-sector windows cannot distinguish buffer reset from continuous alternation and omit exact command-to-first-sector time; exact DAC/predictor edges, track/lead transitions, and complete P-W semantics remain unresolved. |
 | CDIC-REF-001 | Independently corroborated | [MiSTer CD-i CDIC RTL at `1d0d29b`](https://github.com/MiSTer-devel/CDi_MiSTer/blob/1d0d29b164a05d11db0094564feacf0f66c1d4e4/rtl/cdic.sv), [audio decoder](https://github.com/MiSTer-devel/CDi_MiSTer/blob/1d0d29b164a05d11db0094564feacf0f66c1d4e4/rtl/audiodecoder.sv), and [audio player](https://github.com/MiSTer-devel/CDi_MiSTer/blob/1d0d29b164a05d11db0094564feacf0f66c1d4e4/rtl/audioplayer.sv) | Independently implements bits 13/11/0, `$2800`/`$3200` buffering, and the same measured 4/8-bit parameter offsets. | The RTL incorporates reverse-engineering evidence and is corroboration, not an IMS66490 specification. |
 | CDIC-MODEL-001 | Current implementation model | [E-Di CDIC model at `b98537f`](https://github.com/whatever-industries/edi_emulator/blob/b98537fddf3b6199554b2d289840a6704c344c81/crates/cdi-core/src/cdic.rs) | A separately maintained emulator uses distinct sound-map/realtime states, two ready XA halves, and one pending pre-start CD-DA sector; this cross-checks MAME's state decomposition. | It cites the same Mono-I evidence and therefore is not independent hardware confirmation. |
 
@@ -556,6 +599,15 @@ preserved and no RGB source is part of this checkpoint.
 - **CDIC DAC/queue boundary:** AUDCTL gating and transfer-completion events are
   measured, but the exact first/last audible sample, internal queue depth, and
   hold/zero/ramp/flush response on stop, underrun, replacement, or reset are not.
+- **CDIC Mode-2 filter/restart boundary:** FILE/CHAN/ACHAN are programming
+  registers; a Mode-2 read or `$2e` update latches them for routing.  Only the
+  replacement-read capture distinguishes and proves CD-fed ingress ownership returning
+  to `$2800`, so MAME clears stale ready flags/countdown there while preserving active
+  ingress across `$2e`.
+  Keeping queued DMADAC samples and predictor history is an explicit model because
+  neither is visible in the register capture.  The exact 75 Hz/sample-count identity
+  prevents software arithmetic drift, but does not substitute for a physical or
+  real-media host-output drift measurement.
 - **CD-DA subcode:** Q location and 75 Hz delivery are captured.  MAME still
   synthesizes Q from simplified disc assumptions and does not reproduce captured
   R-W, multi-track/index, lead-in/lead-out, pause, or seek transitions.

@@ -195,16 +195,30 @@ by FFmpeg; it is not yet promoted to silicon-confirmed behavior.
 
 - [x] Validate double-buffer sequence and IRQ/termination boundaries under sustained audio.
 - [x] Validate sector cadence for every legal coding mode.
-- [ ] Validate restart timing after stop/reset/update/read transitions.
-- [ ] Measure long-run drift against sector timestamps.
+- [x] Validate Mode-2 filter-update latching and replacement-read ingress restart against hardware captures.
+- [x] Prove the HLE sample/sector clock has zero arithmetic drift over at least 30 minutes.
+- [ ] Validate stop/reset command timing through the hidden DAC and predictor boundaries.
+- [ ] Measure real-media, host-output, and physical-hardware long-run drift against sector timestamps.
 
 Mono-I captures establish first/second CD-fed XA buffers `$2800`/`$3200`, the
 per-buffer sound-map ABUF boundary, read-to-clear termination, and interrupt-masked
 abort behavior.  The save-stateable transport tests cover initial wait, alternating
-refill, starvation, restart, `$ff`, and abort state.  For all 16 coding-field-valid
-bytes, the decoded samples and 37.8/18.9 kHz clock produce exactly the corresponding
-2/4/8/16 sector periods at 75 Hz.  Timer phase relative to sector arrival, all command
-transitions, and long-run timestamp drift remain open, so this area is not 100%.
+refill, starvation, restart, `$ff`, and abort state.  A second retained capture proves
+that FILE/CHAN/ACHAN changes become active through command `$2e`.  Because each channel
+is observed for an even 20 sectors, that trace cannot distinguish a buffer reset from
+continuous alternation and MAME does not invent one.  A replacement Mode-2 read does
+prove that its first selected audio sector returns to `$2800`.  MAME now latches
+programmed filters at `$2e` and new-read boundaries, while only a new read restarts the
+CD-fed ingress halves.  It does not clear AUDCTL playback, queued host PCM, or predictor
+history whose physical edge is not established.
+
+For all 16 coding-field-valid bytes, the decoded samples and 37.8/18.9 kHz clock
+produce exactly the corresponding 2/4/8/16 sector periods at 75 Hz.  A 135,000-tick
+regression (30 minutes) drives the production buffer state in the device's timer order
+and proves zero sample-count error and no duplicate/drop at exact refill boundaries.
+That closes software arithmetic drift, not physical drive/host-output drift.  Exact
+timer phase, seek latency, stop/reset DAC behavior, predictor reset, and real-media
+long-run measurements remain open, so this area is not 100%.
 
 ### 9. A/V synchronization and decoder clock
 

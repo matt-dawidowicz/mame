@@ -128,6 +128,27 @@ struct xa_coding
 	constexpr bool valid() const { return status == xa_coding_status::valid; }
 };
 
+struct mode2_filter_state
+{
+	uint16_t file = 0;
+	uint32_t channels = 0xffffffff;
+	uint16_t audio_channels = 0xffff;
+};
+
+constexpr void latch_mode2_filters(
+		mode2_filter_state &state,
+		uint16_t file,
+		uint32_t channels,
+		uint16_t audio_channels)
+{
+	// CDIC command $2e is the documented filter-update boundary.  Keep the
+	// CPU-visible programming registers separate from the selectors used by
+	// an active Mode-2 read so register writes alone cannot change routing.
+	state.file = file;
+	state.channels = channels;
+	state.audio_channels = audio_channels;
+}
+
 constexpr uint16_t AUDCTL_TERMINATED = 0x0001;
 constexpr uint16_t AUDCTL_PLAY = 0x0800;
 constexpr uint16_t AUDCTL_AUDIO_IRQ = 0x2000;
@@ -327,6 +348,36 @@ constexpr void reset_realtime_audio_buffers(realtime_audio_state &state)
 	state.ready = { false, false };
 	state.next_play = 0;
 	state.periods_remaining = 0;
+}
+
+constexpr void restart_mode2_audio_ingress(realtime_audio_state &state, uint8_t &next_delivery)
+{
+	// A captured 210/05 Mode-2 replacement read delivers its first selected
+	// audio sector to $2800 (selector four), independent of the old sequence.
+	// Preserve AUDCTL playback enable and the downstream DAC/predictor state:
+	// neither hidden edge is established by the register capture.
+	reset_realtime_audio_buffers(state);
+	next_delivery = 0;
+}
+
+enum class mode2_filter_boundary : uint8_t
+{
+	update,
+	new_read
+};
+
+constexpr void apply_mode2_filter_boundary(
+		mode2_filter_state &filters,
+		realtime_audio_state &audio,
+		uint8_t &next_delivery,
+		mode2_filter_boundary boundary,
+		uint16_t file,
+		uint32_t channels,
+		uint16_t audio_channels)
+{
+	latch_mode2_filters(filters, file, channels, audio_channels);
+	if (boundary == mode2_filter_boundary::new_read)
+		restart_mode2_audio_ingress(audio, next_delivery);
 }
 
 constexpr void stop_realtime_audio(realtime_audio_state &state)

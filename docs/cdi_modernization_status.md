@@ -65,6 +65,7 @@ Implemented in this checkpoint:
 - a testable command descriptor separating start, immediate stop, and stop-after-next-physical-sector effects;
 - explicit idle/seeking/reading transport state with save/reset coverage;
 - Mode 2 file/channel/message/EOF/EOR/TRIG filtering as a pure decision, separate from physical LBA advancement;
+- Mode 2 FILE/CHAN/ACHAN programming registers latched on a new read or `$2e` update, with captured new-read `$2800` audio-ingress restart ownership;
 - independent data and audio double-buffer selectors: first data delivery uses buffer 1, while first audio delivery uses buffer 0;
 - CPU-visible buffer completion separated from audio decode/playback;
 - XBUF IRQ gated by DBUF enable, ABUF IRQ gated by AUDCTL bit 13, and read-to-clear source acknowledgements;
@@ -84,10 +85,10 @@ Implemented in this checkpoint:
 | `0x27` Fetch TOC | Partial: enters TOC operation and synthesizes Q packets from MAME TOC metadata. | Uses the compatibility seek delay; XBUF follows visible buffer completion. | S, C. Packet ordering, lead-in cadence, mixed-mode descriptors, and stored subcode use are not hardware-proven. |
 | `0x28` Play CDDA | Partial: reads every raw audio sector, exposes an alternating CPU subcode buffer each sector, and gates PCM on AUDCTL bit 11. | 75 Hz physical scheduling and XBUF cadence; 588 stereo frames per sector; first sector waits for guest `$0800`. | R, S, T (`[cdic][audio][cdda]`). Exact audible sample edge, track/lead handling, and synthesized subcode contents remain **U/C**. |
 | `0x29` Read Mode 1 | Implemented HLE read at BCD MSF, with data double buffering. | Six-sector startup delay is **C**; each successful physical read advances LBA. | S, T. Error/status and servo seek completion are **U**. |
-| `0x2a` Read Mode 2 | Implemented HLE read with file/channel filtering, standards-conformant sector classification, and separate audio-buffer selection. | Filtered/malformed sectors advance physically without a visible buffer or IRQ; a selected-channel EOF stops after accepted delivery. | Standards, S, T (`[cdic][sector]`, `[cdic][malformed]`, `[cdic][buffer]`). Exact CDIC malformed-sector status remains unknown. |
+| `0x2a` Read Mode 2 | Implemented HLE read with latched file/channel filters, standards-conformant sector classification, and separate audio-buffer selection. | A replacement read seeks to TIME and restarts selected-audio ingress at `$2800`; filtered/malformed sectors advance physically without a visible buffer or IRQ; a selected-channel EOF stops after accepted delivery. | Standards, R, S, T (`[cdic][sector]`, `[cdic][malformed]`, `[cdic][buffer]`, `[restart]`). Exact seek and CDIC malformed-sector status remain unknown. |
 | `0x2b` Stop CDDA | Cancels the current disc operation immediately. | No modeled completion IRQ. | S. Whether it also flushes all audio pipeline state is **U**. |
 | `0x2c` Seek | Compatibility behavior: starts the same Mode 1 read path as `0x29`. | Same fixed delay and visible sector completion as Mode 1. | C. A true seek-only command-complete state is **U**. |
-| `0x2e` Update | Accepted and command-strobe bit cleared; no other effect. | No timing or IRQ. | U/C fixed no-op. |
+| `0x2e` Update | Latches programmed Mode-2 FILE/CHAN/ACHAN selectors. | Preserves active audio ingress; the even-length hardware trace cannot distinguish reset from continuous alternation. | R, T (`[cdic][restart]`). Exact command-to-sector, DAC, and predictor edges remain **U**. |
 | Other values | Bounded unknown command; no fabricated response or transport mutation. | DBUF command-strobe bit still self-clears. | U, T. |
 
 ### CDIC register audit
@@ -96,9 +97,9 @@ Implemented in this checkpoint:
 | --- | --- | --- | --- |
 | COMMAND `0x3c00` | 16-bit R/W; reset zero. | DBUF bit 15 accepts the command; reset commands are also observed live at the physical-sector boundary. | R, S, T. Unsupported commands are logged/ignored. |
 | TIME `0x3c02-05` | 32-bit word-lane R/W; reset zero. | BCD MSF converts to logical LBA; fraction bit 7 requests whole-second positioning. | S, T (`[cdic][command]`). Invalid BCD handling is **U**. |
-| FILE `0x3c06` | 16-bit R/W; reset zero. | High byte filters Mode 2 file number. | R, S, T (`[cdic][filter]`). Low byte is retained but unexplained. |
-| CHANNEL `0x3c08-0b` | 32-bit word-lane R/W; reset all ones. | Safely selects Mode 2 channels 0-31. | R, S, T. Reset mask is existing **C** behavior. |
-| AUDIO CHANNEL `0x3c0c` | 16-bit R/W; reset all ones. | Selects audio channels 0-15 after the data-channel filter. | R, S, T. Reset mask is existing **C** behavior. |
+| FILE `0x3c06` | 16-bit R/W; reset zero. | High byte is staged for the next Mode-2 read or `$2e` update. | R, S, T (`[cdic][filter][restart]`). Low byte is retained but unexplained. |
+| CHANNEL `0x3c08-0b` | 32-bit word-lane R/W; reset all ones. | Stages Mode-2 channels 0-31; active routing changes only at the command boundary. | R, S, T. Reset mask is existing **C** behavior. |
+| AUDIO CHANNEL `0x3c0c` | 16-bit R/W; reset all ones. | Stages audio channels 0-15 after the data-channel filter. | R, S, T. Reset mask is existing **C** behavior. |
 | DSEL `0x3c80` | 16-bit R/W; now deterministic zero reset. | No modeled effect. | U/C fixed storage. |
 | ABUF `0x3ff4` | 16-bit R/W; reset zero; bit 15 read-to-clear. | IRQ source only when AUDCTL bit 13 enables it. | R, S, T (`[cdic][irq]`). Remaining low bits are unexplained storage. |
 | XBUF `0x3ff6` | 16-bit R/W; reset zero; bit 15 read-to-clear. | Set on CPU-visible sector completion; IRQ requires DBUF bit 14. | R, S, T (`[cdic][irq]`). Remaining low bits are unexplained storage. |
@@ -113,10 +114,10 @@ Implemented in this checkpoint:
 | --- | --- | --- | --- |
 | Physical versus visible progress | Physical 75 Hz reads and LBA advancement are owned by the transport; filters decide only CPU-visible delivery. Reset-after-sector is outside the delivery path. | S, T (`[cdic][sector][filter]`). | Servo seek/track-loss timing and command-complete pins are not modeled. |
 | Mode 1 | Raw sector is copied without Mode 2 filters into alternating data buffers. | S, T (`[cdic][buffer]`). | Mode mismatch, EDC/ECC status, and error flags are not modeled. |
-| Mode 2 filters | File must match; Trigger is global within the file; EOF/EOR apply only to selected channels; empty/message sectors are skipped unless carrying Trigger or selected EOF/EOR. Audio reaches the decoder only through both main and audio masks. Invalid channel/type/form/coding combinations and unresolved duplicate subheaders are dropped. | Standards, S, T (`[cdic][filter]`, `[cdic][malformed]`, exhaustive 67,108,864-state oracle). | The image interface lacks CIRC byte-reliability flags; exact CDIC error/status signaling needs hardware traces. |
+| Mode 2 filters | File must match; Trigger is global within the file; EOF/EOR apply only to selected channels; empty/message sectors are skipped unless carrying Trigger or selected EOF/EOR. Audio reaches the decoder only through both main and audio masks. Programmed filters latch on `$2a`/`$2e`; invalid channel/type/form/coding combinations and unresolved duplicate subheaders are dropped. | Standards, R, S, T (`[cdic][filter]`, `[cdic][restart]`, `[cdic][malformed]`, exhaustive 67,108,864-state oracle). | The image interface lacks CIRC byte-reliability flags; exact CDIC error/status signaling needs hardware traces. |
 | Buffer completion | Data and audio each alternate independently and report the just-completed buffer through DBUF. XBUF asserts only for delivered sectors. | R, S, T (`[cdic][buffer]`, `[cdic][irq]`). | CPU/DSP/SRAM contention is not cycle-accurate. |
 | XA ADPCM | One pure production decoder uses the hardware-selected redundant parameters (8-bit bytes 12-15; 4-bit bytes 4-7 and 12-15), reports disagreements, rejects reserved selected values, decodes all layouts, updates clipped history, and preserves invalid-selected duration as silence. | Standards, 210/05 parameter-corruption capture, independent FFmpeg/jPSXdec source, T (`[cdic][xa]`; exact 16,128-byte FFmpeg PCM fixture). | Invalid-selected silence/held-history remains **C**; coding `$14` fails on captured 210/05 hardware but its related-value scope is unknown. De-emphasis and silicon arithmetic/status remain open. |
-| CDDA/XA transitions | CD-fed XA and CD-DA receipt are distinct from playback and wait for bit 11. XA alternates `$2800`/`$3200` and preserves buffer order over starvation/refill; CPU sound maps have priority. CD-DA PCM bypasses CDIC RAM. | R, corroborating RTL/emulator source, T (`[cdic][audio][audctl][buffer]`). | Exact DAC queue depth and hold/zero/ramp/flush behavior on stop, reset, underrun, or replacement remain **U**. |
+| CDDA/XA transitions | CD-fed XA and CD-DA receipt are distinct from playback and wait for bit 11. XA alternates `$2800`/`$3200`, preserves buffer order over starvation/refill and `$2e`, and restarts at `$2800` on a captured replacement read; CPU sound maps have priority. CD-DA PCM bypasses CDIC RAM. | R, corroborating RTL/emulator source, T (`[cdic][audio][audctl][buffer][restart]`). | Exact DAC queue depth, predictor reset, and hold/zero/ramp/flush behavior on stop, reset, underrun, or replacement remain **U**. |
 | TOC/subcode | Existing Q synthesis is retained as **C**. CD-DA now delivers a buffer every sector and stores Q at measured byte offset `$924`. | R for cadence/location; S, C for contents. | No claim of exact lead-in packet order, R-W/P-W acquisition, track/index transitions, CRC error status, or multi-session behavior. |
 | End of disc | Failed image reads stop the operation without delivering zero data. | S, T at helper/state boundary. | Hardware error/status/IRQ response is **U**. |
 | Attenuation | Four cross-mix attenuation bytes remain logarithmic float scaling. | S. | Quantization, mute timing, and DSP saturation are not hardware-captured. |
@@ -126,7 +127,7 @@ CDIC confidence after this checkpoint:
 - Functional: `[#######---] 70%`
 - Hardware fidelity: `[######----] 60%`
 - Evidence: service-manual topology, direct 210/05 capture programs, independent RTL/source cross-checks, synthetic tests, and compatibility models explicitly marked above.
-- Remaining: an IMS66490 specification; seek/command completion; exact Q/R-W and track/lead behavior; EDC/ECC/error status; DAC queue/sample-edge behavior; long-run audio timing; cycle-level DMA/IRQ behavior.
+- Remaining: an IMS66490 specification; seek/command completion; exact Q/R-W and track/lead behavior; EDC/ECC/error status; DAC queue/sample-edge behavior; real-media/physical long-run audio timing; cycle-level DMA/IRQ behavior.
 
 ## Audio campaign DVC profile/queue/save checkpoint
 

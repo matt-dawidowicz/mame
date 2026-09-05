@@ -148,6 +148,7 @@ private:
 	uint16_t m_file;              // CDIC File Register               (0x303c06)
 	uint32_t m_channel;           // CDIC Channel Register            (0x303c08)
 	uint16_t m_audio_channel;     // CDIC Audio Channel Register      (0x303c0c)
+	cdic_hle::mode2_filter_state m_mode2_filter;
 	uint16_t m_data_select = 0;
 
 	uint16_t m_audio_buffer;      // CDIC Audio Buffer Register       (0x303ff4)
@@ -195,6 +196,7 @@ private:
 
 	void process_disc_sector();
 	void process_sector_data(const uint8_t *buffer, const uint8_t *subcode_buffer, bool audio_sector);
+	void update_mode2_filters(cdic_hle::mode2_filter_boundary boundary);
 	void init_disc_read(uint8_t disc_mode);
 	void cancel_disc_read();
 	void handle_cdic_command();

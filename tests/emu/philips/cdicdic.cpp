@@ -394,6 +394,92 @@ TEST_CASE("CDIC data and audio delivery use independent double-buffer sequences"
 	REQUIRE((completion.data_buffer & 0x0005) == 0x0005);
 }
 
+TEST_CASE("CDIC Mode 2 filters latch and replacement reads restart audio at buffer 2800", "[emu][philips][cdic][audio][buffer][filter][restart][hardware][exhaustive]")
+{
+	cdic_hle::mode2_filter_state filters;
+	cdic_hle::latch_mode2_filters(filters, 0x1200, uint32_t(1) << 3, uint16_t(1) << 3);
+	REQUIRE(cdic_hle::select_mode2_sector(
+		filters.file, filters.channels, filters.audio_channels,
+		{ 0x12, 3, 0x24, 0x00 }).target == cdic_hle::sector_target::audio);
+
+	// Programming-register writes are not a routing boundary.  The active
+	// filter remains unchanged until command $2e (or a new Mode-2 read) latches it.
+	const uint16_t programmed_file = 0x3400;
+	const uint32_t programmed_channels = uint32_t(1) << 7;
+	const uint16_t programmed_audio_channels = uint16_t(1) << 7;
+	REQUIRE(cdic_hle::select_mode2_sector(
+		filters.file, filters.channels, filters.audio_channels,
+		{ 0x34, 7, 0x24, 0x00 }).target == cdic_hle::sector_target::filtered);
+
+	cdic_hle::latch_mode2_filters(
+		filters, programmed_file, programmed_channels, programmed_audio_channels);
+	REQUIRE(cdic_hle::select_mode2_sector(
+		filters.file, filters.channels, filters.audio_channels,
+		{ 0x12, 3, 0x24, 0x00 }).target == cdic_hle::sector_target::filtered);
+	REQUIRE(cdic_hle::select_mode2_sector(
+		filters.file, filters.channels, filters.audio_channels,
+		{ 0x34, 7, 0x24, 0x00 }).target == cdic_hle::sector_target::audio);
+
+	cdic_hle::realtime_audio_state update_audio;
+	update_audio.ready = { true, false };
+	update_audio.next_play = 1;
+	update_audio.periods_remaining = 7;
+	update_audio.enabled = true;
+	uint8_t update_delivery = 1;
+	cdic_hle::apply_mode2_filter_boundary(
+		filters, update_audio, update_delivery,
+		cdic_hle::mode2_filter_boundary::update,
+		0x5600, uint32_t(1) << 9, uint16_t(1) << 9);
+	REQUIRE(filters.file == 0x5600);
+	REQUIRE(filters.channels == uint32_t(1) << 9);
+	REQUIRE(filters.audio_channels == uint16_t(1) << 9);
+	REQUIRE(update_audio.ready[0]);
+	REQUIRE_FALSE(update_audio.ready[1]);
+	REQUIRE(update_audio.next_play == 1);
+	REQUIRE(update_audio.periods_remaining == 7);
+	REQUIRE(update_audio.enabled);
+	REQUIRE(update_delivery == 1);
+
+	for (const bool enabled : { false, true })
+	{
+		for (uint8_t ready = 0; ready < 4; ready++)
+		{
+			for (uint8_t next_play = 0; next_play < 2; next_play++)
+			{
+				for (uint8_t periods = 0; periods <= 16; periods++)
+				{
+					for (uint8_t initial_delivery = 0; initial_delivery < 2; initial_delivery++)
+					{
+						cdic_hle::realtime_audio_state audio;
+						audio.enabled = enabled;
+						audio.ready = { bool(ready & 1), bool(ready & 2) };
+						audio.next_play = next_play;
+						audio.periods_remaining = periods;
+						uint8_t next_delivery = initial_delivery;
+						cdic_hle::apply_mode2_filter_boundary(
+							filters, audio, next_delivery,
+							cdic_hle::mode2_filter_boundary::new_read,
+							0x7800, uint32_t(1) << 11, uint16_t(1) << 11);
+
+						INFO("enabled=" << enabled << " ready=" << unsigned(ready)
+							<< " next_play=" << unsigned(next_play)
+							<< " periods=" << unsigned(periods));
+						REQUIRE(audio.enabled == enabled);
+						REQUIRE_FALSE(audio.ready[0]);
+						REQUIRE_FALSE(audio.ready[1]);
+						REQUIRE(audio.next_play == 0);
+						REQUIRE(audio.periods_remaining == 0);
+						REQUIRE(next_delivery == cdic_hle::RESET_NEXT_AUDIO_BUFFER);
+						REQUIRE(filters.file == 0x7800);
+						REQUIRE(filters.channels == uint32_t(1) << 11);
+						REQUIRE(filters.audio_channels == uint16_t(1) << 11);
+					}
+				}
+			}
+		}
+	}
+}
+
 TEST_CASE("CDIC interrupt sources are gated by their documented enable state", "[emu][philips][cdic][irq]")
 {
 	using cdic_hle::interrupt_asserted;
@@ -1064,4 +1150,70 @@ TEST_CASE("CDIC XA and CDDA sector durations are exact rational clock identities
 	REQUIRE_FALSE(cdic_hle::stores_sector_payload_in_ram(cdic_hle::disc_operation::cdda));
 	REQUIRE(cdic_hle::stores_sector_payload_in_ram(cdic_hle::disc_operation::mode1));
 	REQUIRE(cdic_hle::stores_sector_payload_in_ram(cdic_hle::disc_operation::mode2));
+}
+
+TEST_CASE("CDIC XA sample clocks do not accumulate drift over thirty minutes", "[emu][philips][cdic][audio][timing][longrun][exhaustive]")
+{
+	constexpr uint32_t CLOCK2 = 45'158'400U * 3 / 7;
+	constexpr uint64_t SECTOR_TICKS = 30ULL * 60 * 75;
+	uint16_t valid_count = 0;
+
+	for (uint16_t raw = 0; raw <= 0xff; raw++)
+	{
+		const cdic_hle::xa_coding coding = cdic_hle::decode_xa_coding(uint8_t(raw));
+		if (!coding.valid())
+			continue;
+
+		valid_count++;
+		const uint64_t sample_rate = cdic_hle::xa_sample_rate(coding, CLOCK2);
+		const uint64_t samples_per_tick = sample_rate / 75;
+		const uint64_t samples_per_sector = cdic_hle::xa_samples_per_sector_per_channel(coding);
+		const uint64_t played_samples = samples_per_tick * SECTOR_TICKS;
+		const uint64_t timestamp_numerator = sample_rate * SECTOR_TICKS;
+		cdic_hle::realtime_audio_state audio;
+		cdic_hle::start_realtime_audio(audio);
+		uint8_t next_delivery = cdic_hle::RESET_NEXT_AUDIO_BUFFER;
+		uint8_t expected_play = cdic_hle::RESET_NEXT_AUDIO_BUFFER;
+		uint64_t delivered = 0;
+		uint64_t consumed = 0;
+		bool sequence_ok = true;
+		auto take_ready = [&]()
+		{
+			const uint8_t index = cdic_hle::take_realtime_audio_buffer(audio);
+			if (index == cdic_hle::NO_AUDIO_BUFFER)
+				return;
+			sequence_ok = sequence_ok && index == expected_play;
+			expected_play ^= 1;
+			consumed++;
+			cdic_hle::begin_realtime_audio_buffer(audio, coding.sector_periods);
+		};
+
+		// The device creates its audio timer before its sector timer, so an
+		// exact-boundary audio tick may observe starvation immediately before
+		// sector delivery.  Delivery retries playback in the same scheduler time.
+		for (uint64_t tick = 0; tick < SECTOR_TICKS; tick++)
+		{
+			if (tick && cdic_hle::advance_realtime_audio(audio))
+				take_ready();
+			if (!(tick % coding.sector_periods))
+			{
+				cdic_hle::mark_realtime_audio_ready(audio, next_delivery);
+				next_delivery ^= 1;
+				delivered++;
+				take_ready();
+			}
+		}
+
+		INFO("coding=" << raw << " rate=" << sample_rate
+			<< " periods=" << unsigned(coding.sector_periods));
+		REQUIRE(sample_rate % 75 == 0);
+		REQUIRE(samples_per_sector == samples_per_tick * coding.sector_periods);
+		REQUIRE(played_samples * 75 == timestamp_numerator);
+		REQUIRE(played_samples == sample_rate * 30ULL * 60);
+		REQUIRE(sequence_ok);
+		REQUIRE(consumed == delivered);
+		REQUIRE(consumed == (SECTOR_TICKS - 1) / coding.sector_periods + 1);
+	}
+
+	REQUIRE(valid_count == 16);
 }
