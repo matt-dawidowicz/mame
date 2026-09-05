@@ -22,13 +22,11 @@ STATUS:
   pull /DTACK high on a data read in order to tell the 68k to hold off until
   data is ready.
 
-- There is currently a lack of documentation on any of the chips used for
-  audio in any of the CD-i models. The CDIC, which was used on Mono-I boards,
-  is partially emulated thanks to information provided by CD-i Fan, the author
-  of CD-i Emu. Desired documentation includes:
-  * GSX38KG307CE46, "ATTEX"
-  * Philips IMS66490, "CDIC" ADPCM decoder
-  * PC85010 DSP
+- Mono-I CDIC and DVC audio now have substantial standards, service-manual,
+  reference-decoder, and direct-hardware evidence. A public IMS66490 data sheet
+  is still unavailable, so exact CDIC silicon arithmetic, DAC edges, servo
+  timing, and several board-specific audio-control details remain explicit
+  evidence gaps rather than inferred behavior.
 
 TODO:
 
@@ -54,7 +52,6 @@ TODO:
 #include "cpu/m6805/m6805.h"
 #include "imagedev/cdromimg.h"
 #include "machine/timekpr.h"
-#include "sound/cdda.h"
 
 #include "emupal.h"
 #include "screen.h"
@@ -81,6 +78,7 @@ static constexpr uint8_t IRQ4_IDLE_COMPAT_VECTOR = 0x3c;
 #define LOG_QUIZARD_WRITES  (1U << 3)
 #define LOG_QUIZARD_OTHER   (1U << 4)
 #define LOG_UART            (1U << 5)
+#define LOG_DVC_DMA         (1U << 6)
 
 #define VERBOSE         (0)
 #include "logmacro.h"
@@ -277,6 +275,7 @@ void quizard_state::machine_start()
 	cdi_state::machine_start();
 
 	save_item(NAME(m_boot_press));
+	save_item(NAME(m_mcu_p3));
 
 	m_boot_timer = timer_alloc(FUNC(quizard_state::boot_press_tick), this);
 
@@ -387,7 +386,7 @@ void cdi_state::dvc_dma_req_w(int state)
 	{
 		if (m_dvc_dma_service_active)
 		{
-			logerror("DVC_DMA_SERVICE_ABORT serial=%u remaining=%u events=%u\n",
+			LOGMASKED(LOG_DVC_DMA, "DVC_DMA_SERVICE_ABORT serial=%u remaining=%u events=%u\n",
 				m_dvc_dma_transfer_serial,
 				m_maincpu->dma_channel_remaining(1),
 				m_dvc_dma_service_events);
@@ -406,7 +405,7 @@ void cdi_state::dvc_dma_req_w(int state)
 
 	if (m_dvc_dma_service_active)
 	{
-		logerror("DVC_DMA_SERVICE_REASSERT serial=%u remaining=%u\n",
+		LOGMASKED(LOG_DVC_DMA, "DVC_DMA_SERVICE_REASSERT serial=%u remaining=%u\n",
 			m_dvc_dma_transfer_serial,
 			m_maincpu->dma_channel_remaining(1));
 		return;
@@ -437,7 +436,7 @@ void cdi_state::dvc_dma_req_w(int state)
 		machine().time().as_ticks(m_maincpu->clock());
 	m_dvc_dma_first_clock = 0;
 
-	logerror("DVC_DMA_SERVICE_START serial=%u words=%u mac=%02x address=%08x clock=%llu\n",
+	LOGMASKED(LOG_DVC_DMA, "DVC_DMA_SERVICE_START serial=%u words=%u mac=%02x address=%08x clock=%llu\n",
 		m_dvc_dma_transfer_serial,
 		m_dvc_dma_initial_words,
 		m_dvc_dma_mac_mode,
@@ -454,7 +453,7 @@ TIMER_CALLBACK_MEMBER(cdi_state::dvc_dma_service_tick)
 
 	if (!m_maincpu->dma_channel_active(1))
 	{
-		logerror("DVC_DMA_SERVICE_ABORT serial=%u remaining=%u events=%u\n",
+		LOGMASKED(LOG_DVC_DMA, "DVC_DMA_SERVICE_ABORT serial=%u remaining=%u events=%u\n",
 			m_dvc_dma_transfer_serial,
 			m_maincpu->dma_channel_remaining(1),
 			m_dvc_dma_service_events);
@@ -468,7 +467,7 @@ TIMER_CALLBACK_MEMBER(cdi_state::dvc_dma_service_tick)
 		m_dvc_dma_first_clock =
 			machine().time().as_ticks(m_maincpu->clock());
 
-		logerror("DVC_DMA_SERVICE_FIRST serial=%u latency_clocks=%llu\n",
+		LOGMASKED(LOG_DVC_DMA, "DVC_DMA_SERVICE_FIRST serial=%u latency_clocks=%llu\n",
 			m_dvc_dma_transfer_serial,
 			(unsigned long long)
 				(m_dvc_dma_first_clock - m_dvc_dma_request_clock));
@@ -478,7 +477,7 @@ TIMER_CALLBACK_MEMBER(cdi_state::dvc_dma_service_tick)
 
 	if (!m_maincpu->dma_channel_transfer(1, data))
 	{
-		logerror("DVC_DMA_SERVICE_ABORT serial=%u remaining=%u events=%u\n",
+		LOGMASKED(LOG_DVC_DMA, "DVC_DMA_SERVICE_ABORT serial=%u remaining=%u events=%u\n",
 			m_dvc_dma_transfer_serial,
 			m_maincpu->dma_channel_remaining(1),
 			m_dvc_dma_service_events);
@@ -497,7 +496,7 @@ TIMER_CALLBACK_MEMBER(cdi_state::dvc_dma_service_tick)
 
 		m_dvc_dma_service_active = false;
 
-		logerror("DVC_DMA_SERVICE_COMPLETE serial=%u words=%u events=%u elapsed_clocks=%llu first_latency_clocks=%llu\n",
+		LOGMASKED(LOG_DVC_DMA, "DVC_DMA_SERVICE_COMPLETE serial=%u words=%u events=%u elapsed_clocks=%llu first_latency_clocks=%llu\n",
 			m_dvc_dma_transfer_serial,
 			m_dvc_dma_initial_words,
 			m_dvc_dma_service_events,
@@ -678,10 +677,17 @@ uint32_t cdi_state::screen_update_cdimono1(
 
 uint32_t cdi_state::screen_update_cdimono1_lcd(screen_device &screen, bitmap_rgb32 &bitmap, const rectangle &cliprect)
 {
-	uint8_t lcd_state[16];
-	std::copy_n(m_slave_hle->get_lcd_state(), 16, lcd_state);
+	// Mono-II and Mini-MMC configurations do not instantiate the Mono-I
+	// SLAVE HLE.  Until their real front-panel MCU path is connected, render
+	// an explicitly unmodeled blank panel instead of dereferencing an absent
+	// optional device.
+	if (!m_slave_hle)
+	{
+		bitmap.fill(rgb_t::black(), cliprect);
+		return 0;
+	}
 
-	cdi220_lcd::draw(bitmap, cliprect, lcd_state);
+	cdi220_lcd::draw(bitmap, cliprect, m_slave_hle->get_lcd_state());
 	return 0;
 }
 
@@ -885,8 +891,8 @@ void cdi_state::cdimono1dvc(machine_config &config)
 	m_dvc->add_route(0, "speaker", 1.0, 0);
 	m_dvc->add_route(1, "speaker", 1.0, 1);
 
-	// Stage 4 connects DMA only. Shared CDIC/DVC IRQ4 arbitration is
-	// introduced separately in Stage 5.
+	// VMPEG shares Mono-I IRQ4 arbitration with CDIC and requests its
+	// SCC-owned scheduled DMA service through the callbacks below.
 	m_dvc->intreq_callback().set(FUNC(cdi_state::dvc_irq_w));
 	m_dvc->dma_req_callback().set(FUNC(cdi_state::dvc_dma_req_w));
 
@@ -909,8 +915,8 @@ void cdi_state::cdimono1dvc_ntsc(machine_config &config)
 	m_dvc->add_route(0, "speaker", 1.0, 0);
 	m_dvc->add_route(1, "speaker", 1.0, 1);
 
-	// Stage 4 connects DMA only. Shared CDIC/DVC IRQ4 arbitration is
-	// introduced separately in Stage 5.
+	// VMPEG shares Mono-I IRQ4 arbitration with CDIC and requests its
+	// SCC-owned scheduled DMA service through the callbacks below.
 	m_dvc->intreq_callback().set(FUNC(cdi_state::dvc_irq_w));
 	m_dvc->dma_req_callback().set(FUNC(cdi_state::dvc_dma_req_w));
 
