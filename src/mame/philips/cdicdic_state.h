@@ -712,6 +712,23 @@ constexpr int16_t clip_sample(int32_t sample)
 	return int16_t(sample < -32768 ? -32768 : sample > 32767 ? 32767 : sample);
 }
 
+// Explicit arithmetic-floor division by 2^shift for the XA compatibility
+// model.  This removes reliance on the implementation-defined result of
+// right-shifting negative signed integers while preserving the established
+// waveform semantics.  It is software policy, not a claim about CDIC gates.
+constexpr int32_t floor_shift_right(int32_t value, uint8_t shift)
+{
+	if (!shift)
+		return value;
+	if (shift >= 31)
+		return value < 0 ? -1 : 0;
+
+	const int32_t divisor = int32_t(uint32_t(1) << shift);
+	const int32_t quotient = value / divisor;
+	const int32_t remainder = value % divisor;
+	return quotient - (remainder < 0 ? 1 : 0);
+}
+
 constexpr int16_t expand_xa_code(uint8_t code, uint8_t bits_per_sample)
 {
 	if (bits_per_sample != 4 && bits_per_sample != 8)
@@ -737,8 +754,8 @@ constexpr xa_sample decode_xa_sample(
 {
 	// Callers validate the sound parameter before reaching this arithmetic.
 	// These coefficients are the Green Book values scaled by 256.  The final
-	// +128 and shift are an independently corroborated compatibility rounding
-	// model; exact CDIC intermediate widths and rounding remain unmeasured.
+	// +128 and floor division are an independently corroborated compatibility
+	// rounding model; exact CDIC intermediate widths and rounding remain unmeasured.
 	constexpr int16_t FILTER[4][2] =
 	{
 		{ 0x000,  0x000 },
@@ -748,9 +765,12 @@ constexpr xa_sample decode_xa_sample(
 	};
 	const uint8_t filter = (parameter >> 4) & 3;
 	const uint8_t range = parameter & 0x0f;
+	const int32_t predictor =
+		int32_t(FILTER[filter][0]) * recent +
+		int32_t(FILTER[filter][1]) * older + 128;
 	const int32_t decoded =
-		(int32_t(encoded) >> range) +
-		((int32_t(FILTER[filter][0]) * recent + int32_t(FILTER[filter][1]) * older + 128) >> 8);
+		floor_shift_right(int32_t(encoded), range) +
+		floor_shift_right(predictor, 8);
 	const int16_t output = clip_sample(decoded);
 	return { output, output, recent };
 }
