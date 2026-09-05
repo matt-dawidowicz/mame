@@ -3,12 +3,16 @@ name: Build documentation
 on:
   push:
     paths:
-    - '.github/workflows/**'
+    - '.github/workflows/docs.yml'
     - 'docs/**'
   pull_request:
     paths:
-    - '.github/workflows/**'
+    - '.github/workflows/docs.yml'
     - 'docs/**'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
