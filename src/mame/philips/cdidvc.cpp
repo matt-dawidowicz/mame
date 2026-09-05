@@ -1367,14 +1367,7 @@ void cdi_dvc_device::audio_decoder_pump()
 		m_audio_pcm_queue.reserve(m_audio_pcm_queue.size() + values);
 		for (size_t i = 0; i < values; ++i)
 		{
-			float const sample = samples->interleaved[i];
-			float const scaled = sample * 32767.0f;
-			int32_t q = scaled >= 0.0f ? int32_t(scaled + 0.5f) : int32_t(scaled - 0.5f);
-			if (q < -32768)
-				q = -32768;
-			if (q > 32767)
-				q = 32767;
-			int16_t const pcm = int16_t(q);
+			int16_t const pcm = cdi_dvc::quantize_plm_audio_sample(samples->interleaved[i]);
 			uint16_t const u = uint16_t(pcm);
 			hash ^= uint8_t(u & 0xff);
 			hash *= 16777619U;

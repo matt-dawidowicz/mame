@@ -314,6 +314,26 @@ constexpr uint64_t dclk_delay_to_samples(int32_t delta45, uint32_t sample_rate)
 	return (uint64_t(uint32_t(delta45)) * sample_rate + (DCLK_HZ - 1U)) / DCLK_HZ;
 }
 
+// PL_MPEG emits normalized floating-point samples.  Keep the host-backend
+// conversion in one place so its symmetric nearest-integer rounding and
+// clipping behavior can be regression-tested.  This is not a claim about the
+// VMPEG DSP's internal accumulator or DAC quantization.
+constexpr int16_t quantize_plm_audio_sample(float sample)
+{
+	if (sample != sample) // A decoder NaN must not reach an integer conversion.
+		return 0;
+
+	float const scaled = sample * 32767.0F;
+	if (scaled <= -32768.0F)
+		return -32768;
+	if (scaled >= 32767.0F)
+		return 32767;
+
+	return int16_t(scaled >= 0.0F
+		? int32_t(scaled + 0.5F)
+		: int32_t(scaled - 0.5F));
+}
+
 // Decode a complete MPEG-1 Layer II frame header.  This is elementary-stream
 // format parsing, not a VMPEG register/hardware claim.  Free-format headers are
 // syntactically distinct from the reserved bitrate index, but remain unsupported

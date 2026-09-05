@@ -74,10 +74,14 @@ These percentages are working estimates of implementation plus evidence complete
 
 ### 2. MPEG Layer II decode path
 
-- [ ] Compare PL_MPEG output against at least one independent MPEG Layer II decoder for synthetic/legal fixtures.
+- [x] Compare PL_MPEG output against at least one independent MPEG Layer II decoder for synthetic/legal fixtures.
 - [x] Validate mono, dual-channel, stereo, and joint-stereo transitions.
 - [x] Validate decoder termination at exact frame boundary, partial frame, and end-of-stream.
-- [ ] Validate clipping and rounding assumptions and document backend-vs-hardware uncertainty.
+- [x] Validate clipping and rounding assumptions and document backend-vs-hardware uncertainty.
+
+Software/reference gates are complete for this row.  A 100% hardware-fidelity
+claim remains blocked by the explicitly recorded VMPEG CRC, free-format,
+in-stream rate-change, and DSP-rounding evidence limits.
 
 ### 3. DVC PCM buffering/output
 
