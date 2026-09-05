@@ -8,6 +8,7 @@
 #include "emuopts.h"
 #include "main.h"
 #include "osdepend.h"
+#include "render.h"
 #include "ui/menuitem.h"
 #include "ui/uimain.h"
 
@@ -21,7 +22,7 @@ namespace
 class cdi_dma_test_osd : public osd_interface
 {
 public:
-	void init(running_machine &machine) override { }
+	void init(running_machine &machine) override { machine.render().target_alloc(nullptr, RENDER_CREATE_NO_ART); }
 	void update(bool skip_redraw) override { }
 	void input_update(bool relative_reset) override { }
 	void check_osd_inputs() override { }
