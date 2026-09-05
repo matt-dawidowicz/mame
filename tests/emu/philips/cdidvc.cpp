@@ -460,3 +460,172 @@ TEST_CASE("CD-i DVC MPEG audio rejects unsupported bitrate indices", "[emu][phil
 	REQUIRE_FALSE(header_is_accepted(0));
 	REQUIRE_FALSE(header_is_accepted(15));
 }
+
+namespace {
+
+std::vector<uint8_t> make_silent_layer2_frame(
+		uint8_t bitrate_index,
+		uint8_t sample_rate_index = 0,
+		uint8_t mode = PLM_AUDIO_MODE_STEREO,
+		bool padding = false)
+{
+	uint32_t const header =
+		(0x7ffU << 21) |
+		(3U << 19) |
+		(2U << 17) |
+		(1U << 16) |
+		(uint32_t(bitrate_index) << 12) |
+		(uint32_t(sample_rate_index) << 10) |
+		(uint32_t(padding) << 9) |
+		(uint32_t(mode) << 6);
+	auto const decoded = cdi_dvc::decode_mpeg1_layer2_audio_header(header);
+	REQUIRE(decoded.valid);
+
+	std::vector<uint8_t> frame(decoded.frame_size_bytes, 0);
+	frame[0] = uint8_t(header >> 24);
+	frame[1] = uint8_t(header >> 16);
+	frame[2] = uint8_t(header >> 8);
+	frame[3] = uint8_t(header);
+	return frame;
+}
+
+void append_frame(std::vector<uint8_t> &stream, std::vector<uint8_t> const &frame)
+{
+	stream.insert(stream.end(), frame.begin(), frame.end());
+}
+
+} // anonymous namespace
+
+TEST_CASE("CD-i DVC MPEG audio accepts per-frame Layer II bitrate changes", "[emu][philips][dvc][audio]")
+{
+	struct frame_spec
+	{
+		uint8_t bitrate_index;
+		uint8_t mode;
+		bool padding;
+	};
+
+	constexpr std::array<frame_spec, 4> frames {{
+		{ 10, PLM_AUDIO_MODE_STEREO, false },
+		{ 11, PLM_AUDIO_MODE_JOINT_STEREO, true },
+		{ 8, PLM_AUDIO_MODE_DUAL_CHANNEL, false },
+		{ 12, PLM_AUDIO_MODE_MONO, true }
+	}};
+
+	std::vector<uint8_t> stream;
+	for (frame_spec const &frame : frames)
+		append_frame(stream, make_silent_layer2_frame(frame.bitrate_index, 0, frame.mode, frame.padding));
+
+	plm_buffer_t *const buffer = plm_buffer_create_with_capacity(stream.size());
+	REQUIRE(buffer != nullptr);
+	REQUIRE(plm_buffer_write(buffer, stream.data(), stream.size()) == stream.size());
+	plm_buffer_signal_end(buffer);
+
+	plm_audio_t *const decoder = plm_audio_create_with_buffer(buffer, 1);
+	REQUIRE(decoder != nullptr);
+	REQUIRE(plm_audio_has_header(decoder));
+
+	for (frame_spec const &frame : frames)
+	{
+		plm_samples_t *const decoded = plm_audio_decode(decoder);
+		REQUIRE(decoded != nullptr);
+		REQUIRE(decoded->count == PLM_AUDIO_SAMPLES_PER_FRAME);
+		REQUIRE(decoder->bitrate_index == int(frame.bitrate_index) - 1);
+		REQUIRE(decoder->mode == frame.mode);
+		for (float const sample : decoded->interleaved)
+			REQUIRE(sample == 0.0F);
+	}
+
+	REQUIRE(plm_audio_decode(decoder) == nullptr);
+	REQUIRE(plm_audio_has_ended(decoder));
+	plm_audio_destroy(decoder);
+}
+
+TEST_CASE("CD-i DVC MPEG audio resynchronizes after malformed Layer II candidates", "[emu][philips][dvc][audio]")
+{
+	std::vector<uint8_t> stream {
+		0x31, 0x41, 0x59,
+		0xff, 0xfd, 0xf0, 0x00, 0x00, 0x00,
+		0x26, 0x53, 0x58
+	};
+	append_frame(stream, make_silent_layer2_frame(10));
+
+	plm_buffer_t *const buffer = plm_buffer_create_with_capacity(stream.size());
+	REQUIRE(buffer != nullptr);
+	REQUIRE(plm_buffer_write(buffer, stream.data(), stream.size()) == stream.size());
+	plm_buffer_signal_end(buffer);
+
+	plm_audio_t *const decoder = plm_audio_create_with_buffer(buffer, 1);
+	REQUIRE(decoder != nullptr);
+	REQUIRE(plm_audio_has_header(decoder));
+	REQUIRE(plm_audio_decode(decoder) != nullptr);
+	REQUIRE(plm_audio_decode(decoder) == nullptr);
+	REQUIRE(plm_audio_has_ended(decoder));
+	plm_audio_destroy(decoder);
+}
+
+TEST_CASE("CD-i DVC MPEG audio waits for an exact frame then refills without duplication", "[emu][philips][dvc][audio]")
+{
+	std::vector<uint8_t> frame = make_silent_layer2_frame(10);
+	plm_buffer_t *const buffer = plm_buffer_create_with_capacity(frame.size());
+	REQUIRE(buffer != nullptr);
+	REQUIRE(plm_buffer_write(buffer, frame.data(), 3) == 3);
+
+	plm_audio_t *const decoder = plm_audio_create_with_buffer(buffer, 1);
+	REQUIRE(decoder != nullptr);
+	REQUIRE_FALSE(plm_audio_has_header(decoder));
+	REQUIRE(plm_buffer_write(buffer, frame.data() + 3, 3) == 3);
+	REQUIRE(plm_audio_has_header(decoder));
+	REQUIRE(plm_audio_decode(decoder) == nullptr);
+
+	std::size_t const penultimate = frame.size() - 7;
+	REQUIRE(plm_buffer_write(buffer, frame.data() + 6, penultimate) == penultimate);
+	REQUIRE(plm_audio_decode(decoder) == nullptr);
+	REQUIRE(plm_buffer_write(buffer, frame.data() + frame.size() - 1, 1) == 1);
+
+	plm_samples_t *const decoded = plm_audio_decode(decoder);
+	REQUIRE(decoded != nullptr);
+	REQUIRE(decoded->count == PLM_AUDIO_SAMPLES_PER_FRAME);
+	REQUIRE(plm_audio_decode(decoder) == nullptr);
+	REQUIRE(buffer->bit_index == buffer->length << 3);
+
+	// Refill after the exact-boundary miss.  Before the cursor fix, the write
+	// could see a byte position beyond length and underflow while discarding the
+	// consumed prefix.
+	std::vector<uint8_t> next_frame = make_silent_layer2_frame(
+		11, 0, PLM_AUDIO_MODE_JOINT_STEREO, true);
+	std::size_t const split = next_frame.size() / 2;
+	REQUIRE(plm_buffer_write(buffer, next_frame.data(), split) == split);
+	REQUIRE(plm_audio_decode(decoder) == nullptr);
+	REQUIRE(plm_buffer_write(
+		buffer,
+		next_frame.data() + split,
+		next_frame.size() - split) == next_frame.size() - split);
+	plm_samples_t *const refilled = plm_audio_decode(decoder);
+	REQUIRE(refilled != nullptr);
+	REQUIRE(refilled->count == PLM_AUDIO_SAMPLES_PER_FRAME);
+	REQUIRE(decoder->samples_decoded == 2 * PLM_AUDIO_SAMPLES_PER_FRAME);
+	REQUIRE(plm_audio_decode(decoder) == nullptr);
+	REQUIRE(buffer->bit_index == buffer->length << 3);
+
+	plm_buffer_signal_end(buffer);
+	REQUIRE(plm_audio_decode(decoder) == nullptr);
+	REQUIRE(plm_audio_has_ended(decoder));
+	plm_audio_destroy(decoder);
+}
+
+TEST_CASE("CD-i DVC MPEG audio never emits a truncated final frame", "[emu][philips][dvc][audio]")
+{
+	std::vector<uint8_t> frame = make_silent_layer2_frame(10);
+	plm_buffer_t *const buffer = plm_buffer_create_with_capacity(frame.size());
+	REQUIRE(buffer != nullptr);
+	REQUIRE(plm_buffer_write(buffer, frame.data(), frame.size() - 1) == frame.size() - 1);
+	plm_buffer_signal_end(buffer);
+
+	plm_audio_t *const decoder = plm_audio_create_with_buffer(buffer, 1);
+	REQUIRE(decoder != nullptr);
+	REQUIRE(plm_audio_has_header(decoder));
+	REQUIRE(plm_audio_decode(decoder) == nullptr);
+	REQUIRE(plm_audio_has_ended(decoder));
+	plm_audio_destroy(decoder);
+}

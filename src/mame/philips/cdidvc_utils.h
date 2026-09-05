@@ -64,11 +64,31 @@ struct full_motion_picture_rate
 	uint32_t denominator;
 };
 
+enum class mpeg1_layer2_audio_header_status : uint8_t
+{
+	supported,
+	accepted_reserved_emphasis,
+	unsupported_free_format,
+	invalid_sync,
+	invalid_version,
+	invalid_layer,
+	invalid_bitrate,
+	invalid_sample_rate
+};
+
 struct mpeg1_layer2_audio_header
 {
 	uint16_t bitrate_kbps;
 	uint16_t sample_rate_hz;
+	uint16_t frame_size_bytes;
+	uint8_t bitrate_index;
+	uint8_t sample_rate_index;
 	uint8_t channel_mode;
+	uint8_t mode_extension;
+	uint8_t emphasis;
+	bool has_crc;
+	bool padding;
+	mpeg1_layer2_audio_header_status status;
 	bool valid;
 };
 
@@ -294,8 +314,11 @@ constexpr uint64_t dclk_delay_to_samples(int32_t delta45, uint32_t sample_rate)
 	return (uint64_t(uint32_t(delta45)) * sample_rate + (DCLK_HZ - 1U)) / DCLK_HZ;
 }
 
-// Decode the MPEG-1 Layer II fields currently consumed by the DVC audio path.
-// This is elementary-stream format parsing, not a VMPEG register/hardware claim.
+// Decode a complete MPEG-1 Layer II frame header.  This is elementary-stream
+// format parsing, not a VMPEG register/hardware claim.  Free-format headers are
+// syntactically distinct from the reserved bitrate index, but remain unsupported
+// because their frame length cannot be derived from a single header and PL_MPEG
+// does not implement the required following-header search.
 constexpr mpeg1_layer2_audio_header decode_mpeg1_layer2_audio_header(uint32_t header)
 {
 	constexpr uint16_t bitrate_kbps[16] =
@@ -307,16 +330,45 @@ constexpr mpeg1_layer2_audio_header decode_mpeg1_layer2_audio_header(uint32_t he
 	unsigned const layer = (header >> 17) & 0x03;
 	unsigned const bitrate_index = (header >> 12) & 0x0f;
 	unsigned const sample_rate_index = (header >> 10) & 0x03;
-	uint8_t const channel_mode = uint8_t((header >> 6) & 0x03);
-	bool const valid = sync == 0x7ff && version == 3 && layer == 2
-		&& bitrate_kbps[bitrate_index] != 0 && sample_rate_hz[sample_rate_index] != 0;
 
-	return {
-		valid ? bitrate_kbps[bitrate_index] : uint16_t(0),
-		valid ? sample_rate_hz[sample_rate_index] : uint16_t(0),
-		channel_mode,
-		valid
+	mpeg1_layer2_audio_header result {
+		bitrate_kbps[bitrate_index],
+		sample_rate_hz[sample_rate_index],
+		0,
+		uint8_t(bitrate_index),
+		uint8_t(sample_rate_index),
+		uint8_t((header >> 6) & 0x03),
+		uint8_t((header >> 4) & 0x03),
+		uint8_t(header & 0x03),
+		((header >> 16) & 1U) == 0,
+		((header >> 9) & 1U) != 0,
+		mpeg1_layer2_audio_header_status::supported,
+		false
 	};
+
+	if (sync != 0x7ff)
+		result.status = mpeg1_layer2_audio_header_status::invalid_sync;
+	else if (version != 3)
+		result.status = mpeg1_layer2_audio_header_status::invalid_version;
+	else if (layer != 2)
+		result.status = mpeg1_layer2_audio_header_status::invalid_layer;
+	else if (bitrate_index == 0)
+		result.status = mpeg1_layer2_audio_header_status::unsupported_free_format;
+	else if (bitrate_index == 15)
+		result.status = mpeg1_layer2_audio_header_status::invalid_bitrate;
+	else if (sample_rate_index == 3)
+		result.status = mpeg1_layer2_audio_header_status::invalid_sample_rate;
+	else
+	{
+		result.frame_size_bytes = uint16_t(
+			(144'000U * result.bitrate_kbps) / result.sample_rate_hz
+			+ (result.padding ? 1U : 0U));
+		if (result.emphasis == 2)
+			result.status = mpeg1_layer2_audio_header_status::accepted_reserved_emphasis;
+		result.valid = true;
+	}
+
+	return result;
 }
 
 // ISO/IEC 11172 picture-rate codes permitted by the CD-i Full Motion profile.

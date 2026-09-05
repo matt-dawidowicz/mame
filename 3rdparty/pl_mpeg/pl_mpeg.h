@@ -3981,7 +3981,11 @@ plm_samples_t *plm_audio_decode(plm_audio_t *self) {
 
 int plm_audio_find_frame_sync(plm_audio_t *self) {
 	size_t i;
-	for (i = self->buffer->bit_index >> 3; i < self->buffer->length-1; i++) {
+	for (
+		i = self->buffer->bit_index >> 3;
+		i + 1 < self->buffer->length;
+		i++
+	) {
 		if (
 			self->buffer->bytes[i] == 0xFF &&
 			(self->buffer->bytes[i+1] & 0xFE) == 0xFC
@@ -3990,7 +3994,11 @@ int plm_audio_find_frame_sync(plm_audio_t *self) {
 			return TRUE;
 		}
 	}
-	self->buffer->bit_index = (i + 1) << 3;
+	// A failed scan consumes the available bytes, but must never move one byte
+	// beyond the buffer.  Streaming callers can append after starvation, and an
+	// out-of-range bit index would underflow plm_buffer_has() and corrupt the
+	// subsequent discard/refill operation.
+	self->buffer->bit_index = self->buffer->length << 3;
 	return FALSE;
 }
 
@@ -4039,14 +4047,15 @@ int plm_audio_decode_header(plm_audio_t *self) {
 	plm_buffer_skip(self->buffer, 1); // f_private
 	int mode = plm_buffer_read(self->buffer, 2);
 
-	// If we already have a header, make sure the samplerate and bitrate are
-	// still the same, otherwise we might have missed sync. Channel mode may
-	// legitimately change between MPEG audio frames.
+	// Keep the sample rate fixed for this decoder instance: changing it would
+	// require the caller to reconfigure its output clock.  Bitrate and channel
+	// mode are frame-header properties and may legitimately change between
+	// MPEG-1 Layer II frames.  FFmpeg recalculates the frame length from every
+	// header, and mpg123's normal compatible-header mask likewise excludes the
+	// bitrate field.
 	if (
-		self->has_header && (
-			self->bitrate_index != bitrate_index ||
-			self->samplerate_index != samplerate_index
-		)
+		self->has_header &&
+		self->samplerate_index != samplerate_index
 	) {
 		return 0;
 	}

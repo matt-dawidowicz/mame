@@ -64,9 +64,9 @@ These percentages are working estimates of implementation plus evidence complete
 
 ### 1. DVC MPEG-1 Layer II parser
 
-- [ ] Exhaustively validate legal MPEG-1 Layer II header combinations.
-- [ ] Validate rejected sync/version/layer/bitrate/sample-rate combinations.
-- [ ] Add malformed/truncated/resynchronization vectors.
+- [x] Exhaustively validate legal indexed MPEG-1 Layer II header combinations.
+- [x] Validate rejected sync/version/layer/bitrate/sample-rate combinations.
+- [x] Add malformed/truncated/resynchronization vectors.
 - [ ] Verify stream-ID and PES routing interaction for audio packets.
 - [ ] Document any VMPEG-specific behavior that differs from conventional MPEG expectations.
 
@@ -75,8 +75,8 @@ These percentages are working estimates of implementation plus evidence complete
 ### 2. MPEG Layer II decode path
 
 - [ ] Compare PL_MPEG output against at least one independent MPEG Layer II decoder for synthetic/legal fixtures.
-- [ ] Validate mono, dual-channel, stereo, and joint-stereo transitions.
-- [ ] Validate decoder termination at exact frame boundary, partial frame, and end-of-stream.
+- [x] Validate mono, dual-channel, stereo, and joint-stereo transitions.
+- [x] Validate decoder termination at exact frame boundary, partial frame, and end-of-stream.
 - [ ] Validate clipping and rounding assumptions and document backend-vs-hardware uncertainty.
 
 ### 3. DVC PCM buffering/output
