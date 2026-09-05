@@ -120,9 +120,45 @@ and defines a change-of-stream event.  Available reverse-engineered register nam
 identify `$e03008` as the planned stream and tentatively identify `$e0300a` as the
 current stream, while the independent MiSTer implementation explicitly labels its
 own switching behavior inaccurate.  MAME still mirrors the requested value at both
-addresses and does not fabricate a CSU timing edge.  A Green Book audio access point
-may also begin directly at an audio-frame sync; that elementary-stream ingress path
-is the next explicit parser gap.
+addresses and does not fabricate a CSU timing edge.  The following checkpoint closes
+the separate elementary-stream access-point gap.
+
+## Direct MPEG-audio access checkpoint (2026-09-05)
+
+Green Book IX.5.4.3.2 requires an MPEG Audio Pointer to identify either the first
+byte of a pack start code or the first byte of an audio-frame synchronization word.
+The prior parser could recognize only `00 00 01`, so a conforming pointer placed
+directly at a Layer II frame was scanned past and never reached PL_MPEG.
+
+FMA reset now enters an explicit access-routing state.  One production-used pure
+transition detects a system start-code prefix as soon as its third byte arrives or
+a complete syntactically valid Layer II header on the fourth byte.  For the latter,
+the four held header bytes are delivered exactly once and the header-derived frame
+length bounds every subsequent payload byte.  Start-code scanning resumes only at
+the exact frame boundary.  This both permits consecutive directly accessed frames
+and prevents a coincidental `00 00 01` inside compressed audio from being mistaken
+for a system-layer boundary.  Once a real system prefix is encountered, the normal
+pack/PES parser takes ownership again.
+
+The transition's complete state—prefix window, header window/count, and remaining
+frame bytes—is registered for save states.  Tests exhaust both protection-bit values
+and all 65,536 lower header-field combinations against an independent legal-index
+oracle, cover pack-prefix and rolling-scan boundaries, retain an embedded start-code
+pattern as frame payload, route four consecutive mode-varying frames byte-for-byte,
+decode those frames through PL_MPEG, resume at a following pack prefix, and compare
+every future transition after four mid-header/mid-frame snapshot points.
+
+Optimized, unoptimized, and ASan/UBSan focused DVC gates each pass 3,036,627
+assertions in 61 cases.  The complete standalone Philips binary passes 6,470,383
+assertions in 132 cases; its permanent `[dvc][audio]`, `[dvc][mpeg]`, `[save]`,
+and `[scc68070][dma]` selections pass 1,754,002/20, 619,363/11, 72,923/8,
+and 8/1 respectively.  The extended pure gate including `rgbutil` passes
+6,470,657/133, and the native C++20 `release64` production archive compiles.
+
+This completes the scoped DVC MPEG-1 Layer II parser at the standards/software
+boundary.  The private VMPEG response to prohibited/malformed input remains an
+explicit evidence limitation, while desired/current stream-switch and CSU timing
+remain separate section-17 behavior rather than parser defects.
 
 ## Independent PCM reference checkpoint (2026-09-05)
 
@@ -377,8 +413,8 @@ preserved and no RGB source is part of this checkpoint.
   audio Stream IDs.  The `$e03008`/`$e0300a` desired/current interpretation comes
   from reverse-engineering labels rather than a public VMPEG register manual;
   MAME currently mirrors them and does not claim the exact switch/CSU edge.  Direct
-  access at an MPEG audio frame sync is specified by the Green Book but is not yet
-  accepted by the program-stream-only ingress parser.
+  access at an MPEG audio frame sync is now implemented with header-length-bounded
+  payload routing; the exact physical false-sync/error response remains unmeasured.
 - **DVC PCM starvation:** Green Book requires muted output until another decoded
   frame is ready.  MAME's zero-output, whole-stereo-pair queue rule is deterministic
   and production-tested, but host-queue exhaustion is not asserted to be the exact
@@ -423,13 +459,20 @@ preserved and no RGB source is part of this checkpoint.
 
 ## Completion status
 
-AUDCTL fidelity is the first narrowly scoped campaign area declared at a defensible
-100%.  All behavior MAME exposes from the register is tied to the retained 210/05
+AUDCTL fidelity and the DVC MPEG-1 Layer II parser are now narrowly scoped campaign
+areas declared at a defensible 100%.  All behavior MAME exposes from AUDCTL is tied
+to the retained 210/05
 captures or service-test readback, all 65,536 writes and both latch/source states are
 deterministic, the inherited bit-13-as-playback and readback-as-address defects are
 removed, and the unexplained bit-12 transition is explicitly isolated rather than
 assigned a function.  This certification does not include the separately listed DAC
 mute/flush edge area.
+
+The parser certification covers generic/Green Book header classification,
+malformed/truncated resynchronization, all 32 audio Stream IDs, PES routing, and
+both permitted MPEG Audio Pointer entry forms.  It does not promote unknown VMPEG
+CRC/profile-error signaling, decoder arithmetic, or stream-switch event timing into
+parser claims.
 
 No other incomplete matrix area is promoted to 100% by this checkpoint.  Remaining
 blockers include VMPEG CRC/profile-error and stream-transition behavior, DVC

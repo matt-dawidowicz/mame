@@ -124,6 +124,9 @@ void cdi_dvc_device::device_start()
 	save_item(NAME(m_mpeg_skip_remaining));
 	save_item(NAME(m_mpeg_selected));
 	save_item(NAME(m_mpeg_packet_counted));
+	save_item(NAME(m_fma_access_header_window));
+	save_item(NAME(m_fma_access_frame_remaining));
+	save_item(NAME(m_fma_access_header_bytes));
 	save_item(NAME(m_mpeg_selected_packets));
 	save_item(NAME(m_mpeg_payload_bytes));
 	save_item(NAME(m_mpeg_first_payload));
@@ -2145,12 +2148,18 @@ void cdi_dvc_device::mpeg_parser_reset(unsigned target)
 	}
 
 	m_mpeg_prefix[target] = 0;
-	m_mpeg_state[target] = MPEG_SCAN;
+	m_mpeg_state[target] = target == MPEG_FMA ? MPEG_AUDIO_ACCESS : MPEG_SCAN;
 	m_mpeg_stream_id[target] = 0;
 	m_mpeg_packet_remaining[target] = 0;
 	m_mpeg_skip_remaining[target] = 0;
 	m_mpeg_selected[target] = false;
 	m_mpeg_packet_counted[target] = false;
+	if (target == MPEG_FMA)
+	{
+		m_fma_access_header_window = 0;
+		m_fma_access_frame_remaining = 0;
+		m_fma_access_header_bytes = 0;
+	}
 
 	m_mpeg_pack_index[target] = 0;
 	m_mpeg_scr_temp[target] = 0;
@@ -2417,6 +2426,45 @@ void cdi_dvc_device::mpeg_byte_w(unsigned target, uint8_t data)
 
 	switch (m_mpeg_state[target])
 	{
+	case MPEG_AUDIO_ACCESS:
+	{
+		// Before the first pack is established, and between directly accessed
+		// frames, accept either a system start-code prefix or a complete Layer II
+		// header.  Do not scan inside a frame: its payload is bounded below by the
+		// length derived from that header and may contain a coincidental prefix.
+		cdi_dvc::mpeg1_audio_access_result const access =
+			cdi_dvc::route_mpeg1_audio_access_byte(
+				m_mpeg_prefix[target], m_fma_access_header_window,
+				m_fma_access_frame_remaining, m_fma_access_header_bytes, data);
+		m_mpeg_prefix[target] = access.start_code_prefix;
+		m_fma_access_header_window = access.audio_header_window;
+		m_fma_access_frame_remaining = access.frame_bytes_remaining;
+		m_fma_access_header_bytes = access.audio_header_bytes;
+
+		switch (access.route)
+		{
+		case cdi_dvc::mpeg1_audio_access_route::system_start_code:
+			m_mpeg_state[target] = MPEG_STREAM_ID;
+			break;
+
+		case cdi_dvc::mpeg1_audio_access_route::audio_header:
+			m_mpeg_selected[target] = true;
+			for (unsigned byte = 0; byte < 4; ++byte)
+				mpeg_payload_byte(target, uint8_t(access.detected_audio_header >> (24 - byte * 8)));
+			break;
+
+		case cdi_dvc::mpeg1_audio_access_route::audio_payload:
+			mpeg_payload_byte(target, data);
+			if (access.frame_complete)
+				audio_decoder_pump();
+			break;
+
+		case cdi_dvc::mpeg1_audio_access_route::scanning:
+			break;
+		}
+		break;
+	}
+
 	case MPEG_SCAN:
 		m_mpeg_prefix[target] = ((m_mpeg_prefix[target] << 8) | data) & 0x00ffffffU;
 		if (m_mpeg_prefix[target] == 0x000001U)

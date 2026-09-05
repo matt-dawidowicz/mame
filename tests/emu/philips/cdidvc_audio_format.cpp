@@ -126,6 +126,136 @@ TEST_CASE("CD-i DVC MPEG-1 Layer II header decoding classifies every rejected fi
 	REQUIRE_FALSE(rate_decoded.valid);
 }
 
+TEST_CASE("CD-i DVC audio access scan accepts pack prefixes and direct frame sync", "[emu][philips][dvc][mpeg][audio]")
+{
+	using route = cdi_dvc::mpeg1_audio_access_route;
+
+	uint32_t prefix = 0;
+	uint32_t header_window = 0;
+	uint16_t frame_bytes_remaining = 0;
+	uint8_t header_bytes = 0;
+	auto const scan = [&](uint8_t data)
+	{
+		auto const result = cdi_dvc::route_mpeg1_audio_access_byte(
+			prefix, header_window, frame_bytes_remaining, header_bytes, data);
+		prefix = result.start_code_prefix;
+		header_window = result.audio_header_window;
+		frame_bytes_remaining = result.frame_bytes_remaining;
+		header_bytes = result.audio_header_bytes;
+		return result;
+	};
+
+	REQUIRE(scan(0x00).route == route::scanning);
+	REQUIRE(scan(0x00).route == route::scanning);
+	auto const pack_prefix = scan(0x01);
+	REQUIRE(pack_prefix.route == route::system_start_code);
+	REQUIRE(pack_prefix.start_code_prefix == 0x000001);
+
+	prefix = 0;
+	header_window = 0;
+	header_bytes = 0;
+	REQUIRE(scan(0xff).route == route::scanning);
+	REQUIRE(scan(0xfd).route == route::scanning);
+	REQUIRE(scan(0xa2).route == route::scanning);
+	auto const audio_frame = scan(0x00);
+	REQUIRE(audio_frame.route == route::audio_header);
+	REQUIRE(audio_frame.detected_audio_header == 0xfffda200);
+	REQUIRE(audio_frame.frame_size_bytes == 627);
+	REQUIRE(audio_frame.frame_bytes_remaining == 623);
+
+	// A coincidental system prefix inside the length-bounded frame remains
+	// payload.  Completion occurs on exactly the 627th byte including header.
+	for (unsigned byte = 0; byte < 620; ++byte)
+	{
+		uint8_t const data = byte == 100 ? 0x00 : byte == 101 ? 0x00 : byte == 102 ? 0x01 : 0x5a;
+		auto const payload = scan(data);
+		INFO("payload byte=" << byte);
+		REQUIRE(payload.route == route::audio_payload);
+		REQUIRE_FALSE(payload.frame_complete);
+	}
+	REQUIRE(scan(0x00).route == route::audio_payload);
+	REQUIRE(scan(0x00).route == route::audio_payload);
+	auto const frame_end = scan(0x01);
+	REQUIRE(frame_end.route == route::audio_payload);
+	REQUIRE(frame_end.frame_complete);
+	REQUIRE(frame_end.frame_bytes_remaining == 0);
+
+	// Once the exact frame boundary is reached, scanning resumes and the same
+	// byte sequence is recognized as a system start-code prefix.
+	REQUIRE(scan(0x00).route == route::scanning);
+	REQUIRE(scan(0x00).route == route::scanning);
+	REQUIRE(scan(0x01).route == route::system_start_code);
+
+	// The windows roll across arbitrary non-frame bytes.  A start-code prefix
+	// is reported as soon as its third byte arrives, while a reserved-bitrate
+	// false sync remains in scan mode.
+	prefix = 0;
+	header_window = 0;
+	frame_bytes_remaining = 0;
+	header_bytes = 0;
+	REQUIRE(scan(0x55).route == route::scanning);
+	REQUIRE(scan(0x00).route == route::scanning);
+	REQUIRE(scan(0x00).route == route::scanning);
+	REQUIRE(scan(0x01).route == route::system_start_code);
+
+	prefix = 0;
+	header_window = 0;
+	frame_bytes_remaining = 0;
+	header_bytes = 0;
+	REQUIRE(scan(0xff).route == route::scanning);
+	REQUIRE(scan(0xfd).route == route::scanning);
+	REQUIRE(scan(0xf2).route == route::scanning);
+	REQUIRE(scan(0x00).route == route::scanning);
+}
+
+TEST_CASE("CD-i DVC direct audio access classification exhausts Layer II header fields", "[emu][philips][dvc][mpeg][audio][exhaustive]")
+{
+	using route = cdi_dvc::mpeg1_audio_access_route;
+	constexpr uint16_t bitrate_kbps[16] =
+		{ 0, 32, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 384, 0 };
+	constexpr uint16_t sample_rate_hz[4] = { 44'100, 48'000, 32'000, 0 };
+	constexpr uint32_t fixed_header =
+		(0x7ffU << 21) |
+		(3U << 19) |
+		(2U << 17);
+
+	for (unsigned protection_absent = 0; protection_absent < 2; ++protection_absent)
+	{
+		for (uint32_t fields = 0; fields <= 0xffff; ++fields)
+		{
+			uint32_t const raw = fixed_header | (protection_absent << 16) | fields;
+			uint32_t prefix = 0;
+			uint32_t header_window = 0;
+			uint16_t frame_bytes_remaining = 0;
+			uint8_t header_bytes = 0;
+			cdi_dvc::mpeg1_audio_access_result result{};
+			for (unsigned byte = 0; byte < 4; ++byte)
+			{
+				result = cdi_dvc::route_mpeg1_audio_access_byte(
+					prefix, header_window, frame_bytes_remaining, header_bytes,
+					uint8_t(raw >> (24 - byte * 8)));
+				prefix = result.start_code_prefix;
+				header_window = result.audio_header_window;
+				frame_bytes_remaining = result.frame_bytes_remaining;
+				header_bytes = result.audio_header_bytes;
+			}
+
+			unsigned const bitrate_index = (fields >> 12) & 0x0f;
+			unsigned const sample_rate_index = (fields >> 10) & 0x03;
+			bool const valid = bitrate_index > 0 && bitrate_index < 15
+				&& sample_rate_index < 3;
+			uint16_t const expected_size = valid ? uint16_t(
+				(144'000U * bitrate_kbps[bitrate_index]) /
+					sample_rate_hz[sample_rate_index] + ((fields >> 9) & 1U)) : 0;
+
+			INFO("protection_absent=" << protection_absent << " fields=" << fields);
+			REQUIRE(result.route == (valid ? route::audio_header : route::scanning));
+			REQUIRE(result.frame_size_bytes == expected_size);
+			REQUIRE(result.frame_bytes_remaining == (valid ? expected_size - 4 : 0));
+		}
+	}
+}
+
 TEST_CASE("CD-i DVC Layer II profile exhausts Green Book bitrate rate private and emphasis constraints", "[emu][philips][dvc][audio]")
 {
 	constexpr uint32_t fixed_header =

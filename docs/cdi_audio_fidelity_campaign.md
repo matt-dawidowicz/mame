@@ -68,7 +68,7 @@ These percentages are working estimates of implementation plus evidence complete
 - [x] Validate rejected sync/version/layer/bitrate/sample-rate combinations.
 - [x] Add malformed/truncated/resynchronization vectors.
 - [x] Verify stream-ID and PES routing interaction for audio packets.
-- [ ] Accept an audio access point beginning directly at MPEG audio frame sync as well as at a pack start code.
+- [x] Accept an audio access point beginning directly at MPEG audio frame sync as well as at a pack start code.
 - [x] Document Full Motion profile behavior that differs from conventional MPEG expectations.
 
 The May 1994 Green Book profile is now kept separate from generic MPEG syntax.
@@ -86,11 +86,25 @@ now retain five bits, FMV retains four, and the production start-code classifier
 separates pack start, program end, selected PES, and skipped packet paths.  Tests
 exhaust every start-code byte for every legal FMA/FMV selector and every first
 PES-header byte for all 32 selected audio streams.  Exact desired/current-register
-transition and CSU-event timing remain in section 17.  Direct elementary-audio
-access points remain an explicit parser gap rather than being hidden by the now
-complete program-stream routing coverage.
+transition and CSU-event timing remain in section 17.
 
-100% gate: deterministic parser behavior over the legal profile space plus adversarial malformed vectors, with no known unmodeled VMPEG-specific behavior.
+Green Book IX.5.4.3.2 additionally allows the MPEG Audio Pointer to identify the
+first byte of a pack start code or an audio-frame synchronization word.  FMA ingress
+now has one production-used, save-stateable access router that detects either form.
+A direct frame is consumed by its decoded header length before start-code scanning
+resumes, so a coincidental `00 00 01` in compressed payload cannot terminate it.
+Regressions exhaust both CRC states and all 65,536 remaining header-bit combinations,
+decode four directly accessed frames without byte loss, resume program parsing at
+the exact following prefix, and compare continuation from mid-header and mid-frame
+state snapshots.
+
+This row meets its 100% gate for the scoped MPEG-1 Layer II parser: no known
+standards-visible parser defect remains, every accepted/rejected syntax and access
+route has deterministic coverage, and unmeasured VMPEG malformed/profile-error
+signaling remains explicitly isolated in the decode/error boundary rather than
+invented here.
+
+100% gate: deterministic parser behavior over the legal profile space plus adversarial malformed vectors, with no known unisolated VMPEG-specific behavior. **Met.**
 
 ### 2. MPEG Layer II decode path
 

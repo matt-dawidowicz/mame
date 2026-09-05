@@ -194,7 +194,8 @@ private:
 		MPEG_PES_HEADER,
 		MPEG_PES_STD_SECOND,
 		MPEG_PES_HEADER_SKIP,
-		MPEG_PAYLOAD
+		MPEG_PAYLOAD,
+		MPEG_AUDIO_ACCESS
 	};
 
 	uint32_t m_mpeg_prefix[2] = { 0, 0 };
@@ -204,6 +205,9 @@ private:
 	uint8_t m_mpeg_skip_remaining[2] = { 0, 0 };
 	bool m_mpeg_selected[2] = { false, false };
 	bool m_mpeg_packet_counted[2] = { false, false };
+	uint32_t m_fma_access_header_window = 0;
+	uint16_t m_fma_access_frame_remaining = 0;
+	uint8_t m_fma_access_header_bytes = 0;
 
 	uint8_t m_mpeg_pack_index[2] = { 0, 0 };
 	uint64_t m_mpeg_scr_temp[2] = { 0, 0 };

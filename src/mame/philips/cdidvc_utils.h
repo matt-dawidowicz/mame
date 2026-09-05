@@ -93,6 +93,26 @@ struct mpeg1_layer2_audio_header
 	bool valid;
 };
 
+enum class mpeg1_audio_access_route : uint8_t
+{
+	scanning,
+	system_start_code,
+	audio_header,
+	audio_payload
+};
+
+struct mpeg1_audio_access_result
+{
+	uint32_t start_code_prefix;
+	uint32_t audio_header_window;
+	uint32_t detected_audio_header;
+	uint16_t frame_size_bytes;
+	uint16_t frame_bytes_remaining;
+	uint8_t audio_header_bytes;
+	mpeg1_audio_access_route route;
+	bool frame_complete;
+};
+
 enum : uint8_t
 {
 	CDI_LAYER2_PROFILE_INVALID_HEADER = 0x01,
@@ -428,6 +448,58 @@ constexpr mpeg1_layer2_audio_header decode_mpeg1_layer2_audio_header(uint32_t he
 	}
 
 	return result;
+}
+
+// Green Book IX.5.4.3.2 permits an MPEG Audio Pointer to address either the
+// first byte of a pack start code or the first byte of an audio-frame sync word.
+// Scan only while outside a known audio frame: compressed frame payload may
+// itself contain 00 00 01 and must be consumed by its decoded frame length.
+constexpr mpeg1_audio_access_result route_mpeg1_audio_access_byte(
+		uint32_t start_code_prefix, uint32_t audio_header_window,
+		uint16_t frame_bytes_remaining, uint8_t audio_header_bytes,
+		uint8_t data)
+{
+	if (frame_bytes_remaining != 0)
+	{
+		--frame_bytes_remaining;
+		return {
+			0, 0, 0, 0, frame_bytes_remaining, 0,
+			mpeg1_audio_access_route::audio_payload,
+			frame_bytes_remaining == 0
+		};
+	}
+
+	start_code_prefix = ((start_code_prefix << 8) | data) & 0x00ffffffU;
+	audio_header_window = (audio_header_window << 8) | data;
+	if (audio_header_bytes < 4)
+		++audio_header_bytes;
+
+	if (start_code_prefix == 0x000001U)
+	{
+		return {
+			start_code_prefix, 0, 0, 0, 0, 0,
+			mpeg1_audio_access_route::system_start_code, false
+		};
+	}
+
+	if (audio_header_bytes == 4)
+	{
+		mpeg1_layer2_audio_header const header =
+			decode_mpeg1_layer2_audio_header(audio_header_window);
+		if (header.valid)
+		{
+			return {
+				0, 0, audio_header_window, header.frame_size_bytes,
+				uint16_t(header.frame_size_bytes - 4), 0,
+				mpeg1_audio_access_route::audio_header, false
+			};
+		}
+	}
+
+	return {
+		start_code_prefix, audio_header_window, 0, 0, 0,
+		audio_header_bytes, mpeg1_audio_access_route::scanning, false
+	};
 }
 
 // Green Book IX.5.3.2 constrains conventional MPEG-1 Layer II syntax to the

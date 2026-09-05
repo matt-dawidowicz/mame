@@ -195,8 +195,33 @@ the extended pure binary including `rgbutil` passes 6,003,480 assertions in 129
 cases, and the native C++20 `release64` production archive compiles.  The generated
 SDL `mametests` link reaches the unchanged missing-`SDL2/SDL.h` host prerequisite.
 Exact desired-to-current switch timing, CSU signaling, decoder restart, and direct
-audio-frame-sync access points remain open and explicitly prevent a parser or
-stream-switching 100% claim.
+audio-frame-sync access points remain open at this checkpoint; the following batch
+closes the access-point defect while leaving stream switching open.
+
+## Audio campaign DVC direct-access checkpoint
+
+Scope: implement the second Green Book MPEG Audio Pointer entry form without
+changing the certified DMA architecture or folding in the separate FMV tracing work.
+
+Green Book IX.5.4.3.2 permits a pointer to the first byte of either a pack start
+code or an audio-frame synchronization word.  FMA reset now enters a save-stateable
+access router that recognizes both.  Direct audio is held through the complete
+four-byte Layer II header, emitted without loss, and then consumed for exactly the
+header-derived frame length.  System-prefix scanning resumes only at a frame
+boundary, so `00 00 01` inside compressed payload stays payload; a subsequent real
+prefix transfers ownership to the ordinary pack/PES parser.
+
+The optimized, unoptimized, and ASan/UBSan focused DVC gates each pass 3,036,627
+assertions in 61 cases.  The complete standalone Philips gate passes 6,470,383/132,
+the extended pure gate passes 6,470,657/133, and the native C++20 `release64`
+production archive compiles.  Direct access has exhaustive header-field routing,
+exact multi-frame byte/decode coverage, an embedded-prefix adversarial fixture,
+program-stream resumption, and deterministic mid-header/mid-frame state continuation.
+
+The scoped DVC MPEG-1 Layer II parser now meets its campaign 100% gate.  Unknown
+physical VMPEG malformed/profile-error behavior is isolated as an evidence limit;
+stream switching, decoder/DAC behavior, and long-run timing remain separate open
+areas.
 
 ## Phase D checkpoint
 
@@ -351,7 +376,7 @@ Mono-II confidence after this checkpoint:
 | CDIC | `[#######---] 70%` functional / `[######----] 60%` fidelity | Command/register audit, direct 210/05 AUDCTL/audio captures, independent state/filter/buffer/IRQ/XA tests, and SCC-owned DMA client. | Capture seek completion, DAC sample/flush edges, full Q/R-W/track transitions, and malformed/error IRQ behavior. |
 | SLAVE/HLE | `[#######---] 65%` functional / `[####------] 45%` fidelity | Complete classified command map, bounded parser, documented revision response, and pointer/transport/readiness/IRQ2 tests. | Add keyboard and SERVO/X-bus behavior only from MCU, firmware, or bus-trace evidence. |
 | SERVO/MCU | `[###-------] 30%` | Mostly existing HLE/integration behavior. | Capture command/response timing from a known firmware/disc pair. |
-| DVC | `[######----] 55%` | Broad native DVC tests, Full Motion audio-profile oracle, 32-stream PES routing, deterministic PCM/save replay, and SCC-owned DMA path; prior runtime vertical-slice evidence. | Validate direct elementary-audio access, desired/current stream changes, audio status/IRQ transitions, and active long-run A/V behavior. |
+| DVC | `[######----] 58%` | Broad native DVC tests, 100%-gated Layer II parser including direct access, Full Motion audio-profile oracle, deterministic PCM/save replay, and SCC-owned DMA path; prior runtime vertical-slice evidence. | Validate desired/current stream changes, audio status/IRQ transitions, and active long-run A/V behavior. |
 | Mono-I / Mono-II glue | `[######----] 60%` | Machine configurations and validation build. | Add clean-boot checkpoints for representative firmware revisions. |
 | Audio | `[######----] 55%` | CDIC/XA transport plus DVC reference decode, Full Motion profile, PCM starvation/refill, termination replay, and deterministic unit coverage. | Runtime A/V clock, stream-change, DAC-edge, attenuation, and de-emphasis evidence. |
 | Video | `[######----] 60%` | MCD212 QHY/timing/control tests, DVC suite, and external-video mask regression coverage. | Frame/scanline captures tied to register and overlay traces. |

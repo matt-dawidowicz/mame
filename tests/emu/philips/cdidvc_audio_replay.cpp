@@ -9,6 +9,8 @@
 
 #include "catch.hpp"
 
+#include "cdidvc_utils.h"
+
 #define PLM_NO_STDIO
 #include "../../../3rdparty/pl_mpeg/pl_mpeg.h"
 
@@ -56,6 +58,132 @@ void require_matching_samples(
 }
 
 } // anonymous namespace
+
+TEST_CASE(
+		"CD-i DVC direct audio access preserves complete frames and resumes system parsing",
+		"[emu][philips][dvc][mpeg][audio][save]")
+{
+	using route = cdi_dvc::mpeg1_audio_access_route;
+	std::vector<uint8_t> const stream = make_audio_replay_fixture();
+	std::vector<uint8_t> input = stream;
+	input.insert(input.end(), { 0x00, 0x00, 0x01, 0xba });
+
+	uint32_t prefix = 0;
+	uint32_t header_window = 0;
+	uint16_t frame_bytes_remaining = 0;
+	uint8_t header_bytes = 0;
+	unsigned completed_frames = 0;
+	std::size_t system_prefix_end = 0;
+	std::vector<uint8_t> routed;
+	routed.reserve(stream.size());
+
+	for (std::size_t index = 0; index < input.size(); ++index)
+	{
+		auto const access = cdi_dvc::route_mpeg1_audio_access_byte(
+			prefix, header_window, frame_bytes_remaining, header_bytes, input[index]);
+		prefix = access.start_code_prefix;
+		header_window = access.audio_header_window;
+		frame_bytes_remaining = access.frame_bytes_remaining;
+		header_bytes = access.audio_header_bytes;
+
+		if (access.route == route::audio_header)
+		{
+			REQUIRE(access.frame_size_bytes == AUDIO_FRAME_SIZE);
+			for (unsigned byte = 0; byte < 4; ++byte)
+				routed.push_back(uint8_t(access.detected_audio_header >> (24 - byte * 8)));
+		}
+		else if (access.route == route::audio_payload)
+		{
+			routed.push_back(input[index]);
+			if (access.frame_complete)
+				++completed_frames;
+		}
+		else if (access.route == route::system_start_code)
+		{
+			system_prefix_end = index + 1;
+			break;
+		}
+	}
+
+	REQUIRE(completed_frames == 4);
+	REQUIRE(routed == stream);
+	REQUIRE(system_prefix_end == stream.size() + 3);
+	REQUIRE(frame_bytes_remaining == 0);
+
+	// The routed bytes are exactly the elementary stream consumed by the live
+	// backend, including a frame header assembled across arbitrary byte writes.
+	plm_buffer_t *const buffer = plm_buffer_create_with_capacity(routed.size());
+	REQUIRE(buffer != nullptr);
+	REQUIRE(plm_buffer_write(buffer, routed.data(), routed.size()) == routed.size());
+	plm_audio_t *const decoder = plm_audio_create_with_buffer(buffer, 1);
+	REQUIRE(decoder != nullptr);
+	REQUIRE(plm_audio_has_header(decoder));
+	for (unsigned frame = 0; frame < 4; ++frame)
+	{
+		plm_samples_t *const samples = plm_audio_decode(decoder);
+		REQUIRE(samples != nullptr);
+		REQUIRE(samples->count == PLM_AUDIO_SAMPLES_PER_FRAME);
+	}
+	REQUIRE(plm_audio_decode(decoder) == nullptr);
+	REQUIRE_FALSE(plm_audio_has_ended(decoder));
+	plm_audio_destroy(decoder);
+}
+
+TEST_CASE(
+		"CD-i DVC direct audio access state resumes across header and frame snapshots",
+		"[emu][philips][dvc][mpeg][audio][save]")
+{
+	struct access_state
+	{
+		uint32_t prefix = 0;
+		uint32_t header_window = 0;
+		uint16_t frame_bytes_remaining = 0;
+		uint8_t header_bytes = 0;
+	};
+
+	auto const advance = [](access_state &state, uint8_t data)
+	{
+		auto const result = cdi_dvc::route_mpeg1_audio_access_byte(
+			state.prefix, state.header_window, state.frame_bytes_remaining,
+			state.header_bytes, data);
+		state.prefix = result.start_code_prefix;
+		state.header_window = result.audio_header_window;
+		state.frame_bytes_remaining = result.frame_bytes_remaining;
+		state.header_bytes = result.audio_header_bytes;
+		return result;
+	};
+
+	std::vector<uint8_t> const stream = make_audio_replay_fixture();
+	constexpr std::array<std::size_t, 4> snapshot_offsets {
+		2,
+		4,
+		AUDIO_FRAME_SIZE / 2,
+		AUDIO_FRAME_SIZE + 2
+	};
+
+	for (std::size_t const snapshot : snapshot_offsets)
+	{
+		access_state live;
+		for (std::size_t index = 0; index < snapshot; ++index)
+			advance(live, stream[index]);
+		access_state restored = live;
+
+		for (std::size_t index = snapshot; index < stream.size(); ++index)
+		{
+			auto const live_result = advance(live, stream[index]);
+			auto const restored_result = advance(restored, stream[index]);
+			INFO("snapshot=" << snapshot << " index=" << index);
+			REQUIRE(restored_result.start_code_prefix == live_result.start_code_prefix);
+			REQUIRE(restored_result.audio_header_window == live_result.audio_header_window);
+			REQUIRE(restored_result.detected_audio_header == live_result.detected_audio_header);
+			REQUIRE(restored_result.frame_size_bytes == live_result.frame_size_bytes);
+			REQUIRE(restored_result.frame_bytes_remaining == live_result.frame_bytes_remaining);
+			REQUIRE(restored_result.audio_header_bytes == live_result.audio_header_bytes);
+			REQUIRE(restored_result.route == live_result.route);
+			REQUIRE(restored_result.frame_complete == live_result.frame_complete);
+		}
+	}
+}
 
 TEST_CASE(
 		"CD-i DVC audio replay reconstruction preserves decoder state across a mid-frame snapshot",
