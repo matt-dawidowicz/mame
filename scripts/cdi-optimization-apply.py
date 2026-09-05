@@ -139,6 +139,11 @@ if trace_replacements < 3:
 if re.search(r'logerror\(\n\s*"CDIC_(?:TRACE|DBUF_TRACE)', cdic):
     raise SystemExit("unconditional CDIC campaign trace remains")
 
+volume_block = "\tm_dmadac[0]->set_volume(0x100);\n\tm_dmadac[1]->set_volume(0x100);\n"
+if cdic.count(volume_block) != 2:
+    raise SystemExit(f"CDIC redundant unity-volume blocks: expected two, got {cdic.count(volume_block)}")
+cdic = cdic.replace(volume_block, "")
+
 old_xa = """\tint16_t sampleL = 0, sampleR = 0, outL = 0, outR = 0;
 \t// Green Book nominal curve.  Board-family quantization and the documented
 \t// ADPCM high-attenuation anomaly remain outside this compatibility model.
