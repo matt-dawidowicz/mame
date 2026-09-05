@@ -1,8 +1,8 @@
 // license:BSD-3-Clause
 // copyright-holders:Matt Jordan
 
-// Keep the single-header decoder implementation in a tiny, stable
-// translation unit so ordinary DVC scheduling/register edits compile faster.
+// Staging translation unit for the DVC PL_MPEG implementation split.
+// The implementation remains owned by cdidvc.cpp until the source-side
+// definition is removed in the accompanying optimization commit.
 #define PLM_NO_STDIO
-#define PL_MPEG_IMPLEMENTATION
 #include "../../../3rdparty/pl_mpeg/pl_mpeg.h"
