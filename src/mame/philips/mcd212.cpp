@@ -814,8 +814,14 @@ void mcd212_device::mix_lines(uint32_t *plane_a, bool *transparent_a, uint32_t *
 				BIT(m_image_coding_method, ICM_EV_BIT), true, true);
 			continue;
 		}
-		uint32_t plane_a_cur = MosaicA ? plane_a[x - (x % mosaic_count_a)] : plane_a[x];
-		uint32_t plane_b_cur = MosaicB ? plane_b[x - (x % mosaic_count_b)] : plane_b[x];
+		const std::size_t source_a = MosaicA
+			? mcd212_video::mosaic_source_x(std::size_t(x), mosaic_count_a)
+			: std::size_t(x);
+		const std::size_t source_b = MosaicB
+			? mcd212_video::mosaic_source_x(std::size_t(x), mosaic_count_b)
+			: std::size_t(x);
+		uint32_t plane_a_cur = plane_a[source_a];
+		uint32_t plane_b_cur = plane_b[source_b];
 
 		if (transparent_a[x])
 		{
