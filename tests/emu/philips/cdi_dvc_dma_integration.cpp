@@ -172,12 +172,17 @@ private:
 		{
 		case 0:
 		{
+			// Keep the SCC core present but stop guest instruction execution. The
+			// integration fixture drives only the real mapped RAM/register path.
 			m_maincpu->suspend(SUSPEND_REASON_DISABLE, true);
 
 			space.write_word(SOURCE + 0, 0x1234);
 			space.write_word(SOURCE + 2, 0xabcd);
 			space.write_word(SOURCE + 4, 0x55aa);
 
+			// Channel 2: memory-to-device, word operand, MAC increment, fixed DAC,
+			// completion interrupt enabled at IPL3. Program through the SCC register
+			// map so byte-lane/control semantics are part of the regression.
 			space.write_word(DMA2_CONTROL, 0x3010);
 			space.write_word(DMA2_SEQUENCE, 0x040b);
 			space.write_word(DMA2_COUNTER, WORDS);
@@ -196,6 +201,8 @@ private:
 			expect(!m_maincpu->dma_channel_active(1),
 					"program: DMA2 became active before peripheral DREQ");
 
+			// Use the real readable FMA DMA command as the DVC-side completion
+			// observable. It asserts DREQ here and dma_done() clears bit 15.
 			space.write_word(DVC_FMA_COMMAND, 0x8000);
 			expect(fma_dma_requested(space),
 					"start: DVC FMA DMA request bit did not assert");
@@ -209,6 +216,8 @@ private:
 			expect(m_maincpu->input_line_state(DMA_IRQ_LEVEL) == CLEAR_LINE,
 					"start: DMA completion IRQ asserted before any transfer");
 
+			// dvc_dma_req_w schedules the first production service tick at zero.
+			// Observe one SCC clock later, before the second tick at +2 clocks.
 			m_test_timer->adjust(attotime::from_ticks(1, m_maincpu->clock()), 1);
 			break;
 		}
@@ -263,6 +272,7 @@ private:
 			expect(m_maincpu->input_line_state(DMA_IRQ_LEVEL) == ASSERT_LINE,
 					"complete: DMA2 COC+INE did not assert IPL3");
 
+			// Wait through another full service period. No fourth transfer is legal.
 			m_test_timer->adjust(attotime::from_ticks(2, m_maincpu->clock()), 4);
 			break;
 		}
@@ -278,6 +288,8 @@ private:
 			expect(m_maincpu->input_line_state(DMA_IRQ_LEVEL) == ASSERT_LINE,
 					"quiescent: completion IRQ dropped before COC acknowledgement");
 
+			// DMA status uses write-one-to-clear for COC. Exercise the real register
+			// acknowledgement and observe the interrupt edge independently of DVC.
 			space.write_word(DMA2_STATUS, 0x8000);
 			m_test_timer->adjust(attotime::from_ticks(1, m_maincpu->clock()), 5);
 			break;
