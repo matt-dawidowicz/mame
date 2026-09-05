@@ -49,6 +49,39 @@ inline double nominal_attenuation_gain(uint8_t value)
 		: std::pow(10.0, -double(attenuation_decibels(value)) / 20.0);
 }
 
+// Candidate fixed-point representation used to compare possible attenuator
+// coefficient widths against captures.  This is deliberately parameterized:
+// no fractional width is attributed to CDIC or VMPEG silicon without evidence.
+struct quantized_attenuation_gain
+{
+	uint64_t coefficient;
+	uint8_t fractional_bits;
+	bool valid;
+
+	constexpr double as_double() const
+	{
+		return valid
+			? double(coefficient) / double(uint64_t(1) << fractional_bits)
+			: 0.0;
+	}
+};
+
+inline quantized_attenuation_gain quantize_nominal_attenuation_gain(
+		uint8_t value, uint8_t fractional_bits)
+{
+	// Keep the scale exactly representable in both uint64_t and double so the
+	// candidate quantizer itself does not inject an unrelated host precision
+	// limit.  The useful campaign candidates (Q15/Q23/Q31) are well inside it.
+	if (fractional_bits > 52)
+		return { 0, fractional_bits, false };
+	if (attenuation_muted(value))
+		return { 0, fractional_bits, true };
+
+	uint64_t const scale = uint64_t(1) << fractional_bits;
+	double const scaled = nominal_attenuation_gain(value) * double(scale);
+	return { uint64_t(scaled + 0.5), fractional_bits, true };
+}
+
 struct attenuation_gains
 {
 	double ll;
@@ -62,6 +95,25 @@ struct stereo_sample
 	double left;
 	double right;
 };
+
+// Host PCM boundary shared by filtered paths.  Saturation and nearest rounding
+// are explicit software policy; they are not evidence for CDIC/VMPEG internal
+// accumulator width or the physical DAC's rounding circuit.
+constexpr int16_t saturate_pcm16(int64_t sample)
+{
+	return int16_t(sample < -32768 ? -32768 : sample > 32767 ? 32767 : sample);
+}
+
+inline int16_t quantize_pcm16_nearest_away(double sample)
+{
+	if (sample != sample)
+		return 0;
+	if (sample <= -32768.0)
+		return -32768;
+	if (sample >= 32767.0)
+		return 32767;
+	return saturate_pcm16(int64_t(sample >= 0.0 ? sample + 0.5 : sample - 0.5));
+}
 
 // Standards-derived 50/15 microsecond de-emphasis compatibility model.
 //
@@ -159,17 +211,11 @@ constexpr bool cdi_mpeg_deemphasis_enabled(uint8_t emphasis, uint32_t sample_rat
 	return emphasis == 1 && sample_rate == 44'100;
 }
 
-// Output conversion for already-scaled PCM.  The rounding is an explicit host
-// compatibility boundary, not a claim about CDIC/VMPEG silicon arithmetic.
+// Output conversion for already-scaled PCM.  Keep this name at the filter call
+// sites while routing through the shared, explicitly documented host boundary.
 inline int16_t quantize_deemphasized_pcm16(double sample)
 {
-	if (sample != sample)
-		return 0;
-	if (sample <= -32768.0)
-		return -32768;
-	if (sample >= 32767.0)
-		return 32767;
-	return int16_t(sample >= 0.0 ? sample + 0.5 : sample - 0.5);
+	return quantize_pcm16_nearest_away(sample);
 }
 
 inline attenuation_gains make_nominal_attenuation_gains(attenuation_matrix const &matrix)
