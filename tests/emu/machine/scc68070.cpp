@@ -69,13 +69,19 @@ TEST_CASE("SCC68070 UART fixed and command bits retain only documented state", "
 	SECTION("status reads preserve all bits and force bit 1 high")
 	{
 		for (unsigned value = 0; value <= 0xff; ++value)
-			REQUIRE(scc68070::uart_status_read_value(uint8_t(value)) == (value | 0x02));
+		{
+			const unsigned result = scc68070::uart_status_read_value(uint8_t(value));
+			REQUIRE(result == (value | 0x02));
+		}
 	}
 
 	SECTION("miscellaneous commands preserve only receiver/transmitter control bits")
 	{
 		for (unsigned value = 0; value <= 0xff; ++value)
-			REQUIRE(scc68070::uart_control_after_misc_command(uint8_t(value)) == (value & 0x0f));
+		{
+			const unsigned result = scc68070::uart_control_after_misc_command(uint8_t(value));
+			REQUIRE(result == (value & 0x0f));
+		}
 	}
 }
 
