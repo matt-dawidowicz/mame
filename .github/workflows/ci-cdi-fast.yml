@@ -4,7 +4,7 @@ on:
   push:
     paths:
       - '.github/workflows/ci-cdi-fast.yml'
-      - 'docs/.cdi-fast-ci-trigger'
+      - '.cdi-fast-ci-trigger'
       - '3rdparty/pl_mpeg/**'
       - 'scripts/src/tests.lua'
       - 'src/devices/cpu/m68000/scc68070*'
