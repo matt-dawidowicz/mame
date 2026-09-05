@@ -7,11 +7,13 @@
 #include <cstdint>
 #include <limits>
 #include <utility>
+#include <vector>
 
 #include "catch.hpp"
 
 #include "cdiaudio.h"
 #include "cdicdic_state.h"
+#include "cdidvc_utils.h"
 
 TEST_CASE("CD-i attenuation candidate coefficient grids expose high-range discrimination", "[emu][philips][audio][attenuation][quantization]")
 {
@@ -47,19 +49,11 @@ TEST_CASE("CD-i attenuation candidate coefficient grids expose high-range discri
 		}
 	}
 
-	// These are candidate-grid facts, not hardware attribution.  A Q15
-	// coefficient becomes zero at 97 dB while Q23 remains non-zero through the
-	// entire 0-127 dB public register range.  High-range captures can therefore
-	// distinguish at least these two model families; the existing 0-29 dB trace
-	// cannot.
 	REQUIRE(cdi_audio::quantize_nominal_attenuation_gain(96, 15).coefficient != 0);
 	REQUIRE(cdi_audio::quantize_nominal_attenuation_gain(97, 15).coefficient == 0);
 	REQUIRE(cdi_audio::quantize_nominal_attenuation_gain(127, 23).coefficient != 0);
 	REQUIRE(cdi_audio::quantize_nominal_attenuation_gain(127, 31).coefficient != 0);
 
-	// The already measured 0-29 dB interval is compatible with several widths.
-	// Quantify that ambiguity so a future capture is judged against an explicit
-	// resolution requirement rather than by eye.
 	double maximum_q15_error_db = 0.0;
 	double maximum_q23_error_db = 0.0;
 	for (unsigned db = 0; db <= 29; ++db)
@@ -111,22 +105,14 @@ TEST_CASE("CD-i host PCM saturation and half-way rounding are explicit", "[emu][
 
 TEST_CASE("CDIC XA predictor rounding ties toward positive infinity before saturation", "[emu][philips][audio][xa][rounding][saturation]")
 {
-	// Filter 1 is 240/256.  A history value of +/-8 produces an exact half
-	// integer predictor (+/-7.5).  The retained +128 then arithmetic-shift
-	// model therefore resolves both ties upward: +8 and -7.  This pins the
-	// current FFmpeg-correlated compatibility rule without calling it silicon.
 	auto positive_tie = cdic_hle::decode_xa_sample(0x10, 0, 8, 0);
 	auto negative_tie = cdic_hle::decode_xa_sample(0x10, 0, -8, 0);
 	REQUIRE(positive_tie.output == 8);
 	REQUIRE(negative_tie.output == -7);
 
-	// Ranges are arithmetic shifts of the sign-extended code.  Pin negative
-	// odd values around the floor/truncation distinction as well.
 	auto negative_code = cdic_hle::decode_xa_sample(0x01, -3, 0, 0);
 	REQUIRE(negative_code.output == -2);
 
-	// Saturation is the final 16-bit boundary and predictor history receives
-	// that clipped result, not the over-range intermediate.
 	auto clipped_high = cdic_hle::decode_xa_sample(0x20, 32767, 32767, -32768);
 	REQUIRE(clipped_high.output == 32767);
 	REQUIRE(clipped_high.recent == 32767);
@@ -143,10 +129,6 @@ TEST_CASE("CDIC XA predictor rounding ties toward positive infinity before satur
 
 TEST_CASE("CDIC XA compatibility arithmetic has an explicit software intermediate envelope", "[emu][philips][audio][xa][rounding][saturation][bounds]")
 {
-	// Green Book predictor coefficients scaled by 256.  This table deliberately
-	// mirrors the compatibility implementation so the test can establish the
-	// mathematical width needed by MAME without attributing a physical width to
-	// CDIC silicon.
 	constexpr int16_t filter[4][2] =
 	{
 		{ 0, 0 },
@@ -175,21 +157,83 @@ TEST_CASE("CDIC XA compatibility arithmetic has an explicit software intermediat
 
 	REQUIRE(minimum_numerator == -21888688);
 	REQUIRE(maximum_numerator == 21888692);
-
-	// Signed 25-bit arithmetic only reaches [-2^24, 2^24-1], which is too
-	// narrow.  Signed 26-bit arithmetic reaches [-2^25, 2^25-1] and contains
-	// the complete compatibility-model predictor numerator.
 	REQUIRE(minimum_numerator < -(int64_t(1) << 24));
 	REQUIRE(maximum_numerator > (int64_t(1) << 24) - 1);
 	REQUIRE(minimum_numerator >= -(int64_t(1) << 25));
 	REQUIRE(maximum_numerator <= (int64_t(1) << 25) - 1);
 
-	// The arithmetic-floor /256 stage reaches -85503..85502.  Adding the full
-	// sign-extended XA code gives the exact compatibility-model pre-clip bound.
 	constexpr int64_t minimum_decoded = -32768 - 85503;
 	constexpr int64_t maximum_decoded = 32767 + 85502;
 	REQUIRE(minimum_decoded == -118271);
 	REQUIRE(maximum_decoded == 118269);
 	REQUIRE(minimum_decoded >= -(int64_t(1) << 17));
 	REQUIRE(maximum_decoded <= (int64_t(1) << 17) - 1);
+}
+
+TEST_CASE("CD-i current DAC-boundary models make underrun and stop retention deterministic", "[emu][philips][audio][dac][transition][underrun]")
+{
+	// DVC timestamp silence has priority over queued PCM and does not consume it.
+	std::vector<int16_t> dvc_queue = { 100, -100, 200, -200 };
+	std::size_t read = 0;
+	uint64_t wait = 2;
+	auto silence0 = cdi_dvc::take_audio_output_frame(dvc_queue, read, wait);
+	auto silence1 = cdi_dvc::take_audio_output_frame(dvc_queue, read, wait);
+	REQUIRE(silence0.kind == cdi_dvc::audio_output_kind::scheduled_silence);
+	REQUIRE(silence1.kind == cdi_dvc::audio_output_kind::scheduled_silence);
+	REQUIRE(silence0.left == 0);
+	REQUIRE(silence0.right == 0);
+	REQUIRE(read == 0);
+	REQUIRE(wait == 0);
+
+	auto pcm0 = cdi_dvc::take_audio_output_frame(dvc_queue, read, wait);
+	auto pcm1 = cdi_dvc::take_audio_output_frame(dvc_queue, read, wait);
+	REQUIRE(pcm0.kind == cdi_dvc::audio_output_kind::pcm);
+	REQUIRE(pcm0.left == 100);
+	REQUIRE(pcm0.right == -100);
+	REQUIRE(pcm1.kind == cdi_dvc::audio_output_kind::pcm);
+	REQUIRE(pcm1.left == 200);
+	REQUIRE(pcm1.right == -200);
+	REQUIRE(pcm1.drained);
+
+	// Empty queue underrun deterministically emits a zero frame in the current
+	// MAME model.  This pins emulator policy, not the physical VMPEG DAC edge.
+	auto starved = cdi_dvc::take_audio_output_frame(dvc_queue, read, wait);
+	REQUIRE(starved.kind == cdi_dvc::audio_output_kind::starvation);
+	REQUIRE(starved.left == 0);
+	REQUIRE(starved.right == 0);
+
+	// An incomplete stereo pair is retained rather than consuming half a frame.
+	dvc_queue.push_back(321);
+	auto incomplete = cdi_dvc::take_audio_output_frame(dvc_queue, read, wait);
+	REQUIRE(incomplete.kind == cdi_dvc::audio_output_kind::starvation);
+	REQUIRE(dvc_queue.size() == 1);
+	REQUIRE(read == 0);
+	dvc_queue.push_back(-321);
+	auto refilled = cdi_dvc::take_audio_output_frame(dvc_queue, read, wait);
+	REQUIRE(refilled.kind == cdi_dvc::audio_output_kind::pcm);
+	REQUIRE(refilled.left == 321);
+	REQUIRE(refilled.right == -321);
+	REQUIRE(refilled.drained);
+
+	// CDIC realtime stop disables consumption and clears the in-flight period,
+	// but intentionally does not erase ready halves.  Restart therefore resumes
+	// from the retained next half.  Again, this is current HLE queue policy and
+	// not a claim that a physical DAC holds or flushes its analogue sample.
+	cdic_hle::realtime_audio_state cdic;
+	cdic.enabled = true;
+	cdic.ready = { true, true };
+	cdic.next_play = 0;
+	cdic.periods_remaining = 3;
+	cdic_hle::stop_realtime_audio(cdic);
+	REQUIRE_FALSE(cdic.enabled);
+	REQUIRE(cdic.periods_remaining == 0);
+	REQUIRE(cdic.ready[0]);
+	REQUIRE(cdic.ready[1]);
+	REQUIRE(cdic_hle::take_realtime_audio_buffer(cdic) == cdic_hle::NO_AUDIO_BUFFER);
+
+	cdic_hle::start_realtime_audio(cdic);
+	REQUIRE(cdic_hle::take_realtime_audio_buffer(cdic) == 0);
+	REQUIRE_FALSE(cdic.ready[0]);
+	REQUIRE(cdic.ready[1]);
+	REQUIRE(cdic.next_play == 1);
 }
