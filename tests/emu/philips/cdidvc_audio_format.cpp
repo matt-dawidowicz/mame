@@ -13,30 +13,117 @@ TEST_CASE("CD-i DVC MPEG-1 Layer II header decoding covers valid profile fields"
 		{ 0, 32, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 384, 0 };
 	constexpr uint16_t sample_rate_hz[4] = { 44'100, 48'000, 32'000, 0 };
 
-	for (unsigned bitrate_index = 0; bitrate_index < 16; ++bitrate_index)
+	SECTION("validity")
 	{
-		for (unsigned sample_rate_index = 0; sample_rate_index < 4; ++sample_rate_index)
+		for (unsigned bitrate_index = 0; bitrate_index < 16; ++bitrate_index)
 		{
-			for (unsigned channel_mode = 0; channel_mode < 4; ++channel_mode)
+			for (unsigned sample_rate_index = 0; sample_rate_index < 4; ++sample_rate_index)
 			{
-				uint32_t const header =
-					(0x7ffU << 21) |
-					(3U << 19) |
-					(2U << 17) |
-					(bitrate_index << 12) |
-					(sample_rate_index << 10) |
-					(channel_mode << 6);
-				auto const decoded = cdi_dvc::decode_mpeg1_layer2_audio_header(header);
-				bool const expected_valid = bitrate_kbps[bitrate_index] != 0
-					&& sample_rate_hz[sample_rate_index] != 0;
+				for (unsigned channel_mode = 0; channel_mode < 4; ++channel_mode)
+				{
+					uint32_t const header =
+						(0x7ffU << 21) |
+						(3U << 19) |
+						(2U << 17) |
+						(bitrate_index << 12) |
+						(sample_rate_index << 10) |
+						(channel_mode << 6);
+					auto const decoded = cdi_dvc::decode_mpeg1_layer2_audio_header(header);
+					bool const expected_valid = bitrate_kbps[bitrate_index] != 0
+						&& sample_rate_hz[sample_rate_index] != 0;
 
-				INFO("bitrate_index=" << bitrate_index
-					<< " sample_rate_index=" << sample_rate_index
-					<< " channel_mode=" << channel_mode);
-				REQUIRE(decoded.valid == expected_valid);
-				REQUIRE(decoded.bitrate_kbps == (expected_valid ? bitrate_kbps[bitrate_index] : 0));
-				REQUIRE(decoded.sample_rate_hz == (expected_valid ? sample_rate_hz[sample_rate_index] : 0));
-				REQUIRE(decoded.channel_mode == channel_mode);
+					INFO("bitrate_index=" << bitrate_index
+						<< " sample_rate_index=" << sample_rate_index
+						<< " channel_mode=" << channel_mode);
+					REQUIRE(decoded.valid == expected_valid);
+				}
+			}
+		}
+	}
+
+	SECTION("bitrate")
+	{
+		for (unsigned bitrate_index = 0; bitrate_index < 16; ++bitrate_index)
+		{
+			for (unsigned sample_rate_index = 0; sample_rate_index < 4; ++sample_rate_index)
+			{
+				for (unsigned channel_mode = 0; channel_mode < 4; ++channel_mode)
+				{
+					uint32_t const header =
+						(0x7ffU << 21) |
+						(3U << 19) |
+						(2U << 17) |
+						(bitrate_index << 12) |
+						(sample_rate_index << 10) |
+						(channel_mode << 6);
+					auto const decoded = cdi_dvc::decode_mpeg1_layer2_audio_header(header);
+					bool const expected_valid = bitrate_kbps[bitrate_index] != 0
+						&& sample_rate_hz[sample_rate_index] != 0;
+					unsigned const actual_bitrate = decoded.bitrate_kbps;
+					unsigned const expected_bitrate = expected_valid ? bitrate_kbps[bitrate_index] : 0U;
+
+					INFO("bitrate_index=" << bitrate_index
+						<< " sample_rate_index=" << sample_rate_index
+						<< " channel_mode=" << channel_mode);
+					REQUIRE(actual_bitrate == expected_bitrate);
+				}
+			}
+		}
+	}
+
+	SECTION("sample rate")
+	{
+		for (unsigned bitrate_index = 0; bitrate_index < 16; ++bitrate_index)
+		{
+			for (unsigned sample_rate_index = 0; sample_rate_index < 4; ++sample_rate_index)
+			{
+				for (unsigned channel_mode = 0; channel_mode < 4; ++channel_mode)
+				{
+					uint32_t const header =
+						(0x7ffU << 21) |
+						(3U << 19) |
+						(2U << 17) |
+						(bitrate_index << 12) |
+						(sample_rate_index << 10) |
+						(channel_mode << 6);
+					auto const decoded = cdi_dvc::decode_mpeg1_layer2_audio_header(header);
+					bool const expected_valid = bitrate_kbps[bitrate_index] != 0
+						&& sample_rate_hz[sample_rate_index] != 0;
+					unsigned const actual_sample_rate = decoded.sample_rate_hz;
+					unsigned const expected_sample_rate = expected_valid ? sample_rate_hz[sample_rate_index] : 0U;
+
+					INFO("bitrate_index=" << bitrate_index
+						<< " sample_rate_index=" << sample_rate_index
+						<< " channel_mode=" << channel_mode);
+					REQUIRE(actual_sample_rate == expected_sample_rate);
+				}
+			}
+		}
+	}
+
+	SECTION("channel mode")
+	{
+		for (unsigned bitrate_index = 0; bitrate_index < 16; ++bitrate_index)
+		{
+			for (unsigned sample_rate_index = 0; sample_rate_index < 4; ++sample_rate_index)
+			{
+				for (unsigned channel_mode = 0; channel_mode < 4; ++channel_mode)
+				{
+					uint32_t const header =
+						(0x7ffU << 21) |
+						(3U << 19) |
+						(2U << 17) |
+						(bitrate_index << 12) |
+						(sample_rate_index << 10) |
+						(channel_mode << 6);
+					auto const decoded = cdi_dvc::decode_mpeg1_layer2_audio_header(header);
+					unsigned const actual_channel_mode = decoded.channel_mode;
+
+					INFO("bitrate_index=" << bitrate_index
+						<< " sample_rate_index=" << sample_rate_index
+						<< " channel_mode=" << channel_mode);
+					REQUIRE(actual_channel_mode == channel_mode);
+				}
 			}
 		}
 	}
