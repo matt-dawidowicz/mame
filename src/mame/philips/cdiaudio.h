@@ -44,9 +44,19 @@ constexpr uint8_t attenuation_decibels(uint8_t value)
 // player revision.
 inline double nominal_attenuation_gain(uint8_t value)
 {
-	return attenuation_muted(value)
-		? 0.0
-		: std::pow(10.0, -double(attenuation_decibels(value)) / 20.0);
+	if (attenuation_muted(value))
+		return 0.0;
+
+	// The register exposes only 128 nominal dB values.  Build the exact same
+	// Green Book curve once, then use indexed lookups in steady-state audio.
+	static const std::array<double, 128> gains = []
+	{
+		std::array<double, 128> result{};
+		for (unsigned db = 0; db < result.size(); ++db)
+			result[db] = std::pow(10.0, -double(db) / 20.0);
+		return result;
+	}();
+	return gains[attenuation_decibels(value)];
 }
 
 // Candidate fixed-point representation used to compare possible attenuator
