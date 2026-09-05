@@ -476,18 +476,6 @@ constexpr full_motion_picture_rate full_motion_picture_rate_from_code(uint8_t co
 	}
 }
 
-constexpr bool mpeg_stream_selected(bool for_fma, uint8_t stream_id, uint16_t selected_stream)
-{
-	if (for_fma)
-	{
-		return stream_id >= 0xc0 && stream_id <= 0xdf
-			&& (stream_id & 0x0f) == (selected_stream & 0x0f);
-	}
-
-	return stream_id >= 0xe0 && stream_id <= 0xef
-		&& (stream_id & 0x0f) == (selected_stream & 0x0f);
-}
-
 inline void compact_consumed_audio_samples(std::vector<int16_t> &samples, std::size_t &read)
 {
 	if (!read)

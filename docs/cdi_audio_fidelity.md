@@ -90,6 +90,40 @@ muting, profile-error signaling, complete stream switching, active A/V save/load
 and long continuation remain outside this checkpoint and are still open in the
 campaign matrix.
 
+## MPEG stream-ID and PES routing checkpoint (2026-09-05)
+
+Green Book IX.5.3.1.5 permits every MPEG audio Stream ID from `C0` through `DF`,
+and IX.8.2.4 defines the selected audio stream number as 0-31.  MAME previously
+masked the FMA selector to four bits.  That made stream `D0+n` indistinguishable
+from `C0+n`, even though the system specification assigns the fifth stream-number
+bit meaning.
+
+The FMA selector and readback now retain five bits; the FMV selector correctly
+retains four.  A production-used pure classifier owns the complete byte after an
+MPEG start-code prefix: pack start, program end, selected PES, or skipped packet.
+The regression independently enumerates every byte for every one of the 32 FMA
+and 16 FMV selectors, explicitly proves the 16 former `Cx`/`Dx` alias pairs are
+distinct, exhausts 16-bit register normalization, and traverses every first
+PES-header-byte classification for every selected audio stream.  The optimized,
+unoptimized, and ASan/UBSan combined DVC gates pass 2,569,450 assertions in 57
+cases; the audio selection passes 1,286,825 assertions in 16 cases.  The standalone
+Philips binary passes 6,003,206 assertions in 128 cases, and the extended selection
+including the unchanged `rgbutil` source passes 6,003,480 assertions in 129 cases.
+The native C++20 `release64` CDIC/DVC production archive also compiles.  Linking
+the generated SDL `mametests` target remains blocked at the known container
+prerequisite, missing `SDL2/SDL.h`; the standalone gates above compile and execute
+the changed production-used helpers and all Philips test sources.
+
+This closes program-stream ID/PES selection, not full stream switching.  The
+Green Book distinguishes a requested stream from the stream actually being decoded
+and defines a change-of-stream event.  Available reverse-engineered register names
+identify `$e03008` as the planned stream and tentatively identify `$e0300a` as the
+current stream, while the independent MiSTer implementation explicitly labels its
+own switching behavior inaccurate.  MAME still mirrors the requested value at both
+addresses and does not fabricate a CSU timing edge.  A Green Book audio access point
+may also begin directly at an audio-frame sync; that elementary-stream ingress path
+is the next explicit parser gap.
+
 ## Independent PCM reference checkpoint (2026-09-05)
 
 `tests/emu/philips/cdidvc_audio_reference_data.h` retains three independently
@@ -295,7 +329,7 @@ preserved and no RGB source is part of this checkpoint.
 | ID | Class | Source | Supported claim | Limit |
 | --- | --- | --- | --- | --- |
 | MPEG-STD-001 | Standards-derived | [RFC 3003](https://www.rfc-editor.org/rfc/rfc3003), referring normatively to ISO/IEC 11172-3:1993 | MPEG elementary audio is a sequence of independently headed frames and may be interspersed with non-MPEG data, so deterministic resynchronization is required. | RFC 3003 is not a VMPEG hardware specification. |
-| MPEG-STD-002 | Standards-derived | [Philips/Sony CD-i Green Book, May 1994 Release 2](https://archive.org/download/cdi_may94_r2/cdi_may94_r2.pdf), Chapter IX sections 5.3.1, 5.3.2, and 5.4.3 | Defines Full Motion audio stream IDs/packet limits, the Layer II bitrate-by-mode table, 44.1 kHz/private/emphasis constraints, audio-sequence invariants, muted output under starvation, stream-switch acceptance, and ISO-end playback continuity. | It permits optional first-frame muting and does not specify the physical VMPEG response to malformed/profile-invalid input or exact DAC/IRQ edges. |
+| MPEG-STD-002 | Standards-derived | [Philips/Sony CD-i Green Book, May 1994 Release 2](https://archive.org/download/cdi_may94_r2/cdi_may94_r2.pdf), Chapter IX sections 5.3.1, 5.3.2, 5.4.3, and 8.2.4 | Defines Full Motion audio Stream IDs `C0`-`DF`, selected stream numbers 0-31, packet/access-point limits, the Layer II bitrate-by-mode table, 44.1 kHz/private/emphasis constraints, audio-sequence invariants, muted output under starvation, stream-switch acceptance, and ISO-end playback continuity. | It permits optional first-frame muting and does not specify the private VMPEG register layout, response to malformed/profile-invalid input, or exact DAC/IRQ edges. |
 | MPEG-REF-001 | Independently corroborated | [FFmpeg `mpegaudiodecheader.c` at `ef5929f`](https://github.com/FFmpeg/FFmpeg/blob/ef5929f4ebb158ae689845055513a5725f5de28c/libavcodec/mpegaudiodecheader.c) | Indexed Layer II frame size is recalculated from each frame's bitrate, sample rate, and padding; free format is represented separately when a size cannot be derived from one header. | FFmpeg behavior is reference-decoder evidence, not VMPEG evidence. |
 | MPEG-REF-002 | Independently corroborated | [mpg123 `mpeghead.h` at `f6c19f4`](https://github.com/madebr/mpg123/blob/f6c19f46031088efc8d0e5b83305a6f36ceceb65/src/libmpg123/mpeghead.h) and [parser](https://github.com/madebr/mpg123/blob/f6c19f46031088efc8d0e5b83305a6f36ceceb65/src/libmpg123/parse.c) | The ordinary compatible-header mask excludes bitrate, while the parser rejects bitrate index 15 and handles index zero as free format. | mpg123 supports profiles beyond CD-i Full Motion. |
 | MPEG-REF-003 | Current implementation model | [PL_MPEG upstream at `c871f2b`](https://github.com/phoboslab/pl_mpeg/blob/c871f2be022ece7ef4f64230b4fb8e1fb9eb6023/pl_mpeg.h) | Documents the inherited decoder architecture, the upstream constant-header restriction from which MAME's streaming fixes diverge, and the dynamic buffer's separate `total_size`/`has_ended` state: `signal_end` fixes the former and a later write clears both. | Upstream PL_MPEG is not an independent hardware model; these fields explain required save reconstruction rather than VMPEG state. |
@@ -339,6 +373,12 @@ preserved and no RGB source is part of this checkpoint.
 - **Resynchronization:** accepting a structurally valid indexed header after
   junk is a software streaming model.  The exact VMPEG false-sync and error-event
   policy has not been measured.
+- **DVC stream selection:** program-stream routing now honors all 32 Green Book
+  audio Stream IDs.  The `$e03008`/`$e0300a` desired/current interpretation comes
+  from reverse-engineering labels rather than a public VMPEG register manual;
+  MAME currently mirrors them and does not claim the exact switch/CSU edge.  Direct
+  access at an MPEG audio frame sync is specified by the Green Book but is not yet
+  accepted by the program-stream-only ingress parser.
 - **DVC PCM starvation:** Green Book requires muted output until another decoded
   frame is ready.  MAME's zero-output, whole-stereo-pair queue rule is deterministic
   and production-tested, but host-queue exhaustion is not asserted to be the exact

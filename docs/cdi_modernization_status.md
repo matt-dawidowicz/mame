@@ -167,10 +167,36 @@ in 127 cases.  The production CDIC/DVC `release64` archive compiles.  The genera
 SDL `mametests` link remains blocked by the container's missing `SDL2/SDL.h`, the
 same host prerequisite recorded for the prior checkpoint.
 
-Remaining DVC-audio boundaries: actual PES/stream-selector interaction, PTS-defined
-sequence changes, rate/restart/mute/reset transitions, guest-visible underflow and
-stream-change events, active simultaneous A/V save/load, long continuation hashes,
-and hardware DAC/rounding/de-emphasis behavior.
+Remaining DVC-audio boundaries: direct audio-frame-sync access points, PTS-defined
+sequence changes, rate/restart/mute/reset transitions, desired/current selector and
+guest-visible underflow/stream-change events, active simultaneous A/V save/load,
+long continuation hashes, and hardware DAC/rounding/de-emphasis behavior.
+
+## Audio campaign DVC stream-routing checkpoint
+
+Scope: correct and exhaust the standards-visible MPEG stream-selection path without
+claiming unmeasured VMPEG desired/current-register or interrupt timing.  No DMA
+architecture or FMV tracing behavior changes are included.
+
+Green Book IX.5.3.1.5 permits MPEG audio Stream IDs `C0`-`DF`, and IX.8.2.4
+defines the selected audio stream as 0-31.  The prior four-bit FMA mask aliased
+each `Cx` stream with its `Dx` counterpart.  FMA register storage/readback and
+packet routing now preserve five selector bits, FMV remains four-bit, and one
+production-used classifier separates pack start, program end, selected PES, and
+skipped packet handling.  Tests enumerate all start-code bytes for every legal
+audio/video selector, all 65,536 register inputs for each normalization width,
+all former audio alias pairs, and every first PES-header byte for all 32 audio
+streams.
+
+The optimized, unoptimized, and ASan/UBSan combined DVC gates pass 2,569,450
+assertions in 57 cases; `[dvc][audio]` passes 1,286,825 assertions in 16 cases.
+The complete standalone Philips binary passes 6,003,206 assertions in 128 cases,
+the extended pure binary including `rgbutil` passes 6,003,480 assertions in 129
+cases, and the native C++20 `release64` production archive compiles.  The generated
+SDL `mametests` link reaches the unchanged missing-`SDL2/SDL.h` host prerequisite.
+Exact desired-to-current switch timing, CSU signaling, decoder restart, and direct
+audio-frame-sync access points remain open and explicitly prevent a parser or
+stream-switching 100% claim.
 
 ## Phase D checkpoint
 
@@ -325,7 +351,7 @@ Mono-II confidence after this checkpoint:
 | CDIC | `[#######---] 70%` functional / `[######----] 60%` fidelity | Command/register audit, direct 210/05 AUDCTL/audio captures, independent state/filter/buffer/IRQ/XA tests, and SCC-owned DMA client. | Capture seek completion, DAC sample/flush edges, full Q/R-W/track transitions, and malformed/error IRQ behavior. |
 | SLAVE/HLE | `[#######---] 65%` functional / `[####------] 45%` fidelity | Complete classified command map, bounded parser, documented revision response, and pointer/transport/readiness/IRQ2 tests. | Add keyboard and SERVO/X-bus behavior only from MCU, firmware, or bus-trace evidence. |
 | SERVO/MCU | `[###-------] 30%` | Mostly existing HLE/integration behavior. | Capture command/response timing from a known firmware/disc pair. |
-| DVC | `[######----] 55%` | Broad native DVC tests, Full Motion audio-profile oracle, deterministic PCM/save replay, and SCC-owned DMA path; prior runtime vertical-slice evidence. | Validate PES stream changes, audio status/IRQ transitions, and active long-run A/V behavior. |
+| DVC | `[######----] 55%` | Broad native DVC tests, Full Motion audio-profile oracle, 32-stream PES routing, deterministic PCM/save replay, and SCC-owned DMA path; prior runtime vertical-slice evidence. | Validate direct elementary-audio access, desired/current stream changes, audio status/IRQ transitions, and active long-run A/V behavior. |
 | Mono-I / Mono-II glue | `[######----] 60%` | Machine configurations and validation build. | Add clean-boot checkpoints for representative firmware revisions. |
 | Audio | `[######----] 55%` | CDIC/XA transport plus DVC reference decode, Full Motion profile, PCM starvation/refill, termination replay, and deterministic unit coverage. | Runtime A/V clock, stream-change, DAC-edge, attenuation, and de-emphasis evidence. |
 | Video | `[######----] 60%` | MCD212 QHY/timing/control tests, DVC suite, and external-video mask regression coverage. | Frame/scanline captures tied to register and overlay traces. |

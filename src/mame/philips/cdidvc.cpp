@@ -940,7 +940,7 @@ uint16_t cdi_dvc_device::read(offs_t offset, uint16_t mem_mask)
 		break;
 	case 0xe03008:
 	case 0xe0300a:
-		result = m_fma_stream & 0x000f;
+		result = m_fma_stream & cdi_dvc::mpeg_stream_number_mask(true);
 		break;
 	case 0xe0300c:
 		result = m_fma_interrupt_vector;
@@ -2356,13 +2356,6 @@ void cdi_dvc_device::mpeg_schedule_packet(unsigned target)
 			m_mpeg_schedule_events[target]);
 }
 
-bool cdi_dvc_device::mpeg_stream_selected(unsigned target, uint8_t stream_id) const
-{
-	bool const for_fma = target == MPEG_FMA;
-	uint16_t const selected_stream = for_fma ? m_fma_stream : m_fmv_stream;
-	return cdi_dvc::mpeg_stream_selected(for_fma, stream_id, selected_stream);
-}
-
 void cdi_dvc_device::mpeg_begin_payload(unsigned target)
 {
 	if (!m_mpeg_packet_counted[target])
@@ -2431,6 +2424,7 @@ void cdi_dvc_device::mpeg_byte_w(unsigned target, uint8_t data)
 		break;
 
 	case MPEG_STREAM_ID:
+	{
 		m_mpeg_stream_id[target] = data;
 		m_mpeg_prefix[target] = 0;
 		m_mpeg_selected[target] = false;
@@ -2440,17 +2434,22 @@ void cdi_dvc_device::mpeg_byte_w(unsigned target, uint8_t data)
 		m_mpeg_ts_mode[target] = 0;
 		m_mpeg_ts_index[target] = 0;
 
-		if (data == 0xba)
+		cdi_dvc::mpeg1_start_code_route const route =
+				cdi_dvc::classify_mpeg1_start_code(
+					target == MPEG_FMA, data,
+					target == MPEG_FMA ? m_fma_stream : m_fmv_stream);
+		switch (route)
 		{
+		case cdi_dvc::mpeg1_start_code_route::pack_header:
 			// MPEG-1 pack header: first five bytes carry the 33-bit SCR;
 			// three mux-rate bytes follow.
 			m_mpeg_pack_index[target] = 0;
 			m_mpeg_scr_temp[target] = 0;
 			m_mpeg_skip_remaining[target] = 8;
 			m_mpeg_state[target] = MPEG_PACK_SKIP;
-		}
-		else if (data == 0xb9)
-		{
+			break;
+
+		case cdi_dvc::mpeg1_start_code_route::program_end:
 			// ISO/IEC 11172 program end code.
 			mpeg_packet_done(target);
 			if (target == MPEG_FMA)
@@ -2468,15 +2467,19 @@ void cdi_dvc_device::mpeg_byte_w(unsigned target, uint8_t data)
 				video_decoder_flush();
 				LOGMASKED(LOG_VIDEO, "%s: DVC VIDEO program end\n", machine().describe_context());
 			}
-		}
-		else
-		{
+			break;
+
+		case cdi_dvc::mpeg1_start_code_route::selected_pes:
+		case cdi_dvc::mpeg1_start_code_route::skipped_packet:
 			// PES/system packets carry a big-endian 16-bit packet length.
-			m_mpeg_selected[target] = mpeg_stream_selected(target, data);
+			m_mpeg_selected[target] =
+				route == cdi_dvc::mpeg1_start_code_route::selected_pes;
 			m_mpeg_packet_remaining[target] = 0;
 			m_mpeg_state[target] = MPEG_LENGTH_HI;
+			break;
 		}
 		break;
+	}
 
 	case MPEG_LENGTH_HI:
 		m_mpeg_packet_remaining[target] = uint16_t(data) << 8;
@@ -2862,7 +2865,7 @@ void cdi_dvc_device::write(offs_t offset, uint16_t data, uint16_t mem_mask)
 		break;
 	case 0xe03008:
 		COMBINE_DATA(&m_fma_stream);
-		m_fma_stream &= 0x000f;
+		m_fma_stream = cdi_dvc::normalize_mpeg_stream_number(true, m_fma_stream);
 		break;
 	case 0xe0300c:
 		COMBINE_DATA(&m_fma_interrupt_vector);
@@ -3085,7 +3088,7 @@ void cdi_dvc_device::write(offs_t offset, uint16_t data, uint16_t mem_mask)
 
 	case 0xe040c4:
 		COMBINE_DATA(&m_fmv_stream);
-		m_fmv_stream &= 0x000f;
+		m_fmv_stream = cdi_dvc::normalize_mpeg_stream_number(false, m_fmv_stream);
 		LOGMASKED(LOG_SEQUENCE,
 				"DVC_FMV_TRACE stream value=%u mask=%04x ctx=%s\n",
 				m_fmv_stream, mem_mask, machine().describe_context());

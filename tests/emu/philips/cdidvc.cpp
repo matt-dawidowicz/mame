@@ -6,6 +6,7 @@
 
 #include "catch.hpp"
 
+#include "cdidvc_mpeg_format.h"
 #include "cdidvc_save_state.h"
 #include "cdidvc_utils.h"
 
@@ -48,10 +49,14 @@ TEST_CASE("CD-i DVC MPEG timestamps convert from 90 kHz to 45 kHz deltas", "[emu
 TEST_CASE("CD-i DVC FMA stream selection accepts matching MPEG audio streams", "[emu][philips][dvc]")
 {
 	REQUIRE(cdi_dvc::mpeg_stream_selected(true, 0xc0, 0));
-	REQUIRE(cdi_dvc::mpeg_stream_selected(true, 0xcf, 0x000f));
+	REQUIRE(cdi_dvc::mpeg_stream_selected(true, 0xcf, 15));
+	REQUIRE(cdi_dvc::mpeg_stream_selected(true, 0xd0, 16));
+	REQUIRE(cdi_dvc::mpeg_stream_selected(true, 0xdf, 31));
 	REQUIRE(cdi_dvc::mpeg_stream_selected(true, 0xd3, 0x00f3));
 	REQUIRE_FALSE(cdi_dvc::mpeg_stream_selected(true, 0xc1, 0));
-	REQUIRE_FALSE(cdi_dvc::mpeg_stream_selected(true, 0xbf, 0x000f));
+	REQUIRE_FALSE(cdi_dvc::mpeg_stream_selected(true, 0xc0, 16));
+	REQUIRE_FALSE(cdi_dvc::mpeg_stream_selected(true, 0xd0, 0));
+	REQUIRE_FALSE(cdi_dvc::mpeg_stream_selected(true, 0xbf, 31));
 	REQUIRE_FALSE(cdi_dvc::mpeg_stream_selected(true, 0xe0, 0));
 }
 
@@ -70,7 +75,8 @@ TEST_CASE("CD-i DVC MPEG stream selection covers every stream ID and selector", 
 	for (unsigned target = 0; target < 2; ++target)
 	{
 		bool const for_fma = target == 0;
-		for (uint16_t selected_stream = 0; selected_stream < 16; ++selected_stream)
+		unsigned const stream_count = for_fma ? 32 : 16;
+		for (uint16_t selected_stream = 0; selected_stream < stream_count; ++selected_stream)
 		{
 			for (unsigned stream = 0; stream <= 0xff; ++stream)
 			{
@@ -78,7 +84,8 @@ TEST_CASE("CD-i DVC MPEG stream selection covers every stream ID and selector", 
 				bool const in_stream_range = for_fma
 					? stream_id >= 0xc0 && stream_id <= 0xdf
 					: stream_id >= 0xe0 && stream_id <= 0xef;
-				bool const expected = in_stream_range && (stream_id & 0x0f) == selected_stream;
+				uint8_t const stream_mask = for_fma ? 0x1f : 0x0f;
+				bool const expected = in_stream_range && (stream_id & stream_mask) == selected_stream;
 
 				INFO("for_fma=" << for_fma << " selected_stream=" << selected_stream << " stream_id=" << stream);
 				REQUIRE(cdi_dvc::mpeg_stream_selected(for_fma, stream_id, selected_stream) == expected);

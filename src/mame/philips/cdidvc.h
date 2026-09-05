@@ -72,7 +72,6 @@ private:
 	void mpeg_timestamp_byte(unsigned target, uint8_t data);
 	void mpeg_timestamp_commit(unsigned target);
 	void mpeg_schedule_packet(unsigned target);
-	bool mpeg_stream_selected(unsigned target, uint8_t stream_id) const;
 
 	// MPEG audio decode and MAME sound output.
 	void audio_output_reset();
