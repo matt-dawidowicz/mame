@@ -34,6 +34,20 @@ enum class disc_operation : uint8_t
 	toc
 };
 
+constexpr bool validates_sector_header(disc_operation operation)
+{
+	return operation == disc_operation::mode1 ||
+		operation == disc_operation::mode2 ||
+		operation == disc_operation::toc;
+}
+
+constexpr bool discards_invalid_sector(disc_operation operation)
+{
+	// Mode 2 subheaders control routing and audio format.  Continuing after
+	// both raw and descrambled validation fail would interpret untrusted bytes.
+	return operation == disc_operation::mode2;
+}
+
 enum class disc_state : uint8_t
 {
 	idle,
@@ -82,11 +96,90 @@ constexpr bool audio_channel_selected(uint16_t mask, uint8_t channel)
 	return channel < 16 && bool(mask & (uint16_t(1) << channel));
 }
 
+enum class xa_coding_status : uint8_t
+{
+	valid,
+	reserved_high_bit,
+	reserved_sample_width,
+	reserved_sample_rate,
+	reserved_channel_mode
+};
+
+struct xa_coding
+{
+	xa_coding_status status;
+	uint8_t channels;
+	uint8_t bits_per_sample;
+	uint16_t clock_divisor;
+	uint8_t sector_periods;
+	bool emphasis;
+
+	constexpr bool valid() const { return status == xa_coding_status::valid; }
+};
+
+constexpr xa_coding decode_xa_coding(uint8_t coding)
+{
+	const bool emphasis = bool(coding & 0x40);
+	if (coding & 0x80)
+		return { xa_coding_status::reserved_high_bit, 0, 0, 0, 0, emphasis };
+
+	const uint8_t sample_width = coding & 0x30;
+	if (sample_width != 0x00 && sample_width != 0x10)
+		return { xa_coding_status::reserved_sample_width, 0, 0, 0, 0, emphasis };
+
+	const uint8_t sample_rate = coding & 0x0c;
+	if (sample_rate != 0x00 && sample_rate != 0x04)
+		return { xa_coding_status::reserved_sample_rate, 0, 0, 0, 0, emphasis };
+
+	const uint8_t channel_mode = coding & 0x03;
+	if (channel_mode != 0x00 && channel_mode != 0x01)
+		return { xa_coding_status::reserved_channel_mode, 0, 0, 0, 0, emphasis };
+
+	const uint8_t channels = channel_mode == 0x01 ? 2 : 1;
+	const uint8_t bits_per_sample = sample_width == 0x10 ? 8 : 4;
+	const uint16_t clock_divisor = sample_rate == 0x04 ? 1024 : 512;
+	uint8_t sector_periods = 2;
+	if (bits_per_sample == 4)
+		sector_periods *= 2;
+	if (clock_divisor == 1024)
+		sector_periods *= 2;
+	if (channels == 1)
+		sector_periods *= 2;
+
+	return
+	{
+		xa_coding_status::valid,
+		channels,
+		bits_per_sample,
+		clock_divisor,
+		sector_periods,
+		emphasis
+	};
+}
+
+constexpr uint8_t xa_sector_count(uint8_t coding)
+{
+	return decode_xa_coding(coding).sector_periods;
+}
+
 enum class sector_target : uint8_t
 {
 	filtered,
 	data,
-	audio
+	audio,
+	malformed
+};
+
+enum class mode2_format_status : uint8_t
+{
+	valid,
+	reserved_channel,
+	reserved_audio_channel,
+	conflicting_payload_types,
+	invalid_payload_form,
+	realtime_form1_video,
+	invalid_empty_or_message,
+	invalid_audio_coding
 };
 
 struct mode2_sector
@@ -94,15 +187,20 @@ struct mode2_sector
 	uint8_t file;
 	uint8_t channel;
 	uint8_t submode;
+	uint8_t coding;
 };
 
 struct sector_decision
 {
 	sector_target target;
+	mode2_format_status format;
+	bool trigger;
+	bool end_record;
 	bool end_read;
 };
 
 constexpr uint8_t SUBMODE_EOF   = 0x80;
+constexpr uint8_t SUBMODE_RT    = 0x40;
 constexpr uint8_t SUBMODE_FORM  = 0x20;
 constexpr uint8_t SUBMODE_TRIG  = 0x10;
 constexpr uint8_t SUBMODE_DATA  = 0x08;
@@ -110,25 +208,85 @@ constexpr uint8_t SUBMODE_AUDIO = 0x04;
 constexpr uint8_t SUBMODE_VIDEO = 0x02;
 constexpr uint8_t SUBMODE_EOR   = 0x01;
 
+constexpr mode2_format_status validate_mode2_sector(mode2_sector sector)
+{
+	if (sector.channel >= 32)
+		return mode2_format_status::reserved_channel;
+
+	const uint8_t payload = sector.submode & (SUBMODE_DATA | SUBMODE_AUDIO | SUBMODE_VIDEO);
+	if (payload && (payload & (payload - 1)))
+		return mode2_format_status::conflicting_payload_types;
+
+	if (!payload)
+	{
+		// Empty and message sectors have channel and coding information zero.
+		return (sector.channel == 0 && sector.coding == 0)
+			? mode2_format_status::valid
+			: mode2_format_status::invalid_empty_or_message;
+	}
+
+	const bool form2 = bool(sector.submode & SUBMODE_FORM);
+	if (payload == SUBMODE_AUDIO)
+	{
+		if (sector.channel >= 16)
+			return mode2_format_status::reserved_audio_channel;
+		if (!form2)
+			return mode2_format_status::invalid_payload_form;
+		if (!decode_xa_coding(sector.coding).valid())
+			return mode2_format_status::invalid_audio_coding;
+	}
+	else if (payload == SUBMODE_DATA && form2)
+	{
+		return mode2_format_status::invalid_payload_form;
+	}
+	else if (payload == SUBMODE_VIDEO && !form2 && (sector.submode & SUBMODE_RT))
+	{
+		return mode2_format_status::realtime_form1_video;
+	}
+
+	return mode2_format_status::valid;
+}
+
+constexpr uint8_t SUBHEADER_MISMATCH_FILE    = 0x01;
+constexpr uint8_t SUBHEADER_MISMATCH_CHANNEL = 0x02;
+constexpr uint8_t SUBHEADER_MISMATCH_SUBMODE = 0x04;
+constexpr uint8_t SUBHEADER_MISMATCH_CODING  = 0x08;
+
+constexpr uint8_t subheader_mismatch(mode2_sector first, mode2_sector second)
+{
+	return
+		(first.file != second.file ? SUBHEADER_MISMATCH_FILE : 0) |
+		(first.channel != second.channel ? SUBHEADER_MISMATCH_CHANNEL : 0) |
+		(first.submode != second.submode ? SUBHEADER_MISMATCH_SUBMODE : 0) |
+		(first.coding != second.coding ? SUBHEADER_MISMATCH_CODING : 0);
+}
+
 constexpr sector_decision select_mode2_sector(
 		uint16_t file_register,
 		uint32_t channel_mask,
 		uint16_t audio_channel_mask,
 		mode2_sector sector)
 {
-	if (uint8_t(file_register >> 8) != sector.file)
-		return { sector_target::filtered, false };
+	const mode2_format_status format = validate_mode2_sector(sector);
+	if (format != mode2_format_status::valid)
+		return { sector_target::malformed, format, false, false, false };
 
-	const bool terminal = bool(sector.submode & (SUBMODE_EOF | SUBMODE_TRIG | SUBMODE_EOR));
+	if (uint8_t(file_register >> 8) != sector.file)
+		return { sector_target::filtered, format, false, false, false };
+
+	const bool selected = channel_selected(channel_mask, sector.channel);
+	const bool trigger = bool(sector.submode & SUBMODE_TRIG);
+	const bool end_record = selected && bool(sector.submode & SUBMODE_EOR);
+	const bool end_read = selected && bool(sector.submode & SUBMODE_EOF);
 	const bool applicable = bool(sector.submode & (SUBMODE_DATA | SUBMODE_AUDIO | SUBMODE_VIDEO));
-	if (!terminal && (!applicable || !channel_selected(channel_mask, sector.channel)))
-		return { sector_target::filtered, false };
+	if (!trigger && !end_record && !end_read && (!selected || !applicable))
+		return { sector_target::filtered, format, false, false, false };
 
 	const bool audio =
-		bool(sector.submode & SUBMODE_FORM) &&
+		selected &&
 		bool(sector.submode & SUBMODE_AUDIO) &&
 		audio_channel_selected(audio_channel_mask, sector.channel);
-	return { audio ? sector_target::audio : sector_target::data, bool(sector.submode & SUBMODE_EOF) };
+	return { audio ? sector_target::audio : sector_target::data, format, trigger, end_record, end_read };
 }
 
 struct buffer_completion
@@ -212,29 +370,6 @@ constexpr xa_sample decode_xa_sample(
 		((int32_t(FILTER[filter][0]) * recent + int32_t(FILTER[filter][1]) * older + 128) >> 8);
 	const int16_t output = clip_sample(decoded);
 	return { output, output, recent };
-}
-
-constexpr uint8_t xa_sector_count(uint8_t coding)
-{
-	const uint8_t channel_mode = coding & 0x03;
-	const uint8_t sample_rate = coding & 0x0c;
-	const uint8_t bits_per_sample = coding & 0x30;
-	if (bool(coding & 0x80)
-			|| channel_mode > 1
-			|| (sample_rate != 0x00 && sample_rate != 0x04)
-			|| (bits_per_sample != 0x00 && bits_per_sample != 0x10))
-	{
-		return 0;
-	}
-
-	uint8_t count = 2;
-	if (bits_per_sample == 0x00)
-		count *= 2;
-	if (sample_rate == 0x04)
-		count *= 2;
-	if (channel_mode == 0x00)
-		count *= 2;
-	return count;
 }
 
 constexpr uint32_t lba_from_time(uint32_t time)

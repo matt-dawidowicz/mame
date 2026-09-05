@@ -86,6 +86,53 @@ claimed: compiler floating-point contraction can legitimately perturb a low
 output bit.  The production float-to-PCM conversion is now centralized and has
 exact clipping, symmetric-rounding, infinity-range, and NaN-safe tests.
 
+## XA routing and coding checkpoint (2026-09-05)
+
+The third campaign batch closes concrete standards-visible routing defects without
+claiming an undocumented CDIC error response.
+
+1. CD-ROM XA makes Trigger independent of channel allocation, but makes EOF and
+   EOR channel-allocated.  The previous helper treated all three bits as global,
+   allowing an unselected EOF or EOR sector to be delivered and an unselected EOF
+   to stop a read.  The decision now exposes Trigger, selected-channel EOR, and
+   selected-channel EOF independently.  An audio sector reaches the audio processor
+   only when its channel is selected in both the 32-bit main mask and the 16-bit
+   audio mask; a selected audio sector omitted from the audio mask remains host data.
+2. Sector conformance is checked before audio allocation.  Channels above 31,
+   audio channels above 15, simultaneous Audio/Video/Data bits, audio in Form 1,
+   data in Form 2, real-time video in Form 1, malformed empty/message metadata,
+   and reserved audio coding values are classified and dropped rather than silently
+   routed.  The classifications follow the Green Book's allowed type/form table.
+3. One pure coding-byte decoder now owns validation, channel count, sample width,
+   sample-clock divisor, emphasis exposure, and playback duration.  Every one of
+   the 256 byte values is tested.  Sixteen values are coding-field-valid: the
+   Cartesian product of emphasis on/off, 4/8-bit samples, 37.8/18.9 kHz, and
+   mono/stereo.  The Green Book names only Levels A, B, and C, so 8-bit/18.9 kHz
+   is described as coding-field-valid rather than promoted to a named quality level.
+4. Mode 2 subheader metadata is double-written for integrity.  MAME previously
+   retried descrambling after a contradiction, then continued with the second copy
+   even when both attempts remained invalid.  The XA decoder model requires CIRC
+   reliability information to choose a copy; raw-image reads do not provide those
+   per-byte flags.  MAME now drops that unresolved Mode 2 sector while allowing the
+   physical 75 Hz read position to advance.  It does not fabricate a CDIC status bit
+   or interrupt whose hardware mapping is unknown.
+5. Headerless CD-DA PCM is now explicitly excluded from Mode 1/2 header validation
+   and descrambling.  This removes a data-dependent path that could reinterpret
+   ordinary audio samples as a coincidentally valid sector header.
+
+The focused CDIC gate is now 263,516 assertions in 11 test cases.  It compares
+67,108,864 routing states against an independent literal-bit oracle, checks all
+256 coding bytes, and checks all 261,120 single-field unequal byte pairs across
+the four duplicated subheader fields (plus equal and combined-mismatch cases).
+Optimized, unoptimized, and AddressSanitizer/UndefinedBehaviorSanitizer builds pass.
+The broader standalone Philips gate passes 2,595,963 assertions in 107 test
+cases, including the unchanged 1,046,230-assertion DVC audio gate.  MAME's
+generated native C++20 `release64` project also compiles the complete focused
+CD-i production archive, including CDIC and DVC.  The generated `mametests`
+wrapper could not be linked in the campaign container because its OSD support
+requires unavailable SDL2 development headers; the same Philips test sources
+were compiled and run through the standalone Catch harness above.
+
 ## Evidence register
 
 | ID | Class | Source | Supported claim | Limit |
@@ -97,6 +144,9 @@ exact clipping, symmetric-rounding, infinity-range, and NaN-safe tests.
 | MPEG-REF-004 | Controlled synthetic experiment | `tests/emu/philips/cdidvc_audio_reference.cpp` and its retained data header | Non-silent mono, dual-channel, stereo, and joint-stereo PL_MPEG output remains within measured bounds of FFmpeg 6.1.1's independent fixed-point Layer II decoder. | This compares software decoders; it does not establish VMPEG DSP rounding. |
 | DVC-HW-001 | Hardware-confirmed | [CDi_FMVTest FMA playback-delay capture at `991b9cb`](https://github.com/Slamy/CDi_FMVTest/tree/991b9cb22905942d969a6d3219f89c5e941a7741/fma_playback_delay) | On the recorded 210/05 + VMPEG system, `MA_TRIG_DEC` occurs close enough to analogue sample output to serve as a software timing marker; the retained analysis bounds any additional decode delay to roughly 4 ms after accounting for encoder silence. | One hardware/configuration and one fixture; it does not establish long-duration drift or underflow edges. |
 | DVC-RE-001 | Independently corroborated | [MiSTer CD-i DVC notes at `1d0d29b`](https://github.com/MiSTer-devel/CDi_MiSTer/blob/1d0d29b164a05d11db0094564feacf0f66c1d4e4/doc/dvc.md) | FMA DCLK is treated as 45 kHz and the audio clock is the driver-visible link to MPEG SCR timing. | Reverse-engineering notes, not a Philips register specification. |
+| XA-STD-001 | Standards-derived | [Philips/Sony CD-i Green Book, May 1994 Release 2](https://archive.org/download/cdi_may94_r2/cdi_may94_r2.pdf), Chapter II sections 4.5/4.9 and Appendix II | Defines double-written subheaders, channel ranges, legal Audio/Video/Data and Form combinations, empty/message restrictions, audio-mask routing, and every audio coding field. | A media/system specification does not identify the private CDIC register response to malformed input. |
+| XA-STD-002 | Standards-derived | [Philips/Sony CD-ROM XA System Description, May 1991](https://archive.org/download/xa-10-may-1991/CD-ROM%20XA%20Specification%20May%201991%20-%20print%20to%20pdf%20in%20chrome.pdf), Chapter II sections 4.3 and 6.2 | Trigger is not channel-allocated; EOF/EOR are channel-allocated. The decoder model uses CIRC reliability flags to select trustworthy duplicated subheader bytes. | MAME's raw image interface does not expose those per-byte CIRC flags. |
+| XA-REF-001 | Independently corroborated | [jPSXdec duplicated-subheader and coding parser at `fd54036`](https://github.com/m35/jpsxdec/blob/fd5403629ac81aaca0feff0dc89e6cadd6353b26/jpsxdec/src/jpsxdec/cdreaders/CdSectorXaSubHeader.java) | An independent XA extraction tool flags unequal duplicated fields as corruption and recognizes the same reserved coding subfields. | Its confidence-based recovery is a PlayStation media-extraction compatibility policy, not CDIC hardware behavior, so MAME does not copy that guess. |
 
 ## Explicit implementation boundaries
 
@@ -118,6 +168,19 @@ exact clipping, symmetric-rounding, infinity-range, and NaN-safe tests.
 - **Resynchronization:** accepting a structurally valid indexed header after
   junk is a software streaming model.  The exact VMPEG false-sync and error-event
   policy has not been measured.
+- **Malformed XA signaling:** deterministic MAME behavior now rejects contradictory
+  duplicated subheaders and invalid CD-i sector/coding combinations.  Which CDIC
+  status bit or interrupt physical hardware exposes is still unknown, so rejection
+  is not mislabeled as hardware error signaling.  Contradictory sound-group
+  parameter-copy behavior remains open in the campaign matrix.
+- **EOF termination:** XA establishes that EOF is channel-allocated.  Stopping the
+  current HLE read after delivery of a selected EOF remains the current implementation
+  model; exact CDIC command-completion signaling is not established by the media
+  specification.
+- **8-bit/18.9 kHz:** the Green Book coding-bit table permits the field combination,
+  while its named quality overview lists only Level A (8-bit/37.8), Level B
+  (4-bit/37.8), and Level C (4-bit/18.9).  MAME accepts the field combination but
+  makes no claim that it has a fourth named quality level.
 
 ## Completion status
 
@@ -126,5 +189,5 @@ header space, explicit rejection classes, malformed resynchronization, legal
 bitrate/channel-mode transitions, backend exact/partial-frame termination, and
 independent non-silent decoder comparison now have deterministic coverage.
 Remaining blockers include CRC policy, VMPEG-specific header/update events,
-stream-switch edges, and the hardware-dependent matrix areas listed in the
-campaign specification.
+stream-switch edges, XA sound-group redundancy and independent PCM comparison,
+and the hardware-dependent matrix areas listed in the campaign specification.

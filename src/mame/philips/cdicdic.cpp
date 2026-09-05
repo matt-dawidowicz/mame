@@ -291,19 +291,6 @@ void cdicdic_device::decode_4bit_xa_unit(int channel, uint8_t param, const uint8
 	}
 }
 
-void cdicdic_device::play_raw_group(const uint8_t *data)
-{
-	int16_t samples[28];
-	for (int i = 0; i < 28; i++)
-	{
-		samples[i] = int16_t((uint16_t(data[1]) << 8) | data[0]);
-		data += 4;
-	}
-
-	m_dmadac[0]->transfer(0, 1, 1, 28, samples);
-	m_dmadac[1]->transfer(0, 1, 1, 28, samples);
-}
-
 void cdicdic_device::play_xa_group(const uint8_t coding, const uint8_t *data, const uint16_t idx)
 {
 	static const uint16_t HEADER_OFFSET_4BIT[8] = { 4, 5, 6, 7, 12, 13, 14, 15 };
@@ -356,73 +343,57 @@ void cdicdic_device::play_cdda_sector(const uint8_t *data)
 
 void cdicdic_device::play_audio_sector(const uint8_t coding, const uint8_t *data)
 {
-	const uint8_t channel_mode = coding & CODING_CHAN_MASK;
-	const uint8_t bits_per_sample = coding & CODING_BPS_MASK;
-	const uint8_t sample_rate = coding & CODING_RATE_MASK;
-
-	if (BIT(coding, 7)
-		|| channel_mode > CODING_STEREO
-		|| (bits_per_sample != CODING_4BPS && bits_per_sample != CODING_8BPS)
-		|| (sample_rate != CODING_37KHZ && sample_rate != CODING_18KHZ))
+	const cdic_hle::xa_coding coding_info = cdic_hle::decode_xa_coding(coding);
+	if (!coding_info.valid())
 	{
-		LOGMASKED(LOG_SECTORS, "Invalid/reserved coding (%02x), ignoring\n", coding);
+		LOGMASKED(LOG_SECTORS, "Invalid/reserved coding (%02x, status %u), ignoring\n",
+			unsigned(coding), unsigned(coding_info.status));
 		return;
 	}
 
-	if (coding & 0x40)
+	if (coding_info.emphasis)
 	{
-		LOGMASKED(LOG_SECTORS, "Emphasis is not implemented (%02x), ignoring\n", coding);
+		LOGMASKED(LOG_SECTORS, "Emphasis is not implemented (%02x), ignoring\n", unsigned(coding));
 		// TODO: Emphasis is commonly used. Do not throw a fatal error.
 	}
 
-	const int channels = (channel_mode == CODING_STEREO) ? 2 : 1;
-	const int bits = (bits_per_sample == CODING_8BPS) ? 8 : 4;
-	const int32_t sample_frequency = (sample_rate == CODING_37KHZ) ? clock2() / 512.0f : clock2() / 1024.0f;
+	const int32_t sample_frequency = clock2() / coding_info.clock_divisor;
 
-	LOGMASKED(LOG_SECTORS, "Coding %02x, %d channels, %d bits, %08x frequency\n", coding, channels, bits, sample_frequency);
+	LOGMASKED(LOG_SECTORS, "Coding %02x, %u channels, %u bits, %08x frequency\n",
+		unsigned(coding), unsigned(coding_info.channels), unsigned(coding_info.bits_per_sample), unsigned(sample_frequency));
 
 	m_dmadac[0]->set_frequency(sample_frequency);
 	m_dmadac[1]->set_frequency(sample_frequency);
 	m_dmadac[0]->set_volume(0x100);
 	m_dmadac[1]->set_volume(0x100);
 
-	const uint16_t bps = (bits_per_sample == CODING_8BPS);
-	const uint16_t chan = (channel_mode == CODING_STEREO);
+	const uint16_t bps = coding_info.bits_per_sample == 8;
+	const uint16_t chan = coding_info.channels == 2;
 	const uint16_t num_samples = 8 >> (bps + chan);
 
-	if (bits == 16 && channels == 2)
+	uint16_t offset = 0;
+	for (uint16_t i = 0; i < SECTOR_AUDIO_SIZE; i += 128, data += 128)
 	{
-		for (uint16_t i = 0; i < SECTOR_AUDIO_SIZE; i += 112, data += 112)
-		{
-			play_raw_group(data);
-		}
+		play_xa_group(coding, data, offset);
+		offset += 28 * num_samples;
 	}
-	else
+
+	int16_t sampleL = 0, sampleR = 0, outL = 0, outR = 0;
+	// Attenuation is logarithmic (decibels).
+	// Floats are not chip accurate, but the formula is correct.
+	const float scaleLL = attenuation_scale(m_atten[0]);
+	const float scaleLR = attenuation_scale(m_atten[1]);
+	const float scaleRR = attenuation_scale(m_atten[2]);
+	const float scaleRL = attenuation_scale(m_atten[3]);
+	for (uint16_t i = 0; i < 18 * 28 * num_samples; i++)
 	{
-		uint16_t offset = 0;
-		for (uint16_t i = 0; i < SECTOR_AUDIO_SIZE; i += 128, data += 128)
-		{
-			play_xa_group(coding, data, offset);
-			offset += 28 * num_samples;
-		}
+		sampleL = m_samples[0][i];
+		sampleR = m_samples[coding_info.channels - 1][i];
 
-		int16_t sampleL = 0, sampleR = 0, outL = 0, outR = 0;
-		// Attenuation is logarithmic (decibels).
-		// Floats are not chip accurate, but the formula is correct.
-		const float scaleLL = attenuation_scale(m_atten[0]);
-		const float scaleLR = attenuation_scale(m_atten[1]);
-		const float scaleRR = attenuation_scale(m_atten[2]);
-		const float scaleRL = attenuation_scale(m_atten[3]);
-		for (uint16_t i = 0; i < 18 * 28 * num_samples; i++)
-		{
-			sampleL = m_samples[0][i];
-			sampleR = m_samples[coding & CODING_STEREO][i];
-
-			outL = (sampleL * scaleLL + sampleR * scaleRL) * 0.25;
-			outR = (sampleL * scaleLR + sampleR * scaleRR) * 0.25;
-			m_dmadac[0]->transfer(0, 1, 1, 1, &outL);
-			m_dmadac[1]->transfer(0, 1, 1, 1, &outR);
-		}
+		outL = (sampleL * scaleLL + sampleR * scaleRL) * 0.25;
+		outR = (sampleL * scaleLR + sampleR * scaleRR) * 0.25;
+		m_dmadac[0]->transfer(0, 1, 1, 1, &outL);
+		m_dmadac[1]->transfer(0, 1, 1, 1, &outR);
 	}
 }
 
@@ -540,29 +511,35 @@ bool cdicdic_device::is_valid_sector(const uint8_t *buffer)
 		return false;
 	}
 
-	// Verify duplicate info
-	if (buffer[SECTOR_FILE1] != buffer[SECTOR_FILE2])
+	if (buffer[SECTOR_MODE] != 2)
+		return true;
+
+	// Mode 2 subheader data is double-written for integrity.  Raw-image reads
+	// do not expose the CIRC reliability flags needed to select one copy, so a
+	// contradiction must not be guessed into a valid sector.
+	const cdic_hle::mode2_sector first =
+		{ buffer[SECTOR_FILE1], buffer[SECTOR_CHAN1], buffer[SECTOR_SUBMODE1], buffer[SECTOR_CODING1] };
+	const cdic_hle::mode2_sector second =
+		{ buffer[SECTOR_FILE2], buffer[SECTOR_CHAN2], buffer[SECTOR_SUBMODE2], buffer[SECTOR_CODING2] };
+	const uint8_t mismatch = cdic_hle::subheader_mismatch(first, second);
+	if (mismatch & cdic_hle::SUBHEADER_MISMATCH_FILE)
 	{
 		LOGMASKED(LOG_SECTORS, "Not valid sector, file %02x vs. %02x\n", buffer[SECTOR_FILE1], buffer[SECTOR_FILE2]);
-		return false;
 	}
-	if (buffer[SECTOR_CHAN1] != buffer[SECTOR_CHAN2])
+	if (mismatch & cdic_hle::SUBHEADER_MISMATCH_CHANNEL)
 	{
 		LOGMASKED(LOG_SECTORS, "Not valid sector, channel %02x vs. %02x\n", buffer[SECTOR_CHAN1], buffer[SECTOR_CHAN2]);
-		return false;
 	}
-	if (buffer[SECTOR_SUBMODE1] != buffer[SECTOR_SUBMODE2])
+	if (mismatch & cdic_hle::SUBHEADER_MISMATCH_SUBMODE)
 	{
-		LOGMASKED(LOG_SECTORS, "Not valid sector, channel %02x vs. %02x\n", buffer[SECTOR_SUBMODE1], buffer[SECTOR_SUBMODE2]);
-		return false;
+		LOGMASKED(LOG_SECTORS, "Not valid sector, submode %02x vs. %02x\n", buffer[SECTOR_SUBMODE1], buffer[SECTOR_SUBMODE2]);
 	}
-	if (buffer[SECTOR_CODING1] != buffer[SECTOR_CODING2])
+	if (mismatch & cdic_hle::SUBHEADER_MISMATCH_CODING)
 	{
 		LOGMASKED(LOG_SECTORS, "Not valid sector, coding %02x vs. %02x\n", buffer[SECTOR_CODING1], buffer[SECTOR_CODING2]);
-		return false;
 	}
 
-	return true;
+	return mismatch == 0;
 }
 
 cdic_hle::sector_decision cdicdic_device::mode2_sector_decision(const uint8_t *buffer) const
@@ -571,7 +548,7 @@ cdic_hle::sector_decision cdicdic_device::mode2_sector_decision(const uint8_t *b
 		m_file,
 		m_channel,
 		m_audio_channel,
-		{ buffer[SECTOR_FILE2], buffer[SECTOR_CHAN2], buffer[SECTOR_SUBMODE2] });
+		{ buffer[SECTOR_FILE2], buffer[SECTOR_CHAN2], buffer[SECTOR_SUBMODE2], buffer[SECTOR_CODING2] });
 }
 
 TIMER_CALLBACK_MEMBER( cdicdic_device::sector_tick )
@@ -621,6 +598,7 @@ uint8_t cdicdic_device::get_sector_count_for_coding(uint8_t coding)
 
 void cdicdic_device::process_disc_sector()
 {
+	const cdic_hle::disc_operation operation = cdic_hle::disc_operation(m_disc_mode);
 	const uint32_t real_lba = m_curr_lba + 150;
 	const uint8_t mins = real_lba / (60 * 75);
 	const uint8_t secs = (real_lba / 75) % 60;
@@ -679,7 +657,9 @@ void cdicdic_device::process_disc_sector()
 		}
 	}
 
-	if (!is_valid_sector(buffer))
+	// CD-DA sectors contain headerless PCM and must never be fed through the
+	// Mode 1/2 validation or descrambling path.
+	if (cdic_hle::validates_sector_header(operation) && !is_valid_sector(buffer))
 	{
 		uint8_t descramble_buffer[2560];
 		memcpy(descramble_buffer, buffer, sizeof(descramble_buffer));
@@ -688,12 +668,23 @@ void cdicdic_device::process_disc_sector()
 
 		if (!is_valid_sector(descramble_buffer))
 		{
-			LOGMASKED(LOG_SECTORS, "Sector remains invalid after descrambling, giving up and proceeding as normal\n");
+			if (cdic_hle::discards_invalid_sector(operation))
+			{
+				LOGMASKED(LOG_SECTORS, "Mode 2 sector remains invalid after descrambling; dropping without delivery\n");
+				return;
+			}
+			LOGMASKED(LOG_SECTORS, "Sector remains invalid after descrambling; retaining compatibility delivery\n");
 		}
 		else
 		{
 			memcpy(buffer, descramble_buffer, sizeof(descramble_buffer));
 		}
+	}
+
+	if (m_disc_mode == DISC_MODE2 && buffer[SECTOR_MODE] != 2)
+	{
+		LOGMASKED(LOG_SECTORS, "Mode 2 read encountered sector mode %02x; dropping without delivery\n", buffer[SECTOR_MODE]);
+		return;
 	}
 
 	LOGMASKED(LOG_SECTORS, "Sector header data: %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x\n",
@@ -705,12 +696,24 @@ void cdicdic_device::process_disc_sector()
 	if (buffer[SECTOR_MODE] == 2 && m_disc_mode == DISC_MODE2)
 	{
 		const cdic_hle::sector_decision decision = mode2_sector_decision(buffer);
+		if (decision.target == cdic_hle::sector_target::malformed)
+		{
+			LOGMASKED(LOG_SECTORS, "Malformed Mode 2 sector dropped (file %02x, channel %02x, submode %02x, coding %02x, status %u)\n",
+				buffer[SECTOR_FILE2], buffer[SECTOR_CHAN2], buffer[SECTOR_SUBMODE2], buffer[SECTOR_CODING2],
+				unsigned(decision.format));
+			return;
+		}
 		if (decision.target == cdic_hle::sector_target::filtered)
 		{
 			LOGMASKED(LOG_SECTORS, "Mode 2 sector filtered (file %02x, channel %02x, submode %02x)\n",
 				buffer[SECTOR_FILE2], buffer[SECTOR_CHAN2], buffer[SECTOR_SUBMODE2]);
 			return;
 		}
+
+		if (decision.trigger)
+			LOGMASKED(LOG_SECTORS, "Mode 2 Trigger sector accepted\n");
+		if (decision.end_record)
+			LOGMASKED(LOG_SECTORS, "Mode 2 EOR sector accepted on a selected channel\n");
 
 		if (decision.end_read)
 		{

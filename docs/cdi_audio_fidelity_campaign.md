@@ -105,10 +105,16 @@ in-stream rate-change, and DSP-rounding evidence limits.
 
 ### 6. XA sector routing and coding validation
 
-- [ ] Exhaustive Mode-2 sector routing matrix for file/channel/submode combinations.
-- [ ] Exhaustive supported/unsupported XA coding combinations.
-- [ ] Validate EOF/EOR and audio/data mixed-sector transitions.
+- [x] Exhaustive Mode-2 sector routing matrix for file/channel/submode combinations.
+- [x] Exhaustive supported/unsupported XA coding combinations.
+- [x] Validate EOF/EOR and audio/data mixed-sector transitions.
 - [ ] Add malformed/contradictory group signaling cases.
+
+The sector-level portion now exhausts 67,108,864 file/channel/submode/channel-mask
+states, all 256 coding bytes, and every unequal pair of duplicated subheader byte
+values.  The remaining unchecked line refers specifically to contradictory sound-group
+parameter copies inside the 2304-byte audio payload; it is not satisfied merely by
+the completed sector-subheader checks.
 
 ### 7. XA ADPCM decode
 

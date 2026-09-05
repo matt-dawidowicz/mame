@@ -74,11 +74,11 @@ protected:
 private:
 	enum : uint8_t
 	{
-		DISC_NONE,
-		DISC_MODE1,
-		DISC_MODE2,
-		DISC_CDDA,
-		DISC_TOC
+		DISC_NONE  = uint8_t(cdic_hle::disc_operation::none),
+		DISC_MODE1 = uint8_t(cdic_hle::disc_operation::mode1),
+		DISC_MODE2 = uint8_t(cdic_hle::disc_operation::mode2),
+		DISC_CDDA  = uint8_t(cdic_hle::disc_operation::cdda),
+		DISC_TOC   = uint8_t(cdic_hle::disc_operation::toc)
 	};
 
 	enum
@@ -201,7 +201,6 @@ private:
 	void decode_xa_unit(const uint8_t param, int16_t sample, int16_t &sample0, int16_t &sample1, int16_t &out_buffer);
 	void decode_8bit_xa_unit(int channel, uint8_t param, const uint8_t *data, int16_t *out_buffer);
 	void decode_4bit_xa_unit(int channel, uint8_t param, const uint8_t *data, uint8_t shift, int16_t *out_buffer);
-	void play_raw_group(const uint8_t *data);
 	void play_xa_group(const uint8_t coding, const uint8_t *data, const uint16_t idx);
 	void play_audio_sector(const uint8_t coding, const uint8_t *data);
 	void play_cdda_sector(const uint8_t *data);
