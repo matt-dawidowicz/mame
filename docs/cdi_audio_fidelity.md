@@ -206,6 +206,51 @@ that differs between early and late board groups.  Therefore this checkpoint
 closes DVC register decoding and nominal mixing, but leaves exact high-range
 quantization, CDIC board-revision response, and silicon clipping/rounding open.
 
+## DVC stream-switching and ISO-termination checkpoint (2026-09-05)
+
+Green Book IX.5.4.3.1 makes the control boundary explicit.  A requested audio
+stream within the current ISO 11172 stream takes effect immediately for input
+selection; the decoder stops accepting the previous stream, searches the requested
+stream for the first following audio-frame synchronization word, and gives the new
+decode priority.  The descriptor's requested stream and status block's actually
+decoded stream are intentionally distinct, and CSU reports the point at which the
+actual stream changes.  At an ISO end, MPEG-audio playback mode remains active;
+switching to another ISO stream requires an abort first.
+
+MAME now implements those standard-visible rules as one production-used control
+transition.  `$e03008` holds the requested 0-31 stream while the reverse-engineered
+`$e0300a` current-stream view remains at its previous value until PL_MPEG accepts a
+header from the requested `C0`-`DF` packet.  That acceptance commits current stream
+and, for an actual requested change, raises CSU exactly once.  Returning rapidly to
+the still-current stream cancels the pending CSU.  All MPEG-audio PES headers are
+parsed to their payload boundary even while unselected, but no unselected payload
+byte reaches the decoder.  Consequently a change during a PES packet can reject
+the old stream immediately or begin scanning the newly selected packet from the
+next byte.
+
+Each real request change recreates only the compressed PL_MPEG backend and its
+replay journal.  This discards an unfinished frame from the old stream so it cannot
+consume new-stream bytes, while preserving already decoded PCM because Green Book
+permits incomplete old-frame decode but does not define VMPEG's physical DAC/FIFO
+flush edge.  The requested/current/pending/end fields are save-state registered.
+After program end, a parser latch ignores trailing input and prevents PL_MPEG's
+dynamic buffer from silently reopening; FMA stop/reset is the abort transition that
+admits a following ISO stream while retaining the requested descriptor stream.
+
+The optimized, unoptimized, and GCC ASan/UBSan DVC gates each pass 8,444,451
+assertions in 68 cases.  The complete standalone Philips gate passes 11,880,261
+assertions in 141 cases.  Permanent selections pass 7,819,896/34 for `[audio]`,
+8,444,478/71 for `[dvc]`, 7,161,826/27 for `[dvc][audio]`, 5,407,780/4 for
+`[switch]`, 176/4 for `[termination]`, 72,966/11 for `[save]`, and retain
+8/1 for `[scc68070][dma]`.
+The native C++20 `release64` Philips archive compiles.
+
+This closes software-visible ISO termination and stream-ID transition semantics,
+not the entire campaign row.  The `$e03008/$e0300a` private-register attribution
+and exact CSU timing still lack a direct physical capture; device-level rapid
+stop/start, simultaneous audio/video branch snapshots, and the DAC's flush/hold/
+ramp behavior remain explicit hardware/runtime gates.
+
 ## Independent PCM reference checkpoint (2026-09-05)
 
 `tests/emu/philips/cdidvc_audio_reference_data.h` retains three independently
@@ -418,7 +463,7 @@ preserved and no RGB source is part of this checkpoint.
 | MPEG-REF-004 | Controlled synthetic experiment | `tests/emu/philips/cdidvc_audio_reference.cpp` and its retained data header | Non-silent mono, dual-channel, stereo, and joint-stereo PL_MPEG output remains within measured bounds of FFmpeg 6.1.1's independent fixed-point Layer II decoder. | This compares software decoders; it does not establish VMPEG DSP rounding. |
 | DVC-HW-001 | Hardware-confirmed | [CDi_FMVTest FMA playback-delay capture at `991b9cb`](https://github.com/Slamy/CDi_FMVTest/tree/991b9cb22905942d969a6d3219f89c5e941a7741/fma_playback_delay) | On the recorded 210/05 + VMPEG system, `MA_TRIG_DEC` occurs close enough to analogue sample output to serve as a software timing marker; the retained analysis bounds any additional decode delay to roughly 4 ms after accounting for encoder silence. | One hardware/configuration and one fixture; it does not establish long-duration drift or underflow edges. |
 | DVC-RE-001 | Independently corroborated | [MiSTer CD-i DVC notes at `1d0d29b`](https://github.com/MiSTer-devel/CDi_MiSTer/blob/1d0d29b164a05d11db0094564feacf0f66c1d4e4/doc/dvc.md) | FMA DCLK is treated as 45 kHz and the audio clock is the driver-visible link to MPEG SCR timing. | Reverse-engineering notes, not a Philips register specification. |
-| DVC-RE-002 | Independent implementation | [MiSTer VMPEG/FMA RTL at `1d0d29b`](https://github.com/MiSTer-devel/CDi_MiSTer/blob/1d0d29b164a05d11db0094564feacf0f66c1d4e4/rtl/vmpeg.sv) and [audio path](https://github.com/MiSTer-devel/CDi_MiSTer/blob/1d0d29b164a05d11db0094564feacf0f66c1d4e4/rtl/mpeg/fma/mpeg_audio.sv) | Keeps DSP-reported underflow and stream-change events distinct from output-FIFO occupancy; its compatibility output starts half-full and slowly ramps a held sample toward zero after empty. | The source labels stream-change handling probably inaccurate, and its FIFO/ramp policy is RTL compatibility behavior rather than a hardware capture.  MAME therefore does not copy these exact edges. |
+| DVC-RE-002 | Independent implementation | [MiSTer VMPEG/FMA RTL at `1d0d29b`](https://github.com/MiSTer-devel/CDi_MiSTer/blob/1d0d29b164a05d11db0094564feacf0f66c1d4e4/rtl/vmpeg.sv) and [audio path](https://github.com/MiSTer-devel/CDi_MiSTer/blob/1d0d29b164a05d11db0094564feacf0f66c1d4e4/rtl/mpeg/fma/mpeg_audio.sv) | Independently labels `$e03008/$e0300a` as wanted/current stream, keeps DSP-reported underflow and stream-change events distinct from output-FIFO occupancy, and models a half-full output start plus slow held-sample ramp after empty. | The source explicitly labels its stream-change handling probably inaccurate, and its FIFO/ramp policy is RTL compatibility behavior rather than a hardware capture.  MAME uses the Green Book control semantics but does not copy those exact timing edges. |
 | ATTEN-STD-001 | Standards-derived | [Philips/Sony CD-i Green Book, May 1994 Release 2](https://archive.org/download/cdi_may94_r2/cdi_may94_r2.pdf), IV.6.3, VIII.4, and IX.8 | Defines LL/LR/RR/RL paths, bit-7 mute, the seven-bit nominal dB value, one-decibel steps, conformance tolerances, immediate control of an active map, and MA reset/abort mute values. | It does not disclose digital coefficient width, rounding, accumulator behavior, or each player's analogue floor. |
 | ATTEN-HW-001 | Hardware-confirmed | [CDi_FMVTest attenuation procedure and retained 210/05 recording at `991b9cb`](https://github.com/Slamy/CDi_FMVTest/tree/991b9cb22905942d969a6d3219f89c5e941a7741/audio_attenuation_vs_cdic) | The four routes operate independently; on this VMPEG the measured 0-29 range follows one dB per step to within 0.0019 dB after channel-offset cancellation, while the concurrent CDIC path follows the same low-range slope within 0.30 dB. | One analogue capture, one Mono-I player/DVC, one tone, and only steps 0-29; it cannot resolve high-range floor, coefficient quantization, or sub-sample transition shape. |
 | ATTEN-RE-001 | Independently corroborated | [MiSTer DVC trace notes](https://github.com/MiSTer-devel/CDi_MiSTer/blob/1d0d29b164a05d11db0094564feacf0f66c1d4e4/doc/dvc.md) and [DSP register model](https://github.com/MiSTer-devel/CDi_MiSTer/blob/1d0d29b164a05d11db0094564feacf0f66c1d4e4/rtl/mpeg/fma/dsp_registers.sv) | Retains the `madriv` mode/target transaction, RR/LR/RL/LL wire order, bit-7 mute interpretation, and a nominal dB-to-linear model. | Its eight-bit LUT and 9/16 gain are capture-fitted implementation choices, not authoritative VMPEG silicon values, so MAME does not copy them as specification. |
@@ -459,12 +504,14 @@ preserved and no RGB source is part of this checkpoint.
 - **Resynchronization:** accepting a structurally valid indexed header after
   junk is a software streaming model.  The exact VMPEG false-sync and error-event
   policy has not been measured.
-- **DVC stream selection:** program-stream routing now honors all 32 Green Book
-  audio Stream IDs.  The `$e03008`/`$e0300a` desired/current interpretation comes
-  from reverse-engineering labels rather than a public VMPEG register manual;
-  MAME currently mirrors them and does not claim the exact switch/CSU edge.  Direct
-  access at an MPEG audio frame sync is now implemented with header-length-bounded
-  payload routing; the exact physical false-sync/error response remains unmeasured.
+- **DVC stream selection:** program-stream routing honors all 32 Green Book audio
+  Stream IDs and now separates requested from actually decoded stream state.  It
+  stops old-stream ingress immediately, restarts the compressed backend, commits
+  current stream/CSU at requested-header acceptance, and retains ISO end until an
+  abort.  The `$e03008`/`$e0300a` attribution and exact physical CSU/DAC edge still
+  come from reverse-engineering rather than a public VMPEG register manual.  Direct
+  access at an MPEG audio frame sync is header-length bounded; physical false-sync
+  and error response remain unmeasured.
 - **DVC PCM starvation:** Green Book requires muted output until another decoded
   frame is ready.  MAME's zero-output, whole-stereo-pair queue rule is deterministic
   and production-tested, but host-queue exhaustion is not asserted to be the exact

@@ -340,7 +340,7 @@ TEST_CASE(
 
 TEST_CASE(
 		"CD-i DVC audio replay reconstruction preserves signalled and observed decoder termination",
-		"[emu][philips][dvc][audio][save]")
+		"[emu][philips][dvc][audio][save][termination]")
 {
 	struct termination_case
 	{

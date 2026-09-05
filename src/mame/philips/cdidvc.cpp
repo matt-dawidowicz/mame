@@ -80,6 +80,9 @@ void cdi_dvc_device::device_start()
 	save_item(NAME(m_fma_command));
 	save_item(NAME(m_fma_status));
 	save_item(NAME(m_fma_stream));
+	save_item(NAME(m_fma_current_stream));
+	save_item(NAME(m_fma_stream_change_pending));
+	save_item(NAME(m_fma_program_ended));
 	save_item(NAME(m_fma_interrupt_vector));
 	save_item(NAME(m_fma_interrupt_status));
 	save_item(NAME(m_fma_interrupt_enable));
@@ -788,6 +791,9 @@ void cdi_dvc_device::device_reset()
 	m_fma_command = 0;
 	m_fma_status = 0;
 	m_fma_stream = 0;
+	m_fma_current_stream = cdi_dvc::MPEG_AUDIO_NO_CURRENT_STREAM;
+	m_fma_stream_change_pending = false;
+	m_fma_program_ended = false;
 	m_fma_interrupt_vector = 0;
 	m_fma_interrupt_status = 0;
 	m_fma_interrupt_enable = 0;
@@ -948,8 +954,10 @@ uint16_t cdi_dvc_device::read(offs_t offset, uint16_t mem_mask)
 		result = FMA_E03006_COMPAT_READ_VALUE;
 		break;
 	case 0xe03008:
-	case 0xe0300a:
 		result = m_fma_stream & cdi_dvc::mpeg_stream_number_mask(true);
+		break;
+	case 0xe0300a:
+		result = m_fma_current_stream;
 		break;
 	case 0xe0300c:
 		result = m_fma_interrupt_vector;
@@ -1321,7 +1329,24 @@ void cdi_dvc_device::audio_decoder_destroy()
 
 void cdi_dvc_device::audio_decoder_reset()
 {
-	audio_output_reset();
+	audio_decoder_recreate(true, true);
+}
+
+void cdi_dvc_device::audio_decoder_stream_change()
+{
+	// Preserve already decoded PCM.  The Green Book gives the new compressed
+	// stream highest priority and permits the previous frame not to be finalized,
+	// but it does not specify a VMPEG DAC/FIFO flush edge.  Recreate only the
+	// compressed backend so partial old-frame bytes cannot contaminate the first
+	// frame of the requested stream.
+	audio_decoder_recreate(false, false);
+}
+
+void cdi_dvc_device::audio_decoder_recreate(
+		bool reset_output, bool reset_event_counters)
+{
+	if (reset_output)
+		audio_output_reset();
 	audio_decoder_destroy();
 	m_audio_replay_journal.clear();
 	m_audio_replay_overflow = false;
@@ -1329,9 +1354,12 @@ void cdi_dvc_device::audio_decoder_reset()
 	m_audio_header_shift = 0;
 	m_audio_decoded_frames = 0;
 	m_audio_decoded_samples = 0;
-	m_audio_header_events = 0;
-	m_audio_decode_events = 0;
-	m_audio_profile_violations = 0;
+	if (reset_event_counters)
+	{
+		m_audio_header_events = 0;
+		m_audio_decode_events = 0;
+		m_audio_profile_violations = 0;
+	}
 	m_audio_bitrate_kbps = 0;
 	m_audio_samplerate = 0;
 	m_audio_channel_mode = 0;
@@ -1404,6 +1432,26 @@ void cdi_dvc_device::audio_decoder_feed(uint8_t data)
 	if (!m_audio_have_header && plm_audio_has_header(m_audio_decoder))
 	{
 		m_audio_have_header = true;
+		cdi_dvc::mpeg_audio_control_state const control {
+			m_fma_stream,
+			m_fma_current_stream,
+			m_fma_stream_change_pending,
+			m_fma_program_ended
+		};
+		uint8_t const stream_id = cdi_dvc::mpeg_audio_stream_id(
+				m_mpeg_stream_id[MPEG_FMA])
+			? m_mpeg_stream_id[MPEG_FMA]
+			: uint8_t(0xc0U | m_fma_stream);
+		cdi_dvc::mpeg_audio_stream_commit_result const committed =
+			cdi_dvc::commit_mpeg_audio_stream(control, stream_id);
+		m_fma_current_stream = committed.state.current_stream;
+		m_fma_stream_change_pending = committed.state.stream_change_pending;
+		if (committed.signal_stream_change)
+		{
+			m_fma_status |= cdi_dvc::FMA_IRQ_STREAM_CHANGE;
+			m_fma_interrupt_status |= cdi_dvc::FMA_IRQ_STREAM_CHANGE;
+			update_interrupt_state();
+		}
 		unsigned const backend_rate = unsigned(plm_audio_get_samplerate(m_audio_decoder));
 		audio_output_set_rate(backend_rate);
 		if (!m_audio_samplerate)
@@ -2157,7 +2205,19 @@ void cdi_dvc_device::mpeg_parser_reset(unsigned target)
 		return;
 
 	if (target == MPEG_FMA)
+	{
 		audio_decoder_reset();
+		cdi_dvc::mpeg_audio_control_state const aborted =
+			cdi_dvc::abort_mpeg_audio_program({
+				m_fma_stream,
+				m_fma_current_stream,
+				m_fma_stream_change_pending,
+				m_fma_program_ended
+			});
+		m_fma_current_stream = aborted.current_stream;
+		m_fma_stream_change_pending = aborted.stream_change_pending;
+		m_fma_program_ended = aborted.program_ended;
+	}
 	else if (target == MPEG_FMV)
 	{
 		video_decoder_reset();
@@ -2440,6 +2500,14 @@ void cdi_dvc_device::mpeg_byte_w(unsigned target, uint8_t data)
 {
 	if (target > MPEG_FMV)
 		return;
+	if (target == MPEG_FMA
+			&& !cdi_dvc::mpeg_audio_input_accepting({
+				m_fma_stream,
+				m_fma_current_stream,
+				m_fma_stream_change_pending,
+				m_fma_program_ended
+			}))
+		return;
 
 	switch (m_mpeg_state[target])
 	{
@@ -2519,6 +2587,15 @@ void cdi_dvc_device::mpeg_byte_w(unsigned target, uint8_t data)
 			mpeg_packet_done(target);
 			if (target == MPEG_FMA)
 			{
+				cdi_dvc::mpeg_audio_control_state const ended =
+					cdi_dvc::end_mpeg_audio_program({
+						m_fma_stream,
+						m_fma_current_stream,
+						m_fma_stream_change_pending,
+						m_fma_program_ended
+					});
+				m_fma_stream_change_pending = ended.stream_change_pending;
+				m_fma_program_ended = ended.program_ended;
 				audio_decoder_flush();
 				m_fma_status |= cdi_dvc::FMA_IRQ_END_ISO;
 				m_fma_interrupt_status |= cdi_dvc::FMA_IRQ_END_ISO;
@@ -2561,7 +2638,9 @@ void cdi_dvc_device::mpeg_byte_w(unsigned target, uint8_t data)
 			// so return to start-code scanning rather than consuming forever.
 			mpeg_packet_done(target);
 		}
-		else if (m_mpeg_selected[target])
+		else if (cdi_dvc::mpeg1_packet_needs_pes_header(
+				target == MPEG_FMA, m_mpeg_stream_id[target],
+				m_mpeg_selected[target]))
 		{
 			m_mpeg_state[target] = MPEG_PES_HEADER;
 		}
@@ -2641,7 +2720,8 @@ void cdi_dvc_device::mpeg_byte_w(unsigned target, uint8_t data)
 			break;
 
 		case cdi_dvc::mpeg1_pes_header_kind::no_timestamp:
-			mpeg_begin_payload(target);
+			if (m_mpeg_selected[target])
+				mpeg_begin_payload(target);
 			m_mpeg_state[target] = MPEG_PAYLOAD;
 			if (m_mpeg_packet_remaining[target] == 0)
 				mpeg_packet_done(target);
@@ -2650,7 +2730,8 @@ void cdi_dvc_device::mpeg_byte_w(unsigned target, uint8_t data)
 		case cdi_dvc::mpeg1_pes_header_kind::payload_fallback:
 			// Defensive fallback for malformed/variant MPEG-1 PES headers:
 			// treat the unexpected byte as the first payload byte.
-			mpeg_payload_byte(target, data);
+			if (m_mpeg_selected[target])
+				mpeg_payload_byte(target, data);
 			m_mpeg_state[target] = MPEG_PAYLOAD;
 			if (m_mpeg_packet_remaining[target] == 0)
 				mpeg_packet_done(target);
@@ -2683,7 +2764,8 @@ void cdi_dvc_device::mpeg_byte_w(unsigned target, uint8_t data)
 		}
 		else if (m_mpeg_skip_remaining[target] == 0)
 		{
-			mpeg_begin_payload(target);
+			if (m_mpeg_selected[target])
+				mpeg_begin_payload(target);
 			m_mpeg_state[target] = MPEG_PAYLOAD;
 		}
 		break;
@@ -2696,7 +2778,8 @@ void cdi_dvc_device::mpeg_byte_w(unsigned target, uint8_t data)
 		}
 
 		--m_mpeg_packet_remaining[target];
-		mpeg_payload_byte(target, data);
+		if (m_mpeg_selected[target])
+			mpeg_payload_byte(target, data);
 
 		if (m_mpeg_packet_remaining[target] == 0)
 			mpeg_packet_done(target);
@@ -2929,9 +3012,34 @@ void cdi_dvc_device::write(offs_t offset, uint16_t data, uint16_t mem_mask)
 	case 0xe03004:
 		break;
 	case 0xe03008:
-		COMBINE_DATA(&m_fma_stream);
-		m_fma_stream = cdi_dvc::normalize_mpeg_stream_number(true, m_fma_stream);
+	{
+		uint16_t requested = m_fma_stream;
+		COMBINE_DATA(&requested);
+		cdi_dvc::mpeg_audio_stream_request_result const transition =
+			cdi_dvc::request_mpeg_audio_stream({
+				m_fma_stream,
+				m_fma_current_stream,
+				m_fma_stream_change_pending,
+				m_fma_program_ended
+			}, requested);
+		m_fma_stream = transition.state.requested_stream;
+		m_fma_stream_change_pending = transition.state.stream_change_pending;
+		if (transition.restart_decoder)
+		{
+			audio_decoder_stream_change();
+			m_mpeg_packet_counted[MPEG_FMA] = false;
+			m_mpeg_selected[MPEG_FMA] = cdi_dvc::mpeg_stream_selected(
+					true, m_mpeg_stream_id[MPEG_FMA], m_fma_stream);
+			if (m_mpeg_state[MPEG_FMA] == MPEG_AUDIO_ACCESS)
+			{
+				m_mpeg_prefix[MPEG_FMA] = 0;
+				m_fma_access_header_window = 0;
+				m_fma_access_frame_remaining = 0;
+				m_fma_access_header_bytes = 0;
+			}
+		}
 		break;
+	}
 	case 0xe0300c:
 		COMBINE_DATA(&m_fma_interrupt_vector);
 		break;

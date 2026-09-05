@@ -649,7 +649,7 @@ TEST_CASE("CD-i DVC MPEG audio resynchronizes after malformed Layer II candidate
 	plm_audio_destroy(decoder);
 }
 
-TEST_CASE("CD-i DVC MPEG audio waits for an exact frame then refills without duplication", "[emu][philips][dvc][audio]")
+TEST_CASE("CD-i DVC MPEG audio waits for an exact frame then refills without duplication", "[emu][philips][dvc][audio][starvation][termination]")
 {
 	std::vector<uint8_t> frame = make_silent_layer2_frame(10);
 	plm_buffer_t *const buffer = plm_buffer_create_with_capacity(frame.size());
@@ -699,7 +699,7 @@ TEST_CASE("CD-i DVC MPEG audio waits for an exact frame then refills without dup
 	plm_audio_destroy(decoder);
 }
 
-TEST_CASE("CD-i DVC MPEG audio never emits a truncated final frame", "[emu][philips][dvc][audio]")
+TEST_CASE("CD-i DVC MPEG audio never emits a truncated final frame", "[emu][philips][dvc][audio][termination]")
 {
 	std::vector<uint8_t> frame = make_silent_layer2_frame(10);
 	plm_buffer_t *const buffer = plm_buffer_create_with_capacity(frame.size());

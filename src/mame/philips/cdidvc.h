@@ -7,6 +7,7 @@
 #pragma once
 
 #include "cdiaudio.h"
+#include "cdidvc_mpeg_format.h"
 #include "cdidvc_save_state.h"
 
 #include <array>
@@ -77,7 +78,9 @@ private:
 	// MPEG audio decode and MAME sound output.
 	void audio_output_reset();
 	void audio_output_set_rate(uint32_t rate);
+	void audio_decoder_recreate(bool reset_output, bool reset_event_counters);
 	void audio_decoder_reset();
+	void audio_decoder_stream_change();
 	void audio_decoder_destroy();
 	void audio_decoder_feed(uint8_t data);
 	void audio_decoder_pump();
@@ -140,6 +143,9 @@ private:
 	uint16_t m_fma_command = 0;
 	uint16_t m_fma_status = 0;
 	uint16_t m_fma_stream = 0;
+	uint16_t m_fma_current_stream = cdi_dvc::MPEG_AUDIO_NO_CURRENT_STREAM;
+	bool m_fma_stream_change_pending = false;
+	bool m_fma_program_ended = false;
 	uint16_t m_fma_interrupt_vector = 0;
 	uint16_t m_fma_interrupt_status = 0;
 	uint16_t m_fma_interrupt_enable = 0;

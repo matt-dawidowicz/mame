@@ -120,7 +120,8 @@ in-stream rate-change, and DSP-rounding evidence limits.
 ### 3. DVC PCM buffering/output
 
 - [x] Validate queue refill/starvation behavior.
-- [ ] Validate exact output-rate changes and stream restart behavior.
+- [x] Validate legal-profile stream restart and partial-frame discard behavior.
+- [ ] Validate exact response to prohibited in-stream output-rate changes.
 - [ ] Validate mute/unmute, flush, and decoder-reset transitions.
 - [x] Add deterministic PCM hashes for representative transition fixtures.
 
@@ -128,6 +129,11 @@ The production output path now uses the same pure stereo-frame transition helper
 as the regression.  Timestamp silence has priority, incomplete pairs are retained,
 starvation produces deterministic zero, draining compacts exactly once, and refill
 resumes at its first sample.  The retained transition fixture hashes to `fdc1c8bc`.
+On a requested stream change the compressed decoder is recreated, preventing an
+unfinished old-stream frame from consuming bytes from the new stream, while PCM
+that was already decoded remains queued because the physical DAC flush edge is
+not specified.  Every legal Full Motion stream remains at 44.1 kHz; VMPEG's exact
+response to prohibited 48/32 kHz changes is still an evidence gap.
 Green Book IX.5.4.3.1 requires muted output while no decoded frames are available;
 the exact VMPEG DAC edge and underflow interrupt timing remain open.
 
@@ -135,6 +141,7 @@ the exact VMPEG DAC edge and underflow interrupt timing remain open.
 
 - [x] Keep current mid-frame replay equivalence test.
 - [x] Add snapshots at frame boundary, partial frame, starvation, and backend flush/end-marker boundaries.
+- [x] Preserve pending/current/end stream-control state across a deterministic snapshot.
 - [ ] Add full program-sequence-end and stream-switch device snapshots.
 - [ ] Add active simultaneous A/V save/load runtime regression.
 - [ ] Validate long post-load continuation hashes/timestamps.
@@ -299,20 +306,29 @@ lead-in/lead-out, pause, and seek behavior remain unresolved.
 
 ### 17. Audio decoder termination, starvation, and stream switching
 
-- [ ] Termination at every meaningful packet/frame boundary.
+- [x] Termination at every meaningful software-visible packet/frame boundary.
 - [x] Refill after starvation without duplicate/drop.
-- [ ] Rapid stop/start and stream-ID changes.
+- [x] Rapid stream-ID changes, cancellation, and current-stream commit.
+- [ ] Device-level rapid stop/start transitions.
 - [ ] Interactive-FMV branch changes.
 - [ ] Simultaneous audio/video state-transition regression.
 
 The CDIC portion has deterministic `$ff`, interrupt-masked abort, immediate
 replacement, XA double-buffer starvation/refill, and pre-start CD-DA coverage.
-The DVC portion now covers queue drain/starvation/refill and PL_MPEG end-marker
-reconstruction without duplicate/drop.  Program-stream packet selection now
-distinguishes all 32 Green Book audio streams without `Cx`/`Dx` aliasing.  The
-point at which the desired selector becomes the current stream, decoder restart,
-CSU event, packet-level termination, rapid stream selection, interactive branching,
-and exact DAC flush rules remain open.
+The DVC portion now covers queue drain/starvation/refill, PL_MPEG end-marker
+reconstruction, and a parser-level ISO-end latch that cannot be reopened by trailing
+input before an abort.  Program-stream packet selection distinguishes all 32 Green
+Book audio streams without `Cx`/`Dx` aliasing.  Unselected FMA PES headers retain
+their packet boundary so an in-flight selector change stops old-stream ingress
+immediately and starts the requested stream at the next accepted frame sync.  The
+requested stream changes immediately; the current stream and CSU event commit only
+when the decoder accepts that requested header.  A compressed-backend restart drops
+partial old-frame bytes but deliberately preserves already decoded PCM.
+
+The software-visible termination and stream-ID transition rows are closed.  Full
+section completion remains blocked by device-level stop/start and simultaneous A/V
+branch snapshots, physical confirmation of the private `$e03008/$e0300a` mapping
+and CSU edge, and the exact VMPEG DAC flush/hold/ramp rule.
 
 ## Evidence hierarchy
 

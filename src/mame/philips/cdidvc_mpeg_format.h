@@ -38,6 +38,105 @@ constexpr bool mpeg_stream_selected(bool for_fma, uint8_t stream_id, uint16_t se
 		&& (stream_id & 0x0f) == normalize_mpeg_stream_number(false, selected_stream);
 }
 
+constexpr bool mpeg_audio_stream_id(uint8_t stream_id)
+{
+	return stream_id >= 0xc0 && stream_id <= 0xdf;
+}
+
+// An unselected MPEG-audio PES header is still parsed.  Green Book IX.5.4.3.1
+// permits a stream change within one ISO 11172 stream and requires the new
+// stream to begin at the first following audio-frame sync.  Retaining the PES
+// boundary lets a selector write take effect during an in-flight packet without
+// ever feeding bytes from the formerly selected stream.
+constexpr bool mpeg1_packet_needs_pes_header(
+		bool for_fma, uint8_t stream_id, bool selected)
+{
+	return selected || (for_fma && mpeg_audio_stream_id(stream_id));
+}
+
+constexpr uint16_t MPEG_AUDIO_NO_CURRENT_STREAM = 0xffffU;
+
+struct mpeg_audio_control_state
+{
+	uint16_t requested_stream = 0;
+	uint16_t current_stream = MPEG_AUDIO_NO_CURRENT_STREAM;
+	bool stream_change_pending = false;
+	bool program_ended = false;
+};
+
+struct mpeg_audio_stream_request_result
+{
+	mpeg_audio_control_state state;
+	bool requested_changed;
+	bool restart_decoder;
+};
+
+// MD_Stream changes immediately, whereas MAS_Stream continues to describe the
+// stream actually being decoded until the requested stream is found.  A request
+// after the ISO end is retained for descriptor readback but cannot reopen the
+// ended input; a playback abort is required first.
+constexpr mpeg_audio_stream_request_result request_mpeg_audio_stream(
+		mpeg_audio_control_state state, uint16_t requested_stream)
+{
+	uint16_t const normalized = normalize_mpeg_stream_number(true, requested_stream);
+	bool const changed = normalized != state.requested_stream;
+	if (changed)
+	{
+		state.requested_stream = normalized;
+		state.stream_change_pending = !state.program_ended
+			&& state.current_stream != normalized;
+	}
+
+	return { state, changed, changed && !state.program_ended };
+}
+
+struct mpeg_audio_stream_commit_result
+{
+	mpeg_audio_control_state state;
+	bool signal_stream_change;
+};
+
+// Commit MAS_Stream only once a header from the requested packet has actually
+// been accepted by the decoder.  The initial stream establishes status without
+// a CSU event; CSU belongs to a requested change during the active ISO stream.
+constexpr mpeg_audio_stream_commit_result commit_mpeg_audio_stream(
+		mpeg_audio_control_state state, uint8_t stream_id)
+{
+	if (state.program_ended
+			|| !mpeg_stream_selected(true, stream_id, state.requested_stream))
+		return { state, false };
+
+	bool const signal = state.stream_change_pending
+		&& state.current_stream != state.requested_stream;
+	state.current_stream = state.requested_stream;
+	state.stream_change_pending = false;
+	return { state, signal };
+}
+
+constexpr mpeg_audio_control_state end_mpeg_audio_program(
+		mpeg_audio_control_state state)
+{
+	state.program_ended = true;
+	state.stream_change_pending = false;
+	return state;
+}
+
+// An abort retains the requested descriptor stream but releases the actual
+// decoder stream and is the only transition that admits a following ISO stream.
+constexpr mpeg_audio_control_state abort_mpeg_audio_program(
+		mpeg_audio_control_state state)
+{
+	state.current_stream = MPEG_AUDIO_NO_CURRENT_STREAM;
+	state.stream_change_pending = false;
+	state.program_ended = false;
+	return state;
+}
+
+constexpr bool mpeg_audio_input_accepting(mpeg_audio_control_state const &state)
+{
+	return !state.program_ended;
+}
+
 enum class mpeg1_start_code_route : uint8_t
 {
 	pack_header,
