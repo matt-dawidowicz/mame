@@ -330,11 +330,11 @@ static INPUT_PORTS_START(cdi_dma_integration)
 	PORT_BIT(0x01, IP_ACTIVE_HIGH, IPT_UNUSED)
 INPUT_PORTS_END
 
-ROM_START(cdi_dma_integration)
+ROM_START(cdidmaint)
 	ROM_REGION16_BE(0x80000, "maincpu", ROMREGION_ERASE00)
 ROM_END
 
-GAME(2026, cdi_dma_integration, 0, cdi_dma_integration, cdi_dma_integration,
+GAME(2026, cdidmaint, 0, cdi_dma_integration, cdi_dma_integration,
 	cdi_dma_integration_state, empty_init, ROT0, "MAME",
 	"CD-i DVC DMA integration fixture", 0)
 
@@ -347,7 +347,7 @@ TEST_CASE(
 	emu_options options;
 	cdi_dma_test_osd osd;
 	cdi_dma_test_manager manager(options, osd);
-	machine_config config(GAME_NAME(cdi_dma_integration), options);
+	machine_config config(GAME_NAME(cdidmaint), options);
 	running_machine machine(config, manager);
 	manager.set_machine(&machine);
 
