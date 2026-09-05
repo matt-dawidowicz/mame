@@ -1,25 +1,16 @@
 // license:BSD-3-Clause
 // copyright-holders:Ryan Holtz
-/******************************************************************************
+/*****************************************************************************
 
+    CD-i Mono-I CDIC HLE
+    --------------------
 
-    CD-i Mono-I CDIC MCU simulation
-    -------------------
+    The device models the documented/measured Mono-I command, sector, buffer,
+    IRQ and audio paths while keeping unverified servo, DAC and silicon details
+    explicit compatibility boundaries.  See docs/cdi_modernization_status.md
+    and docs/cdi_audio_fidelity_campaign.md for the current evidence audit.
 
-    written by Ryan Holtz
-
-
-*******************************************************************************
-
-STATUS:
-
-- Just enough for the Mono-I CD-i board to work somewhat properly.
-
-TODO:
-
-- Decapping and proper emulation.
-
-*******************************************************************************/
+*****************************************************************************/
 
 #ifndef MAME_PHILIPS_CDICDIC_H
 #define MAME_PHILIPS_CDICDIC_H
@@ -31,7 +22,6 @@ TODO:
 
 #include "imagedev/cdromimg.h"
 #include "machine/scc68070.h"
-#include "sound/cdda.h"
 #include "sound/dmadac.h"
 
 //**************************************************************************
@@ -51,9 +41,6 @@ public:
 	uint32_t clock2() const { return m_clock2; }
 
 	auto intreq_callback() { return m_intreq_callback.bind(); }
-
-	// non-static internal members
-	void sample_trigger();
 
 	uint16_t regs_r(offs_t offset, uint16_t mem_mask = ~0);
 	void regs_w(offs_t offset, uint16_t data, uint16_t mem_mask = ~0);
@@ -84,8 +71,6 @@ private:
 
 	enum
 	{
-		SECTOR_SYNC        = 0,
-
 		SECTOR_HEADER      = 12,
 
 		SECTOR_MINUTES     = 12,
@@ -107,19 +92,6 @@ private:
 
 		SECTOR_SIZE        = 2352,
 		SECTOR_AUDIO_SIZE  = 2304,
-
-		SECTOR_DATASIZE    = 2048,
-		SECTOR_AUDIOSIZE   = 2304,
-		SECTOR_VIDEOSIZE   = 2324,
-
-		SUBMODE_EOF        = 0x80,
-		SUBMODE_RT         = 0x40,
-		SUBMODE_FORM       = 0x20,
-		SUBMODE_TRIG       = 0x10,
-		SUBMODE_DATA       = 0x08,
-		SUBMODE_AUDIO      = 0x04,
-		SUBMODE_VIDEO      = 0x02,
-		SUBMODE_EOR        = 0x01,
 
 		SUBCODE_Q_CONTROL       = 12,
 		SUBCODE_Q_TRACK         = 13,
@@ -155,7 +127,7 @@ private:
 	uint16_t m_audio_buffer;      // CDIC Audio Buffer Register       (0x303ff4)
 	uint16_t m_x_buffer;          // CDIC X-Buffer Register           (0x303ff6)
 	uint16_t m_dma_control;       // CDIC DMA Control Register        (0x303ff8)
-	uint16_t m_z_buffer;          // CDIC Z-Buffer Register           (0x303ffa)
+	uint16_t m_z_buffer;          // CDIC AUDCTL Register             (0x303ffa), legacy member name
 	uint16_t m_interrupt_vector;  // CDIC Interrupt Vector Register   (0x303ffc)
 	uint16_t m_data_buffer;       // CDIC Data Buffer Register        (0x303ffe)
 
