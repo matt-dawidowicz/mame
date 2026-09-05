@@ -39,6 +39,13 @@ public:
 	void dma_w(uint16_t data);
 	void dma_done();
 
+	// Read-only transfer telemetry used by integration/regression checks. This
+	// exposes existing device state only; it is not guest-visible VMPEG state.
+	bool dma_active() const { return m_dma_active; }
+	uint32_t dma_transfer_words() const { return m_dma_transfer_words; }
+	uint16_t dma_first_word() const { return m_dma_first_word; }
+	uint16_t dma_last_word() const { return m_dma_last_word; }
+
 	void video_vblank();
 	void video_overlay_scanline(uint32_t *pixels, unsigned pixel_count, int physical_y, int visible_top, int clip_min_x, int clip_max_x, bool const *external_video, unsigned external_count);
 
@@ -223,18 +230,14 @@ private:
 	bool m_mpeg_packet_have_dts[2] = { false, false };
 	uint32_t m_mpeg_pts_events[2] = { 0, 0 };
 	uint32_t m_mpeg_dts_events[2] = { 0, 0 };
-
-	// Measurement-only raw timestamp fields and marker diagnostics.
-	std::array<uint64_t, 2> m_mpeg_scr_raw{};
-	std::array<uint64_t, 2> m_mpeg_pts_raw{};
-	std::array<uint64_t, 2> m_mpeg_dts_raw{};
-	std::array<uint32_t, 2> m_mpeg_scr_marker_errors{};
-	std::array<uint32_t, 2> m_mpeg_pts_marker_errors{};
-	std::array<uint32_t, 2> m_mpeg_dts_marker_errors{};
-
-	uint64_t m_mpeg_clock90 = 0;
-	bool m_mpeg_clock_valid = false;
+	uint64_t m_mpeg_scr_raw[2] = { 0, 0 };
+	uint64_t m_mpeg_pts_raw[2] = { 0, 0 };
+	uint64_t m_mpeg_dts_raw[2] = { 0, 0 };
+	uint32_t m_mpeg_scr_marker_errors[2] = { 0, 0 };
+	uint32_t m_mpeg_pts_marker_errors[2] = { 0, 0 };
+	uint32_t m_mpeg_dts_marker_errors[2] = { 0, 0 };
 	uint32_t m_mpeg_scr_dclk_anchor[2] = { 0, 0 };
+
 	int64_t m_mpeg_schedule_play_delta90[2] = { 0, 0 };
 	int64_t m_mpeg_schedule_decode_delta90[2] = { 0, 0 };
 	int32_t m_mpeg_schedule_play_delta45[2] = { 0, 0 };
@@ -242,17 +245,17 @@ private:
 	bool m_mpeg_schedule_valid[2] = { false, false };
 	uint32_t m_mpeg_schedule_events[2] = { 0, 0 };
 
-	uint32_t m_mpeg_selected_packets[2] = { 0, 0 };
-	uint32_t m_mpeg_payload_bytes[2] = { 0, 0 };
+	uint64_t m_mpeg_selected_packets[2] = { 0, 0 };
+	uint64_t m_mpeg_payload_bytes[2] = { 0, 0 };
 	uint8_t m_mpeg_first_payload[2] = { 0, 0 };
 	uint8_t m_mpeg_last_payload[2] = { 0, 0 };
 	bool m_mpeg_have_payload[2] = { false, false };
 
-	// MPEG audio decode and MAME sound output.
-	sound_stream *m_audio_stream = nullptr;
+	// MPEG audio decoder/output state.
+	plm_buffer_t *m_audio_buffer = nullptr;
+	plm_audio_t *m_audio_decoder = nullptr;
 	std::vector<int16_t> m_audio_pcm_queue;
-	size_t m_audio_pcm_read = 0;
-	uint32_t m_audio_output_rate = 48000;
+	std::size_t m_audio_pcm_read = 0;
 	uint64_t m_audio_wait_samples = 0;
 	uint64_t m_audio_silence_frames = 0;
 	uint32_t m_audio_output_frames = 0;
@@ -260,49 +263,90 @@ private:
 	uint32_t m_audio_output_hash = 2166136261U;
 	uint32_t m_audio_queue_events = 0;
 	bool m_audio_output_started = false;
-
-	plm_buffer_t *m_audio_buffer = nullptr;
-	plm_audio_t *m_audio_decoder = nullptr;
+	uint32_t m_audio_output_rate = 0;
 	uint32_t m_audio_header_shift = 0;
 	uint32_t m_audio_decoded_frames = 0;
 	uint32_t m_audio_decoded_samples = 0;
 	uint32_t m_audio_header_events = 0;
 	uint32_t m_audio_decode_events = 0;
 	uint16_t m_audio_bitrate_kbps = 0;
-	uint16_t m_audio_samplerate = 0;
+	uint32_t m_audio_samplerate = 0;
 	uint8_t m_audio_channel_mode = 0;
 	uint8_t m_audio_backend_status = 0;
 	bool m_audio_have_es_header = false;
 	bool m_audio_have_header = false;
+	std::vector<uint8_t> m_audio_replay_journal;
+	bool m_audio_replay_overflow = false;
 
-	// MPEG video decode and MAME video presentation.
+	// MPEG video decoder/presentation state.
+	plm_buffer_t *m_video_buffer = nullptr;
+	plm_video_t *m_video_decoder = nullptr;
 	std::vector<uint8_t> m_video_rgb24;
+	uint32_t m_video_es_prefix = 0;
+	uint32_t m_video_sequence_headers = 0;
+	uint32_t m_video_gop_headers = 0;
+	uint32_t m_video_picture_headers = 0;
+	uint8_t m_video_picture_header_bytes = 0;
+	uint16_t m_video_picture_marker_interrupts = 0;
+	uint16_t m_video_reference_interrupts = 0;
+	bool m_video_reference_valid = false;
+	std::vector<uint16_t> m_video_picture_event_queue;
+	std::size_t m_video_picture_event_read = 0;
+	uint32_t m_video_decoded_frames = 0;
+	uint16_t m_video_width = 0;
+	uint16_t m_video_height = 0;
+	uint32_t m_video_framerate_millihz = 0;
+	bool m_video_have_sequence = false;
+	bool m_video_sequence_end_pending = false;
+	bool m_video_decoder_flush_pending = false;
+	bool m_video_decoder_waiting_for_input = false;
+	uint32_t m_video_sequence_end_events = 0;
+	uint32_t m_video_last_picture_generation = 0;
+	bool m_video_last_picture_pending = false;
+	uint64_t m_video_pts_anchor90 = 0;
+	uint64_t m_video_backend_anchor90 = 0;
+	bool m_video_pts_anchor_valid = false;
 
-	// CURRENT IMPLEMENTATION MODEL, NOT HARDWARE SPECIFICATION:
-	// retain decoded pictures until their presentation time is examined.
 	struct queued_video_frame
 	{
-		std::vector<uint32_t> pixels;
 		uint16_t width = 0;
 		uint16_t height = 0;
 		uint32_t generation = 0;
 		uint16_t interrupts = 0;
 		uint64_t timestamp90 = 0;
 		bool timestamp_valid = false;
+		std::vector<uint32_t> pixels;
 	};
 	std::deque<queued_video_frame> m_video_queue;
-	uint64_t m_video_pts_anchor90 = 0;
-	uint64_t m_video_backend_anchor90 = 0;
-	bool m_video_pts_anchor_valid = false;
-
 	std::vector<uint32_t> m_video_present_frame;
 	uint16_t m_video_present_width = 0;
 	uint16_t m_video_present_height = 0;
 	uint32_t m_video_present_generation = 0;
 	bool m_video_present_valid = false;
+	uint32_t m_video_screen_y_shadow = 0;
+	uint32_t m_video_screen_x_shadow = 0;
+	uint32_t m_video_window_h_shadow = 0;
+	uint32_t m_video_window_w_shadow = 0;
+	uint32_t m_video_crop_y_shadow = 0;
+	uint32_t m_video_crop_x_shadow = 0;
+	uint32_t m_video_screen_y = 0;
+	uint32_t m_video_screen_x = 0;
+	uint32_t m_video_window_h = 0;
+	uint32_t m_video_window_w = 0;
+	uint32_t m_video_crop_y = 0;
+	uint32_t m_video_crop_x = 0;
+	bool m_video_geometry_frame_pending = false;
+	bool m_video_geometry_vblank_pending = false;
+	bool m_video_visible = false;
+	bool m_video_output_enabled = false;
+	bool m_video_show_on_next = false;
+	uint32_t m_video_overlay_hash = 2166136261U;
+	uint32_t m_video_overlay_pixels = 0;
+	bool m_video_overlay_complete = false;
+	uint64_t m_video_overlay_total_pixels = 0;
+	uint64_t m_video_overlay_top64_pixels = 0;
 
-	// Runtime evidence counters for the queue implementation.  These are
-	// diagnostic only and do not participate in guest-visible behavior.
+	// Presentation scheduler telemetry.
 	uint64_t m_scheduler_decoded_frames = 0;
 	uint64_t m_scheduler_presented_frames = 0;
 	uint64_t m_scheduler_due_superseded = 0;
@@ -316,73 +360,7 @@ private:
 	uint64_t m_scheduler_max_queue_depth = 0;
 	uint64_t m_scheduler_vblanks = 0;
 
-	uint16_t m_video_screen_y_shadow = 0;
-	uint16_t m_video_screen_x_shadow = 0;
-	uint16_t m_video_window_h_shadow = 0;
-	uint16_t m_video_window_w_shadow = 0;
-	uint16_t m_video_crop_y_shadow = 0;
-	uint16_t m_video_crop_x_shadow = 0;
-	uint16_t m_video_screen_y = 0;
-	uint16_t m_video_screen_x = 0;
-	uint16_t m_video_window_h = 0;
-	uint16_t m_video_window_w = 0;
-	uint16_t m_video_crop_y = 0;
-	uint16_t m_video_crop_x = 0;
-	bool m_video_geometry_frame_pending = false;
-	bool m_video_geometry_vblank_pending = false;
-	bool m_video_visible = false;
-	bool m_video_output_enabled = false;
-	bool m_video_show_on_next = false;
-
-	uint32_t m_video_overlay_hash = 2166136261U;
-	uint32_t m_video_overlay_pixels = 0;
-	bool m_video_overlay_complete = false;
-	// Measurement-only attribution counters. They answer whether DVC
-	// composition wrote the first 64 visible rows; they do not diagnose
-	// MCD212 plane/backdrop/cursor semantics by themselves.
-	uint64_t m_video_overlay_total_pixels = 0;
-	uint64_t m_video_overlay_top64_pixels = 0;
-
-	plm_buffer_t *m_video_buffer = nullptr;
-	plm_video_t *m_video_decoder = nullptr;
-
-	// Host-decoder adaptation state.  Stock PL_MPEG requires the next
-	// picture start code before consuming the current incomplete picture.
-	// This must not be confused with physical VMPEG input FIFO occupancy.
-	bool m_video_decoder_waiting_for_input = false;
-	uint32_t m_video_es_prefix = 0;
-	uint32_t m_video_sequence_headers = 0;
-	uint32_t m_video_gop_headers = 0;
-	uint32_t m_video_picture_headers = 0;
-	uint8_t m_video_picture_header_bytes = 0;
-	uint16_t m_video_picture_marker_interrupts = 0;
-	uint16_t m_video_reference_interrupts = 0;
-	bool m_video_reference_valid = false;
-	std::vector<uint16_t> m_video_picture_event_queue;
-	size_t m_video_picture_event_read = 0;
-	uint32_t m_video_decoded_frames = 0;
-	uint16_t m_video_width = 0;
-	uint16_t m_video_height = 0;
-	uint32_t m_video_framerate_millihz = 0;
-	bool m_video_have_sequence = false;
-	bool m_video_sequence_end_pending = false;
-	bool m_video_decoder_flush_pending = false;
-	uint32_t m_video_sequence_end_events = 0;
-	uint32_t m_video_last_picture_generation = 0;
-	bool m_video_last_picture_pending = false;
-
-	// SAVE-STATE IMPLEMENTATION MODEL, NOT HARDWARE SPECIFICATION.
-	// PL_MPEG owns pointer-rich decoder state that MAME cannot serialize
-	// directly.  Journal the ES byte stream and mirror dynamic queues into
-	// fixed registered buffers; postload reconstructs the decoder to the saved
-	// decoded-frame count without replaying guest-visible side effects.
-	std::vector<uint8_t> m_audio_replay_journal;
-	std::vector<uint8_t> m_video_replay_journal;
-	std::vector<uint64_t> m_video_replay_pump_events;
-	bool m_audio_replay_overflow = false;
-	bool m_video_replay_overflow = false;
-	bool m_video_replay_pump_overflow = false;
-
+	// Save-state mirrors for dynamic decoder/presentation state.
 	std::unique_ptr<uint8_t[]> m_save_audio_replay;
 	std::unique_ptr<uint8_t[]> m_save_video_replay;
 	std::unique_ptr<int16_t[]> m_save_audio_pcm;
@@ -394,10 +372,8 @@ private:
 	uint16_t m_save_video_queue_count = 0;
 	uint32_t m_save_video_present_pixel_count = 0;
 	uint16_t m_save_picture_event_count = 0;
-	uint32_t m_save_video_replay_pump_count = 0;
 	bool m_save_snapshot_valid = false;
 	uint32_t m_save_snapshot_serial = 0;
-
 	std::array<uint16_t, cdi_dvc::SAVE_VIDEO_QUEUE_FRAMES> m_save_video_queue_width{};
 	std::array<uint16_t, cdi_dvc::SAVE_VIDEO_QUEUE_FRAMES> m_save_video_queue_height{};
 	std::array<uint32_t, cdi_dvc::SAVE_VIDEO_QUEUE_FRAMES> m_save_video_queue_generation{};
@@ -405,22 +381,11 @@ private:
 	std::array<uint64_t, cdi_dvc::SAVE_VIDEO_QUEUE_FRAMES> m_save_video_queue_timestamp90{};
 	std::array<uint8_t, cdi_dvc::SAVE_VIDEO_QUEUE_FRAMES> m_save_video_queue_timestamp_valid{};
 	std::array<uint16_t, cdi_dvc::SAVE_PICTURE_EVENTS> m_save_picture_events{};
+	uint32_t m_save_video_replay_pump_count = 0;
 	std::array<uint64_t, cdi_dvc::SAVE_VIDEO_REPLAY_PUMP_EVENTS> m_save_video_replay_pump_events{};
-
-	// 512 KiB MPEG/DVC RAM at E80000-EFFFFF.
-	//
-	// VALIDATED BEHAVIORAL CONSTRAINT:
-	//   MPEG RAM must not participate in the ordinary CD-RTOS boot-time RAM
-	//   crawl, then must become usable by genuine DVC firmware later.
-	//
-	// PROVISIONAL COMPATIBILITY MECHANISM, NOT HARDWARE SPECIFICATION:
-	//   firmware-visible E03018 bit 0 controls MAME-side MPEG-RAM visibility.
-	//   This model is validated for the current PAL/NTSC workloads, but the
-	//   physical meaning and lifecycle of E03018 remain unknown.
-	std::array<uint16_t, 0x40000> m_mpeg_ram{};
-	bool m_mpeg_ram_compat_visible = false;
-	uint32_t m_mpeg_ram_gated_reads = 0;
-	uint32_t m_mpeg_ram_gated_writes = 0;
+	bool m_audio_replay_overflow = false;
+	bool m_video_replay_overflow = false;
+	bool m_video_replay_pump_overflow = false;
 };
 
 DECLARE_DEVICE_TYPE(CDI_DVC, cdi_dvc_device)
