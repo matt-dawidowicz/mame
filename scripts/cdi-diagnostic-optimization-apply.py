@@ -55,9 +55,31 @@ new_video = '''\t\t\tpixels[out_x] = color;
 \t\t\tm_video_overlay_hash *= 16777619U;
 \t\t\tm_video_overlay_hash ^= b;
 \t\t\tm_video_overlay_hash *= 16777619U;
-#endif
 \t\t\t++m_video_overlay_pixels;
+#endif
 '''
 replace_once(old_video, new_video, "DVC overlay diagnostic hash")
+
+old_complete = '''\tif (!m_video_overlay_complete && physical_y == dst_y + int(geometry.output_height) - 1 && m_video_overlay_pixels)
+\t{
+\t\tm_video_overlay_complete = true;
+\t\tLOGMASKED(LOG_VIDEO, "%s: DVC VIDEO overlay complete frame=%u crop=%u,%u window=%ux%u dst=%d,%d pixels=%u fnv=%08x\\n",
+\t\t\t\tmachine().describe_context(), m_video_present_generation,
+\t\t\t\tm_video_crop_x, m_video_crop_y, window_w, window_h,
+\t\t\t\tdst_x, dst_y, m_video_overlay_pixels, m_video_overlay_hash);
+\t}
+'''
+new_complete = '''#if (VERBOSE & LOG_VIDEO)
+\tif (!m_video_overlay_complete && physical_y == dst_y + int(geometry.output_height) - 1 && m_video_overlay_pixels)
+\t{
+\t\tm_video_overlay_complete = true;
+\t\tLOGMASKED(LOG_VIDEO, "%s: DVC VIDEO overlay complete frame=%u crop=%u,%u window=%ux%u dst=%d,%d pixels=%u fnv=%08x\\n",
+\t\t\t\tmachine().describe_context(), m_video_present_generation,
+\t\t\t\tm_video_crop_x, m_video_crop_y, window_w, window_h,
+\t\t\t\tdst_x, dst_y, m_video_overlay_pixels, m_video_overlay_hash);
+\t}
+#endif
+'''
+replace_once(old_complete, new_complete, "DVC overlay completion diagnostic")
 
 path.write_text(text, encoding="utf-8")
