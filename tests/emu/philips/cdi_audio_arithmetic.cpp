@@ -140,3 +140,56 @@ TEST_CASE("CDIC XA predictor rounding ties toward positive infinity before satur
 	REQUIRE(cdic_hle::clip_sample(std::numeric_limits<int32_t>::min()) == -32768);
 	REQUIRE(cdic_hle::clip_sample(std::numeric_limits<int32_t>::max()) == 32767);
 }
+
+TEST_CASE("CDIC XA compatibility arithmetic has an explicit software intermediate envelope", "[emu][philips][audio][xa][rounding][saturation][bounds]")
+{
+	// Green Book predictor coefficients scaled by 256.  This table deliberately
+	// mirrors the compatibility implementation so the test can establish the
+	// mathematical width needed by MAME without attributing a physical width to
+	// CDIC silicon.
+	constexpr int16_t filter[4][2] =
+	{
+		{ 0, 0 },
+		{ 240, 0 },
+		{ 460, -208 },
+		{ 392, -220 }
+	};
+	constexpr std::array<int16_t, 2> history_extremes = { -32768, 32767 };
+
+	int64_t minimum_numerator = std::numeric_limits<int64_t>::max();
+	int64_t maximum_numerator = std::numeric_limits<int64_t>::min();
+	for (unsigned predictor = 0; predictor < 4; ++predictor)
+	{
+		for (int16_t recent : history_extremes)
+		{
+			for (int16_t older : history_extremes)
+			{
+				int64_t const numerator =
+					int64_t(filter[predictor][0]) * recent +
+					int64_t(filter[predictor][1]) * older + 128;
+				minimum_numerator = std::min(minimum_numerator, numerator);
+				maximum_numerator = std::max(maximum_numerator, numerator);
+			}
+		}
+	}
+
+	REQUIRE(minimum_numerator == -21888688);
+	REQUIRE(maximum_numerator == 21888692);
+
+	// Signed 25-bit arithmetic only reaches [-2^24, 2^24-1], which is too
+	// narrow.  Signed 26-bit arithmetic reaches [-2^25, 2^25-1] and contains
+	// the complete compatibility-model predictor numerator.
+	REQUIRE(minimum_numerator < -(int64_t(1) << 24));
+	REQUIRE(maximum_numerator > (int64_t(1) << 24) - 1);
+	REQUIRE(minimum_numerator >= -(int64_t(1) << 25));
+	REQUIRE(maximum_numerator <= (int64_t(1) << 25) - 1);
+
+	// The arithmetic-floor /256 stage reaches -85503..85502.  Adding the full
+	// sign-extended XA code gives the exact compatibility-model pre-clip bound.
+	constexpr int64_t minimum_decoded = -32768 - 85503;
+	constexpr int64_t maximum_decoded = 32767 + 85502;
+	REQUIRE(minimum_decoded == -118271);
+	REQUIRE(maximum_decoded == 118269);
+	REQUIRE(minimum_decoded >= -(int64_t(1) << 17));
+	REQUIRE(maximum_decoded <= (int64_t(1) << 17) - 1);
+}
