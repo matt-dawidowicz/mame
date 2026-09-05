@@ -132,8 +132,8 @@ if _OPTIONS["with-emulator"] then
 
 		files {
 			MAME_DIR .. "tests/main.cpp",
-			MAME_DIR .. "tests/emu/philips/cdi_dvc_dma_integration.cpp",
 			MAME_DIR .. "tests/emu/philips/cdi_dvc_dma_test_support.cpp",
+			MAME_DIR .. "src/osd/interface/inputseq.cpp",
 		}
 
 		links {
@@ -141,7 +141,6 @@ if _OPTIONS["with-emulator"] then
 			"optional",
 			"formats",
 			"dasm",
-			"osd_" .. _OPTIONS["osd"],
 			"ocore_" .. _OPTIONS["osd"],
 			"utils",
 			ext_lib("expat"),
