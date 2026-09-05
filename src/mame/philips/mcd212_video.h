@@ -87,6 +87,14 @@ constexpr bool external_video_eligible(
 	return enabled && transparent_a && transparent_b && !cursor_present;
 }
 
+// Pixel-hold factor zero is not assigned a silicon meaning by the evidence
+// currently used by this driver.  Treat it as an unheld pixel for compatibility
+// safety instead of evaluating x % 0 when the mosaic-enable bit is set.
+constexpr std::size_t mosaic_source_x(std::size_t x, std::size_t hold_count)
+{
+	return hold_count ? x - (x % hold_count) : x;
+}
+
 constexpr uint32_t pack_yuv(uint8_t y, uint8_t u, uint8_t v)
 {
 	return (uint32_t(y) << 16) | (uint32_t(u) << 8) | uint32_t(v);
