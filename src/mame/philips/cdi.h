@@ -48,13 +48,6 @@ public:
 	void cdi910(machine_config &config);
 
 protected:
-	enum servo_portc_bit_t
-	{
-		INV_JUC_OUT = (1 << 2),
-		INV_DIV4_IN = (1 << 5),
-		INV_CADDYSWITCH_IN = (1 << 7)
-	};
-
 	required_device<scc68070_device> m_maincpu;
 	required_region_ptr<uint16_t> m_main_rom;
 	optional_device<screen_device> m_lcd;
@@ -164,7 +157,7 @@ private:
 
 	bool m_boot_press = false;
 	emu_timer *m_boot_timer = nullptr;
-	uint8_t m_mcu_p3;
+	uint8_t m_mcu_p3 = 0;
 };
 
 // Quizard 2 language values:
