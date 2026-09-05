@@ -22,6 +22,7 @@ jobs:
           fetch-depth: 0
       - name: Apply deterministic source patches
         run: |
+          python3 scripts/cdi-optimization-prepatch.py
           python3 scripts/cdi-optimization-apply.py
           python3 scripts/cdi-test-optimization-apply.py
       - name: Verify patch
