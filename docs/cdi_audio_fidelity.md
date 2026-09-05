@@ -494,6 +494,45 @@ passes **11,885,283/143**; permanent selections pass `[philips]`
 `[timing][audio]` **731/3**, `[scc68070][dma]` **8/1**, and `[cdda]`
 **8/1**.  The native C++20 `release64` CDIC/DVC production archive compiles.
 
+## Standards-derived de-emphasis checkpoint (2026-09-05)
+
+This batch closes the missing standards-visible 50/15-microsecond response without
+claiming an unmeasured CDIC or VMPEG analogue circuit.
+
+1. Green Book IV identifies XA coding bit 6 as emphasis on/off and refers its
+   response to CD-DA.  Green Book IX permits only MPEG emphasis values `00` (none)
+   and `01` (50/15 microseconds) at the mandatory 44.1 kHz rate.  CD-DA carries
+   pre-emphasis in Q-control bit 0.  MAME now routes all three signals; MPEG sector
+   coding is correctly excluded because its coding byte does not own this field.
+2. PL_MPEG now retains the two-bit field from every decoded frame rather than
+   discarding it.  This is required because Green Book lists only ID, layer, bitrate,
+   and sample frequency as invariant within an audio sequence; emphasis may change.
+   MAME activates only legal CD-i value `01` at 44.1 kHz.  Reserved and J.17 input
+   stays visible to profile diagnostics and receives no fabricated response.
+3. One stereo biquad implementation serves XA at the exact 37,800/18,900 Hz clocks,
+   MPEG at 44,100 Hz, and CD-DA at 44,100 Hz.  The 44.1 kHz coefficients are the
+   independently published SoX inverse-IEC-60908 fit.  The XA coefficients use the
+   same high-shelf form fitted to the IEC continuous-time target at each native rate.
+   The regression's independent transfer-function oracle measures worst-case errors
+   of 0.0622435, 0.0721194, and 0.0783095 dB respectively over the tested bands.
+4. CD-DA playback derives emphasis from the current image track.  Its synthesized
+   current Q byte and audio-track TOC descriptors now preserve all image control/ADR
+   bits rather than forcing `$01`; pending pre-start PCM retains its matching flag.
+   This corrects signaling only—the remaining Q position/track/index/lead model is
+   still explicitly incomplete.
+5. Both CDIC channels and both DVC channels own explicit filter history registered
+   for save states.  Unemphasized audio remains bit-identical while continuously
+   priming that history; decoder reset or a sample-rate change clears it.  This is a
+   deterministic compatibility topology.  Physical hardware has not established
+   whether its enable/disable edge resets, switches, ramps, or preserves history.
+
+Focused optimized, unoptimized, and GCC AddressSanitizer/UndefinedBehaviorSanitizer
+de-emphasis gates pass **141,925 assertions in 5 cases**.  The complete standalone
+Philips and extended native gates pass **12,026,412/142** and **12,027,494/159**
+respectively; the native C++20 `release64` CDIC/DVC production archive compiles.
+The generated SDL wrapper still stops at the pre-existing missing `SDL2/SDL.h`
+container prerequisite before linking.
+
 ## Evidence register
 
 | ID | Class | Source | Supported claim | Limit |
@@ -504,6 +543,9 @@ passes **11,885,283/143**; permanent selections pass `[philips]`
 | MPEG-REF-002 | Independently corroborated | [mpg123 `mpeghead.h` at `f6c19f4`](https://github.com/madebr/mpg123/blob/f6c19f46031088efc8d0e5b83305a6f36ceceb65/src/libmpg123/mpeghead.h) and [parser](https://github.com/madebr/mpg123/blob/f6c19f46031088efc8d0e5b83305a6f36ceceb65/src/libmpg123/parse.c) | The ordinary compatible-header mask excludes bitrate, while the parser rejects bitrate index 15 and handles index zero as free format. | mpg123 supports profiles beyond CD-i Full Motion. |
 | MPEG-REF-003 | Current implementation model | [PL_MPEG upstream at `c871f2b`](https://github.com/phoboslab/pl_mpeg/blob/c871f2be022ece7ef4f64230b4fb8e1fb9eb6023/pl_mpeg.h) | Documents the inherited decoder architecture, the upstream constant-header restriction from which MAME's streaming fixes diverge, and the dynamic buffer's separate `total_size`/`has_ended` state: `signal_end` fixes the former and a later write clears both. | Upstream PL_MPEG is not an independent hardware model; these fields explain required save reconstruction rather than VMPEG state. |
 | MPEG-REF-004 | Controlled synthetic experiment | `tests/emu/philips/cdidvc_audio_reference.cpp` and its retained data header | Non-silent mono, dual-channel, stereo, and joint-stereo PL_MPEG output remains within measured bounds of FFmpeg 6.1.1's independent fixed-point Layer II decoder. | This compares software decoders; it does not establish VMPEG DSP rounding. |
+| DEEMPH-STD-001 | Standards-derived | [Philips/Sony CD-i Green Book, May 1994 Release 2](https://archive.org/download/cdi_may94_r2/cdi_may94_r2.pdf), IV.3.2.4/IV.4.2 and IX.5.3.2.11; [IEC 60908:1999 preview](https://assets.vde-verlag.de/iec-normen/preview-pdf/info_iec60908%7Bed2.0%7Db.pdf) | Identifies XA, MPEG, and CD-DA signaling and the 50/15-microsecond de-emphasis characteristic; CD-i Full Motion excludes reserved/J.17 emphasis. | The standards define media/system response, not a player revision's filter topology, coefficient arithmetic, switching transient, or reset edge. |
+| DEEMPH-REF-001 | Independently corroborated | [SoX inverse IEC 60908 curve at `42b3557`](https://github.com/chirlu/sox/blob/42b3557e13e0fe01a83465b672d89faddbe65f49/src/deemph.plt) and [biquad implementation](https://github.com/chirlu/sox/blob/42b3557e13e0fe01a83465b672d89faddbe65f49/src/biquads.c) | Supplies an independent 44.1 kHz high-shelf fit to the IEC curve and a separate implementation of the recurrence used for transfer-function comparison. | SoX models the required response, not CDIC/VMPEG hardware or XA-rate coefficients. |
+| DEEMPH-MODEL-001 | Current compatibility model | `cdi_audio::apply_50_15_deemphasis` and `[audio][deemphasis]` | Uses explicit save-stateable stereo history, continuously primes while bypassed, resets on native-rate/decoder reset, and stays within 0.079 dB of the standard at all supported rates over the tested bands. | Enable/disable topology and host PCM rounding are deliberate deterministic choices pending hardware measurement. |
 | DVC-HW-001 | Hardware-confirmed | [CDi_FMVTest FMA playback-delay capture at `991b9cb`](https://github.com/Slamy/CDi_FMVTest/tree/991b9cb22905942d969a6d3219f89c5e941a7741/fma_playback_delay) | On the recorded 210/05 + VMPEG system, `MA_TRIG_DEC` occurs close enough to analogue sample output to serve as a software timing marker; the retained analysis bounds any additional decode delay to roughly 4 ms after accounting for encoder silence. | One hardware/configuration and one fixture; it does not establish long-duration drift or underflow edges. |
 | DVC-RE-001 | Independently corroborated | [MiSTer CD-i DVC notes at `1d0d29b`](https://github.com/MiSTer-devel/CDi_MiSTer/blob/1d0d29b164a05d11db0094564feacf0f66c1d4e4/doc/dvc.md) | FMA DCLK is treated as 45 kHz and the audio clock is the driver-visible link to MPEG SCR timing. | Reverse-engineering notes, not a Philips register specification. |
 | DVC-RE-002 | Independent implementation | [MiSTer VMPEG/FMA RTL at `1d0d29b`](https://github.com/MiSTer-devel/CDi_MiSTer/blob/1d0d29b164a05d11db0094564feacf0f66c1d4e4/rtl/vmpeg.sv) and [audio path](https://github.com/MiSTer-devel/CDi_MiSTer/blob/1d0d29b164a05d11db0094564feacf0f66c1d4e4/rtl/mpeg/fma/mpeg_audio.sv) | Independently labels `$e03008/$e0300a` as wanted/current stream, keeps DSP-reported underflow and stream-change events distinct from output-FIFO occupancy, and models a half-full output start plus slow held-sample ramp after empty. | The source explicitly labels its stream-change handling probably inaccurate, and its FIFO/ramp policy is RTL compatibility behavior rather than a hardware capture.  MAME uses the Green Book control semantics but does not copy those exact timing edges. |
@@ -541,9 +583,10 @@ passes **11,885,283/143**; permanent selections pass `[philips]`
   the Layer II CRC.  Error signalling/concealment on VMPEG is unknown.
 - **Private bit and emphasis:** Full Motion reserves the private bit as zero and
   permits only no emphasis and 50/15-microsecond emphasis.  Independent profile
-  flags expose every violation.  The conventional parser still distinguishes the
-  reserved emphasis code, and MAME does not yet implement MPEG de-emphasis or
-  claim a VMPEG malformed-input response.
+  flags expose every violation.  PL_MPEG retains each frame's field and the legal
+  `01`/44.1 kHz combination receives the shared standards-derived response;
+  reserved/J.17 or profile-invalid input does not.  The VMPEG error response to
+  prohibited values remains unknown.
 - **Resynchronization:** accepting a structurally valid indexed header after
   junk is a software streaming model.  The exact VMPEG false-sync and error-event
   policy has not been measured.
@@ -570,6 +613,12 @@ passes **11,885,283/143**; permanent selections pass `[philips]`
   width/rounding, analogue gain, and the documented board-family-dependent ADPCM
   anomaly remain separate evidence gaps.  The output clamp is a safe MAME boundary,
   not a claim that VMPEG saturates at the same internal stage.
+- **De-emphasis transition topology:** XA, CD-DA, and legal MPEG signal selection
+  and frequency response are implemented.  Continuous bypass priming, history
+  reset on rate/decoder reset, and nearest PCM16 conversion are explicit software
+  policy.  A hardware capture is still required to establish switch transients,
+  coefficient/accumulator precision, and where the response sits relative to the
+  physical attenuator and DAC.
 - **Malformed XA signaling:** deterministic MAME behavior rejects contradictory
   duplicated subheaders and invalid CD-i sector/coding combinations.  For sound
   groups it follows the measured Mono-I copy selection, treating disagreement in a
@@ -608,9 +657,10 @@ passes **11,885,283/143**; permanent selections pass `[philips]`
   neither is visible in the register capture.  The exact 75 Hz/sample-count identity
   prevents software arithmetic drift, but does not substitute for a physical or
   real-media host-output drift measurement.
-- **CD-DA subcode:** Q location and 75 Hz delivery are captured.  MAME still
-  synthesizes Q from simplified disc assumptions and does not reproduce captured
-  R-W, multi-track/index, lead-in/lead-out, pause, or seek transitions.
+- **CD-DA subcode:** Q location and 75 Hz delivery are captured.  MAME now preserves
+  the image's control/ADR bits for current playback and audio TOC descriptors, but
+  still synthesizes position/track/index/lead data and does not reproduce captured
+  R-W, multi-session, pause, or seek transitions.
 
 ## Completion status
 
@@ -629,9 +679,12 @@ both permitted MPEG Audio Pointer entry forms.  It does not promote unknown VMPE
 CRC/profile-error signaling, decoder arithmetic, or stream-switch event timing into
 parser claims.
 
-No other incomplete matrix area is promoted to 100% by this checkpoint.  Remaining
-blockers include VMPEG CRC/profile-error and stream-transition behavior, DVC
+No other incomplete matrix area is promoted to 100% by this checkpoint.  The
+standards-visible de-emphasis defect is closed, but section 14 remains below 100%
+until the physical transition topology is captured or documented as unavoidably
+unobtainable.  Remaining blockers include VMPEG CRC/profile-error and
+stream-transition behavior, DVC
 rate/reset/active-A/V save and clock runtime gates, CDIC invalid-coding/error
-signaling, board-specific ADPCM/high-range attenuation, XA/CD-DA de-emphasis,
-silicon rounding, exact DAC sample edges, long-duration A/V drift, and full CD-DA
+signaling, board-specific ADPCM/high-range attenuation, de-emphasis switch/silicon
+arithmetic, exact DAC sample edges, long-duration A/V drift, and full CD-DA
 Q/R-W/track/seek behavior.

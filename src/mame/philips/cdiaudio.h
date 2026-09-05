@@ -63,6 +63,115 @@ struct stereo_sample
 	double right;
 };
 
+// Standards-derived 50/15 microsecond de-emphasis compatibility model.
+//
+// IEC 60908 defines the continuous-time response.  The 44.1 kHz coefficients
+// are the independently published SoX inverse-CD-emphasis fit (within about
+// 0.06 dB through 20 kHz).  The two CD-ROM XA rates use the same RBJ high-shelf
+// form fitted to that IEC response through 0.475 Nyquist.  These coefficients
+// describe the requested frequency response; they do not claim the analogue
+// topology or arithmetic of a particular CD-i player revision.
+struct deemphasis_coefficients
+{
+	double b0;
+	double b1;
+	double b2;
+	double a1;
+	double a2;
+	bool valid;
+};
+
+constexpr deemphasis_coefficients deemphasis_coefficients_for_rate(uint32_t sample_rate)
+{
+	switch (sample_rate)
+	{
+	case 44'100:
+		return { 0.4603507788631884, -0.2844082119124985,
+				0.03388877229118692, -1.0542914627856914,
+				0.2641228020275685, true };
+
+	case 37'800:
+		return { 0.4851941456939215, -0.23841803301734341,
+				0.013042671527302522, -0.93671169830289069,
+				0.19653048250677144, true };
+
+	case 18'900:
+		return { 0.63583440943260772, -0.0060814215137256983,
+				-0.031122431232763273, -0.39542123188111106,
+				-0.0059482114327702919, true };
+
+	default:
+		return { 0.0, 0.0, 0.0, 0.0, 0.0, false };
+	}
+}
+
+struct deemphasis_filter_state
+{
+	double input1 = 0.0;
+	double input2 = 0.0;
+	double output1 = 0.0;
+	double output2 = 0.0;
+	uint32_t sample_rate = 0;
+};
+
+constexpr void reset_deemphasis(deemphasis_filter_state &state)
+{
+	state = {};
+}
+
+// Keep the filter primed while emphasis is disabled.  This makes a coding-bit
+// change deterministic and avoids manufacturing a transient from empty state.
+// Whether any real CD-i board switches or resets its analogue network at that
+// edge remains a measurement question.
+inline double apply_50_15_deemphasis(
+		deemphasis_filter_state &state, double input,
+		uint32_t sample_rate, bool enabled)
+{
+	deemphasis_coefficients const coefficients =
+		deemphasis_coefficients_for_rate(sample_rate);
+	if (!coefficients.valid)
+		return input;
+
+	if (state.sample_rate != sample_rate)
+	{
+		reset_deemphasis(state);
+		state.sample_rate = sample_rate;
+	}
+
+	double const output =
+		coefficients.b0 * input
+		+ coefficients.b1 * state.input1
+		+ coefficients.b2 * state.input2
+		- coefficients.a1 * state.output1
+		- coefficients.a2 * state.output2;
+	state.input2 = state.input1;
+	state.input1 = input;
+	state.output2 = state.output1;
+	state.output1 = output;
+	return enabled ? output : input;
+}
+
+// CD-i Full Motion permits 50/15 microsecond emphasis only at its mandatory
+// 44.1 kHz rate.  Reserved/J.17 values and profile-invalid sample rates remain
+// visible to diagnostics but must not silently acquire a made-up response.
+constexpr bool cdi_mpeg_deemphasis_enabled(uint8_t emphasis, uint32_t sample_rate)
+{
+	return emphasis == 1 && sample_rate == 44'100;
+}
+
+// Output conversion for already-scaled PCM.  The rounding is an explicit host
+// compatibility boundary, not a claim about CDIC/VMPEG silicon arithmetic.
+inline int16_t quantize_deemphasized_pcm16(double sample)
+{
+	if (sample != sample)
+		return 0;
+	if (sample <= -32768.0)
+		return -32768;
+	if (sample >= 32767.0)
+		return 32767;
+	return int16_t(sample >= 0.0 ? sample + 0.5 : sample - 0.5);
+}
+
 inline attenuation_gains make_nominal_attenuation_gains(attenuation_matrix const &matrix)
 {
 	return {

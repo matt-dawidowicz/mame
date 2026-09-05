@@ -289,7 +289,9 @@ private:
 	uint16_t m_audio_bitrate_kbps = 0;
 	uint16_t m_audio_samplerate = 0;
 	uint8_t m_audio_channel_mode = 0;
+	uint8_t m_audio_emphasis = 0;
 	uint8_t m_audio_backend_status = 0;
+	cdi_audio::deemphasis_filter_state m_audio_deemphasis[2];
 	bool m_audio_have_es_header = false;
 	bool m_audio_have_header = false;
 	bool m_audio_decoder_end_signalled = false;

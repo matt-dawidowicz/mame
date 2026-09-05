@@ -274,7 +274,7 @@ void cdicdic_device::play_xa_group(const cdic_hle::xa_coding &coding, const uint
 	}
 }
 
-void cdicdic_device::play_cdda_sector(const uint8_t *data)
+void cdicdic_device::play_cdda_sector(const uint8_t *data, bool emphasis)
 {
 	m_dmadac[0]->set_frequency(44100);
 	m_dmadac[1]->set_frequency(44100);
@@ -284,8 +284,12 @@ void cdicdic_device::play_cdda_sector(const uint8_t *data)
 	const uint16_t NUM_SAMPLES = SECTOR_SIZE / 4;
 	for (uint16_t i = 0; i < NUM_SAMPLES; i++)
 	{
-		m_samples[0][i] = int16_t((data[(i * 4) + 1] << 8) | data[(i * 4) + 0]);
-		m_samples[1][i] = int16_t((data[(i * 4) + 3] << 8) | data[(i * 4) + 2]);
+		int16_t const left = int16_t((data[(i * 4) + 1] << 8) | data[(i * 4) + 0]);
+		int16_t const right = int16_t((data[(i * 4) + 3] << 8) | data[(i * 4) + 2]);
+		m_samples[0][i] = cdi_audio::quantize_deemphasized_pcm16(
+			cdi_audio::apply_50_15_deemphasis(m_deemphasis[0], left, 44'100, emphasis));
+		m_samples[1][i] = cdi_audio::quantize_deemphasized_pcm16(
+			cdi_audio::apply_50_15_deemphasis(m_deemphasis[1], right, 44'100, emphasis));
 	}
 
 	m_dmadac[0]->transfer(0, 1, 1, NUM_SAMPLES, &m_samples[0][0]);
@@ -300,12 +304,6 @@ void cdicdic_device::play_audio_sector(const uint8_t coding, const uint8_t *data
 		LOGMASKED(LOG_SECTORS, "Invalid/reserved coding (%02x, status %u), ignoring\n",
 			unsigned(coding), unsigned(coding_info.status));
 		return;
-	}
-
-	if (coding_info.emphasis)
-	{
-		LOGMASKED(LOG_SECTORS, "Emphasis is not implemented (%02x), ignoring\n", unsigned(coding));
-		// TODO: Emphasis is commonly used. Do not throw a fatal error.
 	}
 
 	const int32_t sample_frequency = cdic_hle::xa_sample_rate(coding_info, clock2());
@@ -338,25 +336,30 @@ void cdicdic_device::play_audio_sector(const uint8_t coding, const uint8_t *data
 	{
 		sampleL = m_samples[0][i];
 		sampleR = m_samples[coding_info.channels - 1][i];
+		double const filteredL = cdi_audio::apply_50_15_deemphasis(
+			m_deemphasis[0], sampleL, sample_frequency, coding_info.emphasis);
+		double const filteredR = cdi_audio::apply_50_15_deemphasis(
+			m_deemphasis[1], sampleR, sample_frequency, coding_info.emphasis);
 
-		outL = (sampleL * scaleLL + sampleR * scaleRL) * 0.25;
-		outR = (sampleL * scaleLR + sampleR * scaleRR) * 0.25;
+		outL = (filteredL * scaleLL + filteredR * scaleRL) * 0.25;
+		outR = (filteredL * scaleLR + filteredR * scaleRR) * 0.25;
 		m_dmadac[0]->transfer(0, 1, 1, 1, &outL);
 		m_dmadac[1]->transfer(0, 1, 1, 1, &outR);
 	}
 }
 
-void cdicdic_device::receive_cdda_sector(const uint8_t *data)
+void cdicdic_device::receive_cdda_sector(const uint8_t *data, bool emphasis)
 {
 	switch (cdic_hle::classify_cdda_receive(m_realtime_audio, m_audio_map.active, m_cdda_pending))
 	{
 	case cdic_hle::cdda_receive_action::play:
-		play_cdda_sector(data);
+		play_cdda_sector(data, emphasis);
 		break;
 
 	case cdic_hle::cdda_receive_action::buffer:
 		memcpy(m_cdda_pending_data.get(), data, SECTOR_SIZE);
 		m_cdda_pending = true;
+		m_cdda_pending_emphasis = emphasis;
 		break;
 
 	case cdic_hle::cdda_receive_action::retain_buffered:
@@ -402,7 +405,7 @@ void cdicdic_device::start_realtime_audio()
 	{
 		if (m_cdda_pending)
 		{
-			play_cdda_sector(m_cdda_pending_data.get());
+			play_cdda_sector(m_cdda_pending_data.get(), m_cdda_pending_emphasis);
 			m_cdda_pending = false;
 		}
 		return;
@@ -739,6 +742,9 @@ void cdicdic_device::process_disc_sector()
 	}
 	else if (m_disc_mode == DISC_CDDA)
 	{
+		uint8_t const adr_control = uint8_t(
+			m_cdrom->get_adr_control(m_cdrom->get_track(m_curr_lba)));
+		bool const emphasis = cdic_hle::cdda_preemphasis(adr_control);
 		// Byteswap if not already detected as byteswapped
 		if (!m_cd_byteswap)
 		{
@@ -748,11 +754,11 @@ void cdicdic_device::process_disc_sector()
 				swapped_buffer[i + 1] = buffer[i + 0];
 				swapped_buffer[i + 0] = buffer[i + 1];
 			}
-			receive_cdda_sector(swapped_buffer);
+			receive_cdda_sector(swapped_buffer, emphasis);
 		}
 		else
 		{
-			receive_cdda_sector(buffer);
+			receive_cdda_sector(buffer, emphasis);
 		}
 	}
 
@@ -771,15 +777,22 @@ void cdicdic_device::process_disc_sector()
 		int audio_tracks = 0;
 		int other_tracks = 0;
 		uint32_t audio_starts[cdrom_file::MAX_TRACKS];
+		uint8_t audio_controls[cdrom_file::MAX_TRACKS];
+		uint8_t audio_numbers[cdrom_file::MAX_TRACKS];
 		for (uint32_t i = 0; i < toc.numtrks; i++)
 		{
 			if (toc.tracks[i].trktype != cdrom_file::CD_TRACK_AUDIO)
 			{
 				frames += toc.tracks[i].frames + toc.tracks[i].extraframes;
+				++other_tracks;
 			}
 			else
 			{
-				audio_starts[audio_tracks++] = toc.tracks[i].logframeofs;
+				audio_starts[audio_tracks] = toc.tracks[i].logframeofs;
+				audio_controls[audio_tracks] = cdic_hle::cdic_q_adr_control(
+					uint8_t(m_cdrom->get_adr_control(i)));
+				audio_numbers[audio_tracks] = uint8_t(i + 1);
+				++audio_tracks;
 			}
 		}
 
@@ -798,11 +811,12 @@ void cdicdic_device::process_disc_sector()
 			const uint8_t audio_secs_bcd = ((audio_secs / 10) << 4) | (audio_secs % 10);
 			const uint8_t audio_frac_bcd = ((audio_frac / 10) << 4) | (audio_frac % 10);
 
-			const uint8_t track_bcd = (((i + 1) / 10) << 4) | ((i + 1) % 10);
+			const uint8_t track_bcd =
+				((audio_numbers[i] / 10) << 4) | (audio_numbers[i] % 10);
 
 			for (int j = 0; j < 3; j++)
 			{
-				*toc_buffer++ = 0x01;       // Track type (CD-DA)
+				*toc_buffer++ = audio_controls[i]; // CD-DA Q control/ADR
 				*toc_buffer++ = track_bcd;  // Track number
 				*toc_buffer++ = audio_mins_bcd;
 				*toc_buffer++ = audio_secs_bcd;
@@ -829,7 +843,7 @@ void cdicdic_device::process_disc_sector()
 			*toc_buffer++ = 0xa1;
 			if (audio_tracks > 0)
 			{
-				uint8_t last_audio_track = (uint8_t)(audio_tracks - 1);
+				uint8_t const last_audio_track = audio_numbers[audio_tracks - 1];
 				*toc_buffer++ = ((last_audio_track / 10) << 4) | (last_audio_track % 10);
 			}
 			else
@@ -869,7 +883,10 @@ void cdicdic_device::process_disc_sector()
 	}
 	else
 	{
-		subcode_buffer[SUBCODE_Q_CONTROL] = (m_disc_mode == DISC_CDDA ? 0x01 : 0x41);
+		uint8_t const adr_control = m_disc_mode == DISC_CDDA
+			? uint8_t(m_cdrom->get_adr_control(m_cdrom->get_track(m_curr_lba)))
+			: uint8_t(0x14);
+		subcode_buffer[SUBCODE_Q_CONTROL] = cdic_hle::cdic_q_adr_control(adr_control);
 		subcode_buffer[SUBCODE_Q_TRACK] = 0x01;
 		subcode_buffer[SUBCODE_Q_INDEX] = 0x01;
 		subcode_buffer[SUBCODE_Q_MODE1_MINS] = mins_bcd;
@@ -1371,6 +1388,17 @@ void cdicdic_device::device_start()
 	save_item(NAME(m_realtime_audio.periods_remaining));
 	save_item(NAME(m_realtime_audio.enabled));
 	save_item(NAME(m_cdda_pending));
+	save_item(NAME(m_cdda_pending_emphasis));
+	save_item(NAME(m_deemphasis[0].input1));
+	save_item(NAME(m_deemphasis[0].input2));
+	save_item(NAME(m_deemphasis[0].output1));
+	save_item(NAME(m_deemphasis[0].output2));
+	save_item(NAME(m_deemphasis[0].sample_rate));
+	save_item(NAME(m_deemphasis[1].input1));
+	save_item(NAME(m_deemphasis[1].input2));
+	save_item(NAME(m_deemphasis[1].output1));
+	save_item(NAME(m_deemphasis[1].output2));
+	save_item(NAME(m_deemphasis[1].sample_rate));
 
 	save_item(NAME(m_atten));
 	save_item(NAME(m_xa_last));
@@ -1415,7 +1443,10 @@ void cdicdic_device::device_reset()
 	m_audio_map = {};
 	m_realtime_audio = {};
 	m_cdda_pending = false;
+	m_cdda_pending_emphasis = false;
 	std::fill_n(m_cdda_pending_data.get(), SECTOR_SIZE, 0);
+	cdi_audio::reset_deemphasis(m_deemphasis[0]);
+	cdi_audio::reset_deemphasis(m_deemphasis[1]);
 
 	m_audio_timer->adjust(attotime::from_hz(75), 0, attotime::from_hz(75));
 	m_sector_timer->adjust(attotime::from_hz(75), 0, attotime::from_hz(75));

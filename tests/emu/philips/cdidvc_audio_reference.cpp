@@ -134,6 +134,37 @@ TEST_CASE("CD-i DVC PL_MPEG PCM quantization is bounded and symmetric", "[emu][p
 		std::numeric_limits<float>::quiet_NaN()) == 0);
 }
 
+TEST_CASE("CD-i DVC PL_MPEG exposes emphasis from every Layer II frame", "[emu][philips][dvc][audio][deemphasis]")
+{
+	using cdi_dvc_test::STEREO_FRAME;
+	std::vector<uint8_t> stream;
+	stream.reserve(STEREO_FRAME.size() * 4);
+	for (uint8_t emphasis = 0; emphasis < 4; ++emphasis)
+	{
+		std::size_t const offset = stream.size();
+		stream.insert(stream.end(), STEREO_FRAME.begin(), STEREO_FRAME.end());
+		stream[offset + 3] = uint8_t((stream[offset + 3] & 0xfc) | emphasis);
+	}
+
+	plm_buffer_t *const buffer = plm_buffer_create_with_capacity(stream.size());
+	REQUIRE(buffer != nullptr);
+	REQUIRE(plm_buffer_write(buffer, stream.data(), stream.size()) == stream.size());
+	plm_buffer_signal_end(buffer);
+	plm_audio_t *const decoder = plm_audio_create_with_buffer(buffer, 1);
+	REQUIRE(decoder != nullptr);
+	REQUIRE(plm_audio_has_header(decoder));
+	REQUIRE(plm_audio_get_emphasis(decoder) == 0);
+
+	for (uint8_t emphasis = 0; emphasis < 4; ++emphasis)
+	{
+		INFO("frame emphasis=" << unsigned(emphasis));
+		REQUIRE(plm_audio_decode(decoder) != nullptr);
+		REQUIRE(plm_audio_get_emphasis(decoder) == emphasis);
+	}
+	REQUIRE(plm_audio_decode(decoder) == nullptr);
+	plm_audio_destroy(decoder);
+}
+
 TEST_CASE("CD-i DVC Layer II output tracks FFmpeg fixed-point reference PCM", "[emu][philips][dvc][audio][reference]")
 {
 	using namespace cdi_dvc_test;

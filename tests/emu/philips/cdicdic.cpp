@@ -1116,6 +1116,24 @@ TEST_CASE("CDIC XA coding exhausts all supported and reserved byte combinations"
 	REQUIRE(valid_count == 16);
 }
 
+TEST_CASE("CDIC CDDA emphasis and Q control preserve every ADR/control bit", "[emu][philips][cdic][cdda][subcode][deemphasis][exhaustive]")
+{
+	for (unsigned raw = 0; raw <= 0xff; ++raw)
+	{
+		uint8_t const adr_control = uint8_t(raw);
+		INFO("ADR/control=" << raw);
+		REQUIRE(cdic_hle::cdda_preemphasis(adr_control) == bool(raw & 0x01));
+		REQUIRE(cdic_hle::cdic_q_adr_control(adr_control)
+			== uint8_t(((raw & 0x0f) << 4) | ((raw & 0xf0) >> 4)));
+		REQUIRE(cdic_hle::cdic_q_adr_control(
+			cdic_hle::cdic_q_adr_control(adr_control)) == adr_control);
+	}
+
+	REQUIRE(cdic_hle::cdic_q_adr_control(0x10) == 0x01);
+	REQUIRE(cdic_hle::cdic_q_adr_control(0x11) == 0x11);
+	REQUIRE(cdic_hle::cdic_q_adr_control(0x14) == 0x41);
+}
+
 TEST_CASE("CDIC XA and CDDA sector durations are exact rational clock identities", "[emu][philips][cdic][audio][timing][exhaustive]")
 {
 	constexpr uint32_t CLOCK2 = 45'158'400U * 3 / 7;

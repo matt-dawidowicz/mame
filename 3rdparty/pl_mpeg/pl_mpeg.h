@@ -778,6 +778,12 @@ int plm_audio_has_header(plm_audio_t *self);
 int plm_audio_get_samplerate(plm_audio_t *self);
 
 
+// Get the emphasis field from the current or most recently decoded frame
+// header (0: none, 1: 50/15 us, 2: reserved, 3: CCITT J.17).
+
+int plm_audio_get_emphasis(plm_audio_t *self);
+
+
 // Get the current internal time in seconds.
 
 double plm_audio_get_time(plm_audio_t *self);
@@ -3864,6 +3870,7 @@ struct plm_audio_t {
 	int version;
 	int layer;
 	int mode;
+	int emphasis;
 	int bound;
 	int v_pos;
 	int next_frame_data_size;
@@ -3928,6 +3935,10 @@ int plm_audio_get_samplerate(plm_audio_t *self) {
 	return plm_audio_has_header(self)
 		? PLM_AUDIO_SAMPLE_RATE[self->samplerate_index]
 		: 0;
+}
+
+int plm_audio_get_emphasis(plm_audio_t *self) {
+	return self->emphasis;
 }
 
 double plm_audio_get_time(plm_audio_t *self) {
@@ -4074,8 +4085,10 @@ int plm_audio_decode_header(plm_audio_t *self) {
 		self->bound = (mode == PLM_AUDIO_MODE_MONO) ? 0 : 32;
 	}
 
-	// Discard the last 4 bits of the header and the CRC value, if present
-	plm_buffer_skip(self->buffer, 4); // copyright(1), original(1), emphasis(2)
+	// Retain emphasis because it is a per-frame output property.  CD-i Full
+	// Motion constrains its legal values, but PL_MPEG remains format-generic.
+	plm_buffer_skip(self->buffer, 2); // copyright(1), original(1)
+	self->emphasis = plm_buffer_read(self->buffer, 2);
 	if (hasCRC) {
 		plm_buffer_skip(self->buffer, 16);
 	}

@@ -26,6 +26,7 @@ TODO:
 
 #pragma once
 
+#include "cdiaudio.h"
 #include "cdicdic_state.h"
 
 #include "imagedev/cdromimg.h"
@@ -173,7 +174,9 @@ private:
 	cdic_hle::audio_map_state m_audio_map;
 	cdic_hle::realtime_audio_state m_realtime_audio;
 	bool m_cdda_pending;
+	bool m_cdda_pending_emphasis;
 	std::unique_ptr<uint8_t[]> m_cdda_pending_data;
+	cdi_audio::deemphasis_filter_state m_deemphasis[2];
 
 	// Audio Attenuation (L->L, L->R, R->R, R->L)
 	uint8_t m_atten[4];
@@ -183,8 +186,8 @@ private:
 
 	void play_xa_group(const cdic_hle::xa_coding &coding, const uint8_t *data, const uint16_t idx);
 	void play_audio_sector(const uint8_t coding, const uint8_t *data);
-	void play_cdda_sector(const uint8_t *data);
-	void receive_cdda_sector(const uint8_t *data);
+	void play_cdda_sector(const uint8_t *data, bool emphasis);
+	void receive_cdda_sector(const uint8_t *data, bool emphasis);
 	void try_play_realtime_audio();
 	void start_realtime_audio();
 	void stop_realtime_audio();

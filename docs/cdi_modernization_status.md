@@ -116,9 +116,9 @@ Implemented in this checkpoint:
 | Mode 1 | Raw sector is copied without Mode 2 filters into alternating data buffers. | S, T (`[cdic][buffer]`). | Mode mismatch, EDC/ECC status, and error flags are not modeled. |
 | Mode 2 filters | File must match; Trigger is global within the file; EOF/EOR apply only to selected channels; empty/message sectors are skipped unless carrying Trigger or selected EOF/EOR. Audio reaches the decoder only through both main and audio masks. Programmed filters latch on `$2a`/`$2e`; invalid channel/type/form/coding combinations and unresolved duplicate subheaders are dropped. | Standards, R, S, T (`[cdic][filter]`, `[cdic][restart]`, `[cdic][malformed]`, exhaustive 67,108,864-state oracle). | The image interface lacks CIRC byte-reliability flags; exact CDIC error/status signaling needs hardware traces. |
 | Buffer completion | Data and audio each alternate independently and report the just-completed buffer through DBUF. XBUF asserts only for delivered sectors. | R, S, T (`[cdic][buffer]`, `[cdic][irq]`). | CPU/DSP/SRAM contention is not cycle-accurate. |
-| XA ADPCM | One pure production decoder uses the hardware-selected redundant parameters (8-bit bytes 12-15; 4-bit bytes 4-7 and 12-15), reports disagreements, rejects reserved selected values, decodes all layouts, updates clipped history, and preserves invalid-selected duration as silence. | Standards, 210/05 parameter-corruption capture, independent FFmpeg/jPSXdec source, T (`[cdic][xa]`; exact 16,128-byte FFmpeg PCM fixture). | Invalid-selected silence/held-history remains **C**; coding `$14` fails on captured 210/05 hardware but its related-value scope is unknown. De-emphasis and silicon arithmetic/status remain open. |
+| XA ADPCM | One pure production decoder uses the hardware-selected redundant parameters (8-bit bytes 12-15; 4-bit bytes 4-7 and 12-15), reports disagreements, rejects reserved selected values, decodes all layouts, updates clipped history, and preserves invalid-selected duration as silence. Coding bit 6 selects the shared standards-derived de-emphasis response. | Standards, 210/05 parameter-corruption capture, independent FFmpeg/jPSXdec/SoX source, T (`[cdic][xa]`, `[audio][deemphasis]`; exact 16,128-byte FFmpeg PCM fixture). | Invalid-selected silence/held-history remains **C**; coding `$14` fails on captured 210/05 hardware but its related-value scope is unknown. Silicon arithmetic and the physical de-emphasis switch edge remain open. |
 | CDDA/XA transitions | CD-fed XA and CD-DA receipt are distinct from playback and wait for bit 11. XA alternates `$2800`/`$3200`, preserves buffer order over starvation/refill and `$2e`, and restarts at `$2800` on a captured replacement read; CPU sound maps have priority. CD-DA PCM bypasses CDIC RAM. | R, corroborating RTL/emulator source, T (`[cdic][audio][audctl][buffer][restart]`). | Exact DAC queue depth, predictor reset, and hold/zero/ramp/flush behavior on stop, reset, underrun, or replacement remain **U**. |
-| TOC/subcode | Existing Q synthesis is retained as **C**. CD-DA now delivers a buffer every sector and stores Q at measured byte offset `$924`. | R for cadence/location; S, C for contents. | No claim of exact lead-in packet order, R-W/P-W acquisition, track/index transitions, CRC error status, or multi-session behavior. |
+| TOC/subcode | Q synthesis is retained as **C**, but current and audio-track TOC entries now preserve all image control/ADR bits, including pre-emphasis. CD-DA delivers a buffer every sector and stores Q at measured byte offset `$924`. | R for cadence/location; standards/image metadata and T for control bits; S, C for remaining contents. | No claim of exact lead-in packet order, R-W/P-W acquisition, track/index transitions, CRC error status, or multi-session behavior. |
 | End of disc | Failed image reads stop the operation without delivering zero data. | S, T at helper/state boundary. | Hardware error/status/IRQ response is **U**. |
 | Attenuation | Four cross-mix attenuation bytes remain logarithmic float scaling. | S. | Quantization, mute timing, and DSP saturation are not hardware-captured. |
 
@@ -171,7 +171,7 @@ same host prerequisite recorded for the prior checkpoint.
 Remaining DVC-audio boundaries: direct audio-frame-sync access points, PTS-defined
 sequence changes, rate/restart/mute/reset transitions, desired/current selector and
 guest-visible underflow/stream-change events, active simultaneous A/V save/load,
-long continuation hashes, and hardware DAC/rounding/de-emphasis behavior.
+long continuation hashes, and hardware DAC/rounding/de-emphasis transition behavior.
 
 ## Audio campaign DVC stream-routing checkpoint
 
@@ -223,6 +223,36 @@ The scoped DVC MPEG-1 Layer II parser now meets its campaign 100% gate.  Unknown
 physical VMPEG malformed/profile-error behavior is isolated as an evidence limit;
 stream switching, decoder/DAC behavior, and long-run timing remain separate open
 areas.
+
+## Audio campaign de-emphasis checkpoint
+
+Scope: implement every standards-visible CD-i emphasis path while keeping physical
+filter topology and switching behavior out of the hardware claim.
+
+Green Book IV exposes XA emphasis in coding bit 6 and refers to the CD-DA
+50/15-microsecond characteristic.  Green Book IX permits Full Motion MPEG values
+`00` and `01` at 44.1 kHz, while CD-DA carries the flag in Q-control bit 0.  MAME
+now applies one common response to XA at 37.8/18.9 kHz, MPEG at 44.1 kHz, and
+CD-DA at 44.1 kHz.  PL_MPEG exposes the field from every decoded frame, so legal
+frame-to-frame changes work; reserved/J.17 and invalid-rate combinations remain
+diagnostic.  CD-DA current/TOC Q synthesis preserves image control/ADR metadata.
+
+The 44.1 kHz biquad is independently corroborated by SoX's inverse IEC 60908 fit;
+the native XA-rate fits are tested against the same continuous-time target.  Maximum
+measured response error is 0.06225/0.07212/0.07831 dB at 44.1/37.8/18.9 kHz over
+the documented bands.  Tests exhaust all PCM16 bypass values, MPEG activation
+combinations, and CD-DA ADR/control values, plus rate/reset transitions and exact
+saved-state continuation.  All channel histories and pending CD-DA emphasis state
+are registered.
+
+Focused optimized, unoptimized, and ASan/UBSan gates pass **141,925/5**; all
+Philips tests pass **12,026,412/142**; the complete native selection passes
+**12,027,494/159**; and the warnings-enabled C++20 `release64` production archive
+compiles.  The SDL wrapper remains blocked by the unchanged missing `SDL2/SDL.h`
+host prerequisite.  The standards/software implementation defect is closed, but
+the campaign row remains below 100% until physical enable/disable/reset behavior,
+filter precision, and analogue placement are measured or accepted as an unavoidable
+evidence limitation.
 
 ## Phase D checkpoint
 
@@ -379,7 +409,7 @@ Mono-II confidence after this checkpoint:
 | SERVO/MCU | `[###-------] 30%` | Mostly existing HLE/integration behavior. | Capture command/response timing from a known firmware/disc pair. |
 | DVC | `[######----] 58%` | Broad native DVC tests, 100%-gated Layer II parser including direct access, Full Motion audio-profile oracle, deterministic PCM/save replay, and SCC-owned DMA path; prior runtime vertical-slice evidence. | Validate desired/current stream changes, audio status/IRQ transitions, and active long-run A/V behavior. |
 | Mono-I / Mono-II glue | `[######----] 60%` | Machine configurations and validation build. | Add clean-boot checkpoints for representative firmware revisions. |
-| Audio | `[######----] 55%` | CDIC/XA transport plus DVC reference decode, Full Motion profile, PCM starvation/refill, termination replay, and deterministic unit coverage. | Runtime A/V clock, stream-change, DAC-edge, attenuation, and de-emphasis evidence. |
+| Audio | `[######----] 60%` | CDIC/XA transport, DVC reference decode, Full Motion profile, PCM starvation/refill and termination replay, plus standards-derived XA/MPEG/CD-DA de-emphasis with deterministic response/save coverage. | Runtime A/V clock, device transition/DAC edges, attenuation quantization, and physical de-emphasis switch evidence. |
 | Video | `[######----] 60%` | MCD212 QHY/timing/control tests, DVC suite, and external-video mask regression coverage. | Frame/scanline captures tied to register and overlay traces. |
 | Input | `[#####-----] 50%` | Existing machine input paths; pre-existing local edits are outside this checkpoint. | Validate pointing-device range and button behavior on Mono-I/II. |
 | IRQ/DMA integration | `[######----] 60%` | SCC arbitration tests, channel register semantics, CDIC/DVC clients. | Bus-level IACK/DREQ timing and error injection. |

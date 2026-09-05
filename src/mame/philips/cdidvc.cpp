@@ -194,7 +194,18 @@ void cdi_dvc_device::device_start()
 	save_item(NAME(m_audio_bitrate_kbps));
 	save_item(NAME(m_audio_samplerate));
 	save_item(NAME(m_audio_channel_mode));
+	save_item(NAME(m_audio_emphasis));
 	save_item(NAME(m_audio_backend_status));
+	save_item(NAME(m_audio_deemphasis[0].input1));
+	save_item(NAME(m_audio_deemphasis[0].input2));
+	save_item(NAME(m_audio_deemphasis[0].output1));
+	save_item(NAME(m_audio_deemphasis[0].output2));
+	save_item(NAME(m_audio_deemphasis[0].sample_rate));
+	save_item(NAME(m_audio_deemphasis[1].input1));
+	save_item(NAME(m_audio_deemphasis[1].input2));
+	save_item(NAME(m_audio_deemphasis[1].output1));
+	save_item(NAME(m_audio_deemphasis[1].output2));
+	save_item(NAME(m_audio_deemphasis[1].sample_rate));
 	save_item(NAME(m_audio_have_es_header));
 	save_item(NAME(m_audio_have_header));
 	save_item(NAME(m_audio_decoder_end_signalled));
@@ -1363,7 +1374,10 @@ void cdi_dvc_device::audio_decoder_recreate(
 	m_audio_bitrate_kbps = 0;
 	m_audio_samplerate = 0;
 	m_audio_channel_mode = 0;
+	m_audio_emphasis = 0;
 	m_audio_backend_status = 0;
+	cdi_audio::reset_deemphasis(m_audio_deemphasis[0]);
+	cdi_audio::reset_deemphasis(m_audio_deemphasis[1]);
 	m_audio_have_es_header = false;
 	m_audio_have_header = false;
 	m_audio_decoder_end_signalled = false;
@@ -1403,6 +1417,7 @@ void cdi_dvc_device::audio_decoder_feed(uint8_t data)
 			m_audio_bitrate_kbps = header.bitrate_kbps;
 			m_audio_samplerate = header.sample_rate_hz;
 			m_audio_channel_mode = header.channel_mode;
+			m_audio_emphasis = header.emphasis;
 			m_audio_backend_status |= 0x01;
 			uint8_t const profile_violations =
 				cdi_dvc::cdi_full_motion_layer2_profile_violations(header);
@@ -1492,12 +1507,19 @@ void cdi_dvc_device::audio_decoder_pump()
 		if (!samples)
 			break;
 
+		m_audio_emphasis = uint8_t(plm_audio_get_emphasis(m_audio_decoder));
 		uint32_t hash = 2166136261U;
 		size_t const values = size_t(samples->count) * 2;
 		m_audio_pcm_queue.reserve(m_audio_pcm_queue.size() + values);
+		bool const deemphasis = cdi_audio::cdi_mpeg_deemphasis_enabled(
+			m_audio_emphasis, m_audio_samplerate);
 		for (size_t i = 0; i < values; ++i)
 		{
-			int16_t const pcm = cdi_dvc::quantize_plm_audio_sample(samples->interleaved[i]);
+			unsigned const channel = i & 1;
+			double const filtered = cdi_audio::apply_50_15_deemphasis(
+				m_audio_deemphasis[channel], samples->interleaved[i],
+				m_audio_samplerate, deemphasis);
+			int16_t const pcm = cdi_dvc::quantize_plm_audio_sample(float(filtered));
 			hash = cdi_dvc::hash_pcm16_sample(hash, pcm);
 			m_audio_pcm_queue.push_back(pcm);
 		}

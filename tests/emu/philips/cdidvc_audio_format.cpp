@@ -1,12 +1,177 @@
 // license:BSD-3-Clause
 // copyright-holders:Matt Jordan
 
+#include <algorithm>
+#include <array>
+#include <cmath>
+#include <complex>
 #include <cstdint>
 
 #include "catch.hpp"
 
 #include "cdiaudio.h"
 #include "cdidvc_utils.h"
+
+namespace
+{
+
+double iec_60908_deemphasis_gain(double frequency)
+{
+	double constexpr PI = 3.14159265358979323846;
+	double const omega = 2.0 * PI * frequency;
+	return std::sqrt(
+		(1.0 + std::pow(omega * 15.0e-6, 2.0)) /
+		(1.0 + std::pow(omega * 50.0e-6, 2.0)));
+}
+
+double digital_deemphasis_gain(
+		cdi_audio::deemphasis_coefficients const &coefficients,
+		double frequency, double sample_rate)
+{
+	double constexpr PI = 3.14159265358979323846;
+	std::complex<double> const z1 = std::polar(
+		1.0, -2.0 * PI * frequency / sample_rate);
+	std::complex<double> const numerator = coefficients.b0
+		+ coefficients.b1 * z1 + coefficients.b2 * z1 * z1;
+	std::complex<double> const denominator = 1.0
+		+ coefficients.a1 * z1 + coefficients.a2 * z1 * z1;
+	return std::abs(numerator / denominator);
+}
+
+} // anonymous namespace
+
+TEST_CASE("CD-i 50/15 microsecond de-emphasis tracks IEC 60908", "[emu][philips][audio][deemphasis]")
+{
+	struct rate_limit
+	{
+		uint32_t rate;
+		double highest_frequency;
+		double maximum_error_db;
+	};
+
+	std::array<rate_limit, 3> const rates = {{
+		{ 44'100, 20'000.0, 0.065 },
+		{ 37'800, 0.475 * 37'800.0, 0.073 },
+		{ 18'900, 0.475 * 18'900.0, 0.079 }
+	}};
+
+	for (rate_limit const &test : rates)
+	{
+		auto const coefficients =
+			cdi_audio::deemphasis_coefficients_for_rate(test.rate);
+		REQUIRE(coefficients.valid);
+
+		double maximum_error = 0.0;
+		for (double frequency = 20.0;
+				frequency <= test.highest_frequency; frequency += 1.0)
+		{
+			double const actual = digital_deemphasis_gain(
+				coefficients, frequency, test.rate);
+			double const expected = iec_60908_deemphasis_gain(frequency);
+			maximum_error = std::max(maximum_error,
+				std::abs(20.0 * std::log10(actual / expected)));
+		}
+
+		INFO("sample rate=" << test.rate << " maximum error dB=" << maximum_error);
+		REQUIRE(maximum_error <= test.maximum_error_db);
+		REQUIRE(digital_deemphasis_gain(coefficients, 0.0, test.rate)
+			== Approx(1.0).epsilon(1e-13));
+	}
+
+	for (uint32_t const unsupported : { 0U, 8'000U, 32'000U, 48'000U, 96'000U })
+	{
+		INFO("unsupported sample rate=" << unsupported);
+		REQUIRE_FALSE(cdi_audio::deemphasis_coefficients_for_rate(unsupported).valid);
+	}
+}
+
+TEST_CASE("CD-i de-emphasis transitions and saved continuation are deterministic", "[emu][philips][audio][deemphasis][save]")
+{
+	cdi_audio::deemphasis_filter_state state;
+
+	// Disabled samples pass through bit-exactly while priming the selected
+	// sample-rate filter.  Enabling it on steady DC therefore adds no reset pop.
+	for (unsigned sample = 0; sample < 10'000; ++sample)
+		REQUIRE(cdi_audio::apply_50_15_deemphasis(state, 10'000.0, 44'100, false) == 10'000.0);
+	REQUIRE(cdi_audio::apply_50_15_deemphasis(state, 10'000.0, 44'100, true)
+		== Approx(10'000.0).epsilon(1.0e-13));
+
+	std::array<double, 16> const signal = {
+		32'000.0, -31'000.0, 14'000.0, -7'000.0,
+		0.0, 1.0, -1.0, 8'192.0,
+		-16'384.0, 24'576.0, -12'345.0, 23'456.0,
+		-30'000.0, 30'000.0, -2'048.0, 1'024.0
+	};
+	for (unsigned index = 0; index < signal.size() / 2; ++index)
+		cdi_audio::apply_50_15_deemphasis(state, signal[index], 44'100, true);
+
+	// The state is entirely explicit save-state data: a copied mid-stream
+	// snapshot must resume sample-for-sample, not merely within a tolerance.
+	cdi_audio::deemphasis_filter_state restored = state;
+	for (unsigned index = signal.size() / 2; index < signal.size(); ++index)
+	{
+		double const live = cdi_audio::apply_50_15_deemphasis(
+			state, signal[index], 44'100, true);
+		double const replay = cdi_audio::apply_50_15_deemphasis(
+			restored, signal[index], 44'100, true);
+		INFO("continuation sample=" << index);
+		REQUIRE(live == replay);
+		REQUIRE(cdi_audio::quantize_deemphasized_pcm16(live)
+			== cdi_audio::quantize_deemphasized_pcm16(replay));
+	}
+
+	// A native-rate change resets history before using the new coefficient set.
+	cdi_audio::deemphasis_filter_state fresh;
+	double const changed = cdi_audio::apply_50_15_deemphasis(
+		state, 12'345.0, 37'800, true);
+	double const first = cdi_audio::apply_50_15_deemphasis(
+		fresh, 12'345.0, 37'800, true);
+	REQUIRE(changed == first);
+	REQUIRE(state.sample_rate == 37'800);
+
+	// Unsupported rates are unmodified and cannot mutate a valid filter state.
+	cdi_audio::deemphasis_filter_state const before_unsupported = state;
+	REQUIRE(cdi_audio::apply_50_15_deemphasis(state, -7'654.0, 48'000, true)
+		== -7'654.0);
+	REQUIRE(state.input1 == before_unsupported.input1);
+	REQUIRE(state.input2 == before_unsupported.input2);
+	REQUIRE(state.output1 == before_unsupported.output1);
+	REQUIRE(state.output2 == before_unsupported.output2);
+	REQUIRE(state.sample_rate == before_unsupported.sample_rate);
+}
+
+TEST_CASE("CD-i de-emphasis activation and PCM boundary conversion are exhaustive", "[emu][philips][audio][deemphasis][exhaustive]")
+{
+	for (unsigned emphasis = 0; emphasis < 4; ++emphasis)
+	{
+		for (uint32_t const rate : { 18'900U, 32'000U, 37'800U, 44'100U, 48'000U })
+		{
+			INFO("emphasis=" << emphasis << " rate=" << rate);
+			REQUIRE(cdi_audio::cdi_mpeg_deemphasis_enabled(emphasis, rate)
+				== (emphasis == 1 && rate == 44'100));
+		}
+	}
+
+	cdi_audio::deemphasis_filter_state disabled;
+	for (int32_t sample = -32768; sample <= 32767; ++sample)
+	{
+		double const output = cdi_audio::apply_50_15_deemphasis(
+			disabled, sample, 44'100, false);
+		INFO("unemphasized PCM=" << sample);
+		REQUIRE(output == sample);
+		REQUIRE(cdi_audio::quantize_deemphasized_pcm16(output) == sample);
+	}
+
+	REQUIRE(cdi_audio::quantize_deemphasized_pcm16(-40'000.0) == -32768);
+	REQUIRE(cdi_audio::quantize_deemphasized_pcm16(-32768.0) == -32768);
+	REQUIRE(cdi_audio::quantize_deemphasized_pcm16(-1.5) == -2);
+	REQUIRE(cdi_audio::quantize_deemphasized_pcm16(-0.5) == -1);
+	REQUIRE(cdi_audio::quantize_deemphasized_pcm16(0.0) == 0);
+	REQUIRE(cdi_audio::quantize_deemphasized_pcm16(0.5) == 1);
+	REQUIRE(cdi_audio::quantize_deemphasized_pcm16(1.5) == 2);
+	REQUIRE(cdi_audio::quantize_deemphasized_pcm16(32767.0) == 32767);
+	REQUIRE(cdi_audio::quantize_deemphasized_pcm16(40'000.0) == 32767);
+}
 
 TEST_CASE("CD-i attenuation bytes exhaust the Green Book nominal curve", "[emu][philips][audio][attenuation][exhaustive]")
 {

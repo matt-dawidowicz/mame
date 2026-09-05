@@ -289,11 +289,36 @@ or rounding have been measured.
 
 ### 14. De-emphasis
 
-- [ ] Identify all CD-i/XA/CDDA emphasis signaling paths.
-- [ ] Implement the correct de-emphasis response.
-- [ ] Validate frequency response against the relevant standard or hardware.
+- [x] Identify all CD-i/XA/CDDA emphasis signaling paths.
+- [x] Implement the standards-defined de-emphasis response.
+- [x] Validate frequency response against the relevant standard.
 - [ ] Validate enable/disable transition behavior.
-- [ ] Add deterministic filter tests.
+- [x] Add deterministic filter tests.
+
+The standards-visible signal path is now closed.  XA coding bit 6, CD-DA Q-control
+bit 0, and each MPEG Layer II frame's two-bit emphasis field independently reach
+one shared 50/15-microsecond response.  MPEG reserved/J.17 values and profile-invalid
+rates remain diagnostic rather than acquiring an invented CD-i response.  CD-DA
+playback and synthesized current/TOC Q data use the image's actual track control
+flags.  Filter state and a pending pre-start CD-DA sector's emphasis flag are saved.
+
+The 44.1 kHz biquad is the independently published SoX IEC 60908 fit.  Equivalent
+high-shelf fits at the two exact XA rates follow the same continuous-time target.
+The deterministic response sweep bounds maximum deviation to 0.06225 dB at
+44.1 kHz through 20 kHz, 0.07212 dB at 37.8 kHz through 0.475 Nyquist, and
+0.07831 dB at 18.9 kHz through 0.475 Nyquist.  Tests also exhaust all 65,536
+unemphasized PCM16 values, all MPEG emphasis/rate activation combinations, all
+CD-DA ADR/control bytes, per-frame PL_MPEG emphasis changes, rate changes, reset,
+clipping, and exact continuation from copied save state.
+
+The unchecked line is deliberately physical: no reviewed document or capture
+establishes whether a particular CDIC/VMPEG/player revision switches an analogue
+network, resets digital history, or uses another ramp at an emphasis-bit edge.
+MAME continuously primes its digital filter while bypassed, resets it only at an
+output-rate/decoder reset boundary, and documents that deterministic transition as
+a compatibility model.  Consequently section 14 is not promoted to an overall
+100% hardware-fidelity claim, even though no known standards-visible implementation
+defect remains.
 
 ### 15. CD-DA playback and transport timing
 
@@ -314,9 +339,10 @@ The unchecked transport/track/seek edges prevent a 100% claim.
 - [ ] Add synthetic subcode/reference fixtures where feasible.
 
 Mono-I captures place Q data at byte offset `$924` in each alternating data buffer
-and show a 75 Hz delivery cadence; MAME now matches those two facts.  Its Q contents
-are still synthesized from one-track assumptions, and R-W, track/index transitions,
-lead-in/lead-out, pause, and seek behavior remain unresolved.
+and show a 75 Hz delivery cadence; MAME now matches those two facts.  Current-sector
+and audio-track TOC entries preserve the image's Q control/ADR value, including the
+pre-emphasis bit.  Position, track/index, and lead packets remain synthesized, and
+R-W, pause, seek, lead-in/lead-out, and multi-session behavior remain unresolved.
 
 ### 17. Audio decoder termination, starvation, and stream switching
 

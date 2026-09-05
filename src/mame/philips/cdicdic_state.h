@@ -12,6 +12,18 @@
 namespace cdic_hle
 {
 
+// cdrom_file exposes ADR in the high nibble and Q control in the low nibble;
+// CDIC RAM stores the on-disc Q ordering (control high, ADR low).
+constexpr uint8_t cdic_q_adr_control(uint8_t adr_control)
+{
+	return uint8_t((adr_control << 4) | (adr_control >> 4));
+}
+
+constexpr bool cdda_preemphasis(uint8_t adr_control)
+{
+	return bool(adr_control & 0x01);
+}
+
 enum class command : uint8_t
 {
 	unknown,
