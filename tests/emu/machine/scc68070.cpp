@@ -66,10 +66,16 @@ TEST_CASE("SCC68070 I2C data access sets PIN and clears AL and AAS", "[emu][mach
 
 TEST_CASE("SCC68070 UART fixed and command bits retain only documented state", "[emu][machine][scc68070][uart]")
 {
-	for (unsigned value = 0; value <= 0xff; ++value)
+	SECTION("status reads preserve all bits and force bit 1 high")
 	{
-		REQUIRE(scc68070::uart_status_read_value(uint8_t(value)) == (value | 0x02));
-		REQUIRE(scc68070::uart_control_after_misc_command(uint8_t(value)) == (value & 0x0f));
+		for (unsigned value = 0; value <= 0xff; ++value)
+			REQUIRE(scc68070::uart_status_read_value(uint8_t(value)) == (value | 0x02));
+	}
+
+	SECTION("miscellaneous commands preserve only receiver/transmitter control bits")
+	{
+		for (unsigned value = 0; value <= 0xff; ++value)
+			REQUIRE(scc68070::uart_control_after_misc_command(uint8_t(value)) == (value & 0x0f));
 	}
 }
 
