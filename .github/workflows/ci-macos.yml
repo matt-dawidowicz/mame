@@ -4,6 +4,7 @@ on:
   push:
     paths:
     - '.github/workflows/ci-macos.yml'
+    - '.cdi-full-ci-trigger'
     - '3rdparty/**'
     - 'scripts/**'
     - 'src/**'
