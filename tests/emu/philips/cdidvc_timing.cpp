@@ -46,15 +46,17 @@ TEST_CASE("CD-i DVC packet scheduling compares timestamps with the live anchored
 	REQUIRE(stale.play45 == 50);
 	REQUIRE(stale.decode45 == 40);
 
-	// The same rule must survive the 33-bit MPEG timestamp wrap.
+	// The same rule must survive the 33-bit MPEG timestamp wrap.  Odd 90 kHz
+	// ticks intentionally lose their low bit when projected into the 45 kHz
+	// DCLK domain, so the signed deltas need not be exact halves.
 	constexpr uint64_t mask = cdi_dvc::MPEG_TIMESTAMP_MASK;
 	uint64_t const wrapped_clock = cdi_dvc::mpeg_clock_from_dclk(mask - 9, 0, 5);
 	REQUIRE(wrapped_clock == 0);
 	auto const wrapped = cdi_dvc::measure_packet_schedule(4, mask - 2, wrapped_clock);
 	REQUIRE(wrapped.play90 == 4);
-	REQUIRE(wrapped.decode90 == -2);
+	REQUIRE(wrapped.decode90 == -3);
 	REQUIRE(wrapped.play45 == 2);
-	REQUIRE(wrapped.decode45 == -1);
+	REQUIRE(wrapped.decode45 == -2);
 }
 
 TEST_CASE("CD-i DVC presentation due comparison follows 33-bit timestamp ordering", "[emu][philips][dvc]")
