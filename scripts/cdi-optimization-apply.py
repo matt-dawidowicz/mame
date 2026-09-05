@@ -80,7 +80,41 @@ new_selection = """\t\tclock90 = current_mpeg_clock90(MPEG_FMV);
 if dvc.count(old_selection) != 1:
     raise SystemExit(f"DVC timestamp-vector block expected once, got {dvc.count(old_selection)}")
 dvc = dvc.replace(old_selection, new_selection, 1)
+
+old_conversion = """\t\tm_video_rgb24.resize(size_t(frame->width) * size_t(frame->height) * 3);
+\t\tplm_frame_to_rgb(frame, m_video_rgb24.data(), frame->width * 3);
+\t\tqueued.pixels.resize(size_t(frame->width) * size_t(frame->height));
+\t\tfor (size_t i = 0; i < queued.pixels.size(); ++i)
+\t\t{
+\t\t\tsize_t const off = i * 3;
+\t\t\tqueued.pixels[i] = 0xff000000U
+\t\t\t\t\t| (uint32_t(m_video_rgb24[off + 0]) << 16)
+\t\t\t\t\t| (uint32_t(m_video_rgb24[off + 1]) << 8)
+\t\t\t\t\t| uint32_t(m_video_rgb24[off + 2]);
+\t\t}
+"""
+new_conversion = """\t\tqueued.pixels.assign(size_t(frame->width) * size_t(frame->height), 0xff000000U);
+#ifdef LSB_FIRST
+\t\t// uint32_t 0xAARRGGBB is laid out B,G,R,A on little-endian hosts.
+\t\tplm_frame_to_bgra(frame, reinterpret_cast<uint8_t *>(queued.pixels.data()), frame->width * 4);
+#else
+\t\t// On big-endian hosts the same value is laid out A,R,G,B.
+\t\tplm_frame_to_argb(frame, reinterpret_cast<uint8_t *>(queued.pixels.data()), frame->width * 4);
+#endif
+"""
+if dvc.count(old_conversion) != 1:
+    raise SystemExit(f"DVC RGB24 staging block expected once, got {dvc.count(old_conversion)}")
+dvc = dvc.replace(old_conversion, new_conversion, 1)
+if "m_video_rgb24" in dvc:
+    raise SystemExit("DVC RGB24 staging reference remains in source")
 write("src/mame/philips/cdidvc.cpp", dvc)
+
+replace_once(
+    "src/mame/philips/cdidvc.h",
+    "\t// MPEG video decode and MAME video presentation.\n\tstd::vector<uint8_t> m_video_rgb24;\n\n",
+    "\t// MPEG video decode and MAME video presentation.\n",
+    "obsolete DVC RGB24 staging member",
+)
 
 cdic = read("src/mame/philips/cdicdic.cpp")
 old_logs = (
