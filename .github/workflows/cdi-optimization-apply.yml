@@ -24,6 +24,7 @@ jobs:
         run: |
           python3 scripts/cdi-optimization-prepatch.py
           python3 scripts/cdi-optimization-apply.py
+          python3 scripts/cdi-diagnostic-optimization-apply.py
           python3 scripts/cdi-test-optimization-apply.py
       - name: Verify patch
         run: |
