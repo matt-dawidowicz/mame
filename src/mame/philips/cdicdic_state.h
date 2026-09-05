@@ -6,6 +6,7 @@
 
 #pragma once
 
+#include <array>
 #include <cstdint>
 
 namespace cdic_hle
@@ -338,9 +339,92 @@ constexpr uint16_t acknowledge_audio_termination(uint16_t value)
 	return value & ~uint16_t(0x0001);
 }
 
+constexpr uint8_t XA_GROUP_PARAMETER_BYTES = 16;
+constexpr uint8_t XA_GROUP_SAMPLES_PER_UNIT = 28;
+constexpr uint8_t XA_GROUP_MAX_SOUND_UNITS = 8;
+
+struct xa_group_parameters
+{
+	std::array<uint8_t, XA_GROUP_MAX_SOUND_UNITS> value{};
+	uint8_t unit_count = 0;
+	uint8_t copy_mismatch = 0;
+	uint8_t reserved_filter = 0;
+	uint8_t reserved_range = 0;
+	bool supported_sample_width = false;
+
+	constexpr bool valid() const
+	{
+		return supported_sample_width && !copy_mismatch && !reserved_filter && !reserved_range;
+	}
+};
+
+constexpr uint8_t xa_parameter_copy_count(uint8_t bits_per_sample)
+{
+	return bits_per_sample == 8 ? 4 : bits_per_sample == 4 ? 2 : 0;
+}
+
+constexpr uint8_t xa_sound_unit_count(uint8_t bits_per_sample)
+{
+	return bits_per_sample == 8 ? 4 : bits_per_sample == 4 ? 8 : 0;
+}
+
+constexpr uint8_t xa_parameter_copy_offset(uint8_t bits_per_sample, uint8_t unit, uint8_t copy)
+{
+	if (bits_per_sample == 8)
+		return unit + copy * 4;
+	if (bits_per_sample == 4)
+		return (unit & 3) + (unit & 4 ? 8 : 0) + copy * 4;
+	return 0;
+}
+
+constexpr uint8_t xa_maximum_range(uint8_t bits_per_sample)
+{
+	return bits_per_sample == 8 ? 8 : bits_per_sample == 4 ? 12 : 0;
+}
+
+constexpr xa_group_parameters inspect_xa_group_parameters(const uint8_t *data, uint8_t bits_per_sample)
+{
+	xa_group_parameters result;
+	result.unit_count = xa_sound_unit_count(bits_per_sample);
+	const uint8_t copy_count = xa_parameter_copy_count(bits_per_sample);
+	result.supported_sample_width = bool(result.unit_count && copy_count);
+	if (!result.supported_sample_width)
+		return result;
+
+	const uint8_t maximum_range = xa_maximum_range(bits_per_sample);
+	for (uint8_t unit = 0; unit < result.unit_count; unit++)
+	{
+		const uint8_t mask = uint8_t(1U << unit);
+		const uint8_t first = data[xa_parameter_copy_offset(bits_per_sample, unit, 0)];
+		result.value[unit] = first;
+		for (uint8_t copy = 0; copy < copy_count; copy++)
+		{
+			const uint8_t parameter = data[xa_parameter_copy_offset(bits_per_sample, unit, copy)];
+			if (parameter != first)
+				result.copy_mismatch |= mask;
+			if ((parameter >> 4) > 3)
+				result.reserved_filter |= mask;
+			if ((parameter & 0x0f) > maximum_range)
+				result.reserved_range |= mask;
+		}
+	}
+
+	return result;
+}
+
 constexpr int16_t clip_sample(int32_t sample)
 {
 	return int16_t(sample < -32768 ? -32768 : sample > 32767 ? 32767 : sample);
+}
+
+constexpr int16_t expand_xa_code(uint8_t code, uint8_t bits_per_sample)
+{
+	if (bits_per_sample != 4 && bits_per_sample != 8)
+		return 0;
+	const uint16_t code_count = uint16_t(1U << bits_per_sample);
+	const uint8_t value = code & uint8_t(code_count - 1);
+	const int32_t signed_value = value & (code_count >> 1) ? int32_t(value) - code_count : value;
+	return int16_t(signed_value * (uint32_t(1) << (16 - bits_per_sample)));
 }
 
 struct xa_sample
@@ -356,6 +440,10 @@ constexpr xa_sample decode_xa_sample(
 		int16_t recent,
 		int16_t older)
 {
+	// Callers validate the sound parameter before reaching this arithmetic.
+	// These coefficients are the Green Book values scaled by 256.  The final
+	// +128 and shift are an independently corroborated compatibility rounding
+	// model; exact CDIC intermediate widths and rounding remain unmeasured.
 	constexpr int16_t FILTER[4][2] =
 	{
 		{ 0x000,  0x000 },
@@ -364,12 +452,91 @@ constexpr xa_sample decode_xa_sample(
 		{ 0x188, -0x0dc }
 	};
 	const uint8_t filter = (parameter >> 4) & 3;
-	const uint8_t range = (parameter & 0x0f) > 12 ? 12 : parameter & 0x0f;
+	const uint8_t range = parameter & 0x0f;
 	const int32_t decoded =
 		(int32_t(encoded) >> range) +
 		((int32_t(FILTER[filter][0]) * recent + int32_t(FILTER[filter][1]) * older + 128) >> 8);
 	const int16_t output = clip_sample(decoded);
 	return { output, output, recent };
+}
+
+struct xa_group_decode_result
+{
+	xa_group_parameters parameters;
+	uint16_t samples_per_channel;
+
+	constexpr bool valid() const { return samples_per_channel && parameters.valid(); }
+};
+
+constexpr void reset_xa_history(int16_t *history)
+{
+	for (uint8_t i = 0; i < 4; i++)
+		history[i] = 0;
+}
+
+inline xa_group_decode_result decode_xa_group(
+		uint8_t bits_per_sample,
+		uint8_t channels,
+		const uint8_t *data,
+		int16_t *history,
+		int16_t *left,
+		int16_t *right)
+{
+	const xa_group_parameters parameters = inspect_xa_group_parameters(data, bits_per_sample);
+	const uint16_t samples_per_channel =
+		(channels == 1 || channels == 2)
+			? uint16_t(parameters.unit_count * XA_GROUP_SAMPLES_PER_UNIT / channels)
+			: 0;
+	const xa_group_decode_result result{ parameters, samples_per_channel };
+	if (!samples_per_channel)
+		return result;
+
+	// Raw-image reads do not expose the CIRC reliability needed to choose a
+	// contradictory copy.  Preserve the group duration without allowing an
+	// untrusted parameter to contaminate predictor history.  This is MAME's
+	// explicit concealment policy, not a claim about physical CDIC silicon.
+	if (!parameters.valid())
+	{
+		for (uint16_t sample = 0; sample < samples_per_channel; sample++)
+		{
+			left[sample] = 0;
+			if (channels == 2)
+				right[sample] = 0;
+		}
+		return result;
+	}
+
+	for (uint8_t unit = 0; unit < parameters.unit_count; unit++)
+	{
+		const uint8_t channel = channels == 2 ? unit & 1 : 0;
+		int16_t *const output = channel ? right : left;
+		const uint16_t output_offset = uint16_t(unit / channels) * XA_GROUP_SAMPLES_PER_UNIT;
+		int16_t &recent = history[channel * 2];
+		int16_t &older = history[channel * 2 + 1];
+
+		for (uint8_t sample = 0; sample < XA_GROUP_SAMPLES_PER_UNIT; sample++)
+		{
+			int16_t encoded;
+			if (bits_per_sample == 8)
+			{
+				const uint8_t value = data[XA_GROUP_PARAMETER_BYTES + unit + sample * 4];
+				encoded = expand_xa_code(value, 8);
+			}
+			else
+			{
+				const uint8_t value = data[XA_GROUP_PARAMETER_BYTES + (unit >> 1) + sample * 4];
+				const uint8_t nibble = (value >> ((unit & 1) * 4)) & 0x0f;
+				encoded = expand_xa_code(nibble, 4);
+			}
+
+			const xa_sample decoded = decode_xa_sample(parameters.value[unit], encoded, recent, older);
+			recent = decoded.recent;
+			older = decoded.older;
+			output[output_offset + sample] = decoded.output;
+		}
+	}
+
+	return result;
 }
 
 constexpr uint32_t lba_from_time(uint32_t time)

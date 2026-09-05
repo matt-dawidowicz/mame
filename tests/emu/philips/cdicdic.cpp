@@ -10,6 +10,93 @@
 
 namespace {
 
+int32_t floor_divide_by_64(int32_t value)
+{
+	return value >= 0 ? value / 64 : -int32_t((uint32_t(-value) + 63) / 64);
+}
+
+cdic_hle::xa_sample reference_xa_sample(
+		uint8_t parameter,
+		int16_t encoded,
+		int16_t recent,
+		int16_t older)
+{
+	// FFmpeg's independent fixed-point XA decoder uses these exact Green Book
+	// coefficients scaled by 64 and adds 32 before its arithmetic shift.
+	static constexpr int16_t FILTER[4][2] =
+	{
+		{   0,   0 },
+		{  60,   0 },
+		{ 115, -52 },
+		{  98, -55 }
+	};
+	const uint8_t filter = parameter >> 4;
+	const uint8_t range = parameter & 0x0f;
+	const int32_t predictor = floor_divide_by_64(
+		int32_t(FILTER[filter][0]) * recent + int32_t(FILTER[filter][1]) * older + 32);
+	const int32_t decoded = (int32_t(encoded) >> range) + predictor;
+	const int16_t output = int16_t(decoded < -32768 ? -32768 : decoded > 32767 ? 32767 : decoded);
+	return { output, output, recent };
+}
+
+void write_reference_group_parameters(
+		std::array<uint8_t, 128> &group,
+		uint8_t bits_per_sample,
+		const std::array<uint8_t, 8> &parameters)
+{
+	const uint8_t units = bits_per_sample == 8 ? 4 : 8;
+	const uint8_t copies = bits_per_sample == 8 ? 4 : 2;
+	for (uint8_t unit = 0; unit < units; unit++)
+	{
+		const uint8_t base = bits_per_sample == 8
+			? unit
+			: uint8_t((unit < 4 ? 0 : 8) + (unit & 3));
+		for (uint8_t copy = 0; copy < copies; copy++)
+			group[base + copy * 4] = parameters[unit];
+	}
+}
+
+uint16_t reference_decode_xa_group(
+		uint8_t bits_per_sample,
+		uint8_t channels,
+		const std::array<uint8_t, 128> &group,
+		std::array<int16_t, 4> &history,
+		std::array<int16_t, 225> &left,
+		std::array<int16_t, 225> &right)
+{
+	const uint8_t units = bits_per_sample == 8 ? 4 : 8;
+	for (uint8_t unit = 0; unit < units; unit++)
+	{
+		const uint8_t channel = channels == 2 ? unit & 1 : 0;
+		const uint16_t output_offset = uint16_t(unit / channels) * 28;
+		const uint8_t parameter_offset = bits_per_sample == 8
+			? unit
+			: uint8_t((unit < 4 ? 0 : 8) + (unit & 3));
+		const uint8_t parameter = group[parameter_offset];
+
+		for (uint8_t sample = 0; sample < 28; sample++)
+		{
+			const uint8_t packed = bits_per_sample == 8
+				? group[16 + unit + sample * 4]
+				: group[16 + (unit / 2) + sample * 4];
+			const uint8_t code = bits_per_sample == 8
+				? packed
+				: uint8_t((packed >> ((unit & 1) * 4)) & 0x0f);
+			const int32_t signed_code = bits_per_sample == 8
+				? (code >= 128 ? int32_t(code) - 256 : code)
+				: (code >= 8 ? int32_t(code) - 16 : code);
+			const int16_t encoded = int16_t(signed_code * (bits_per_sample == 8 ? 256 : 4096));
+			const cdic_hle::xa_sample decoded = reference_xa_sample(
+				parameter, encoded, history[channel * 2], history[channel * 2 + 1]);
+			history[channel * 2] = decoded.recent;
+			history[channel * 2 + 1] = decoded.older;
+			(channel ? right : left)[output_offset + sample] = decoded.output;
+		}
+	}
+
+	return uint16_t(units * 28 / channels);
+}
+
 cdic_hle::mode2_format_status reference_mode2_format(cdic_hle::mode2_sector sector)
 {
 	using cdic_hle::mode2_format_status;
@@ -340,7 +427,7 @@ TEST_CASE("CDIC command time converts BCD MSF and whole-second seeks to logical 
 	REQUIRE(cdic_hle::lba_from_time(0x01012300) == 4448);
 }
 
-TEST_CASE("CDIC XA predictor vectors preserve history, clipping, and reserved-range handling", "[emu][philips][cdic][xa]")
+TEST_CASE("CDIC XA predictor vectors preserve history and clip final PCM", "[emu][philips][cdic][xa][decode]")
 {
 	auto decoded = cdic_hle::decode_xa_sample(0x00, 0x1000, 0, 0);
 	REQUIRE(decoded.output == 0x1000);
@@ -355,9 +442,288 @@ TEST_CASE("CDIC XA predictor vectors preserve history, clipping, and reserved-ra
 	decoded = cdic_hle::decode_xa_sample(0x20, 0x7fff, 30000, -30000);
 	REQUIRE(decoded.output == 32767);
 
-	decoded = cdic_hle::decode_xa_sample(0x0f, int16_t(0x8000), 0, 0);
-	REQUIRE(decoded.output == -8);
-	REQUIRE(cdic_hle::decode_xa_sample(0x0c, int16_t(0x8000), 0, 0).output == -8);
+	decoded = cdic_hle::decode_xa_sample(0x30, int16_t(0x8000), -32768, 32767);
+	REQUIRE(decoded.output == -32768);
+
+	std::array<int16_t, 4> history{ 1, -1, 32767, -32768 };
+	cdic_hle::reset_xa_history(history.data());
+	const std::array<int16_t, 4> zero_history{};
+	REQUIRE(history == zero_history);
+}
+
+TEST_CASE("CDIC XA predictor exhausts every legal filter range and code", "[emu][philips][cdic][xa][decode][exhaustive]")
+{
+	static constexpr std::array<int16_t, 9> HISTORY =
+	{
+		-32768, -32767, -30000, -1, 0, 1, 30000, 32766, 32767
+	};
+	for (uint16_t raw = 0; raw <= 0xff; raw++)
+	{
+		const uint8_t code = uint8_t(raw);
+		const int16_t expected_8bit = int16_t((raw >= 128 ? int32_t(raw) - 256 : raw) * 256);
+		const uint8_t nibble = code & 0x0f;
+		const int16_t expected_4bit = int16_t((nibble >= 8 ? int32_t(nibble) - 16 : nibble) * 4096);
+		REQUIRE(cdic_hle::expand_xa_code(code, 8) == expected_8bit);
+		REQUIRE(cdic_hle::expand_xa_code(code, 4) == expected_4bit);
+	}
+	REQUIRE(cdic_hle::expand_xa_code(0xff, 16) == 0);
+
+	for (const uint8_t bits_per_sample : { uint8_t(4), uint8_t(8) })
+	{
+		const uint8_t maximum_range = bits_per_sample == 8 ? 8 : 12;
+		const uint16_t code_count = bits_per_sample == 8 ? 256 : 16;
+		for (uint8_t filter = 0; filter < 4; filter++)
+		{
+			for (uint8_t range = 0; range <= maximum_range; range++)
+			{
+				const uint8_t parameter = uint8_t((filter << 4) | range);
+				for (uint16_t code = 0; code < code_count; code++)
+				{
+					const int32_t signed_code = code >= (code_count / 2) ? int32_t(code) - code_count : code;
+					const int16_t encoded = int16_t(signed_code * (bits_per_sample == 8 ? 256 : 4096));
+					for (const int16_t recent : HISTORY)
+					{
+						for (const int16_t older : HISTORY)
+						{
+							const cdic_hle::xa_sample expected = reference_xa_sample(parameter, encoded, recent, older);
+							const cdic_hle::xa_sample actual = cdic_hle::decode_xa_sample(parameter, encoded, recent, older);
+							INFO("width " << unsigned(bits_per_sample) << ", filter " << unsigned(filter)
+								<< ", range " << unsigned(range) << ", code " << code
+								<< ", history " << recent << ", " << older);
+							REQUIRE(actual.output == expected.output);
+							REQUIRE(actual.recent == expected.recent);
+							REQUIRE(actual.older == expected.older);
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+TEST_CASE("CDIC XA sound-group parameter copies and reserved values are classified", "[emu][philips][cdic][xa][group][malformed][exhaustive]")
+{
+	for (const uint8_t bits_per_sample : { uint8_t(4), uint8_t(8) })
+	{
+		const uint8_t units = bits_per_sample == 8 ? 4 : 8;
+		const uint8_t copies = bits_per_sample == 8 ? 4 : 2;
+		const uint8_t valid_mask = uint8_t((1U << units) - 1);
+		const uint8_t maximum_range = bits_per_sample == 8 ? 8 : 12;
+		std::array<uint8_t, 128> group{};
+		std::array<uint8_t, 8> parameters{};
+		for (uint8_t unit = 0; unit < units; unit++)
+			parameters[unit] = uint8_t(((unit & 3) << 4) | (unit % (maximum_range + 1)));
+		write_reference_group_parameters(group, bits_per_sample, parameters);
+
+		const cdic_hle::xa_group_parameters valid = cdic_hle::inspect_xa_group_parameters(group.data(), bits_per_sample);
+		REQUIRE(valid.valid());
+		REQUIRE(valid.supported_sample_width);
+		REQUIRE(valid.unit_count == units);
+		REQUIRE(valid.copy_mismatch == 0);
+		REQUIRE(valid.reserved_filter == 0);
+		REQUIRE(valid.reserved_range == 0);
+		for (uint8_t unit = 0; unit < units; unit++)
+			REQUIRE(valid.value[unit] == parameters[unit]);
+
+		for (uint8_t unit = 0; unit < units; unit++)
+		{
+			for (uint8_t copy = 0; copy < copies; copy++)
+			{
+				std::array<uint8_t, 128> contradictory = group;
+				const uint8_t offset = bits_per_sample == 8
+					? uint8_t(unit + copy * 4)
+					: uint8_t((unit < 4 ? 0 : 8) + (unit & 3) + copy * 4);
+				contradictory[offset] ^= 1;
+				const cdic_hle::xa_group_parameters inspected =
+					cdic_hle::inspect_xa_group_parameters(contradictory.data(), bits_per_sample);
+				INFO("width " << unsigned(bits_per_sample) << ", unit " << unsigned(unit)
+					<< ", copy " << unsigned(copy));
+				REQUIRE_FALSE(inspected.valid());
+				REQUIRE(inspected.copy_mismatch == uint8_t(1U << unit));
+			}
+		}
+
+		for (uint16_t raw = 0; raw <= 0xff; raw++)
+		{
+			parameters.fill(uint8_t(raw));
+			write_reference_group_parameters(group, bits_per_sample, parameters);
+			const cdic_hle::xa_group_parameters inspected =
+				cdic_hle::inspect_xa_group_parameters(group.data(), bits_per_sample);
+			INFO("width " << unsigned(bits_per_sample) << ", parameter " << raw);
+			REQUIRE(inspected.copy_mismatch == 0);
+			REQUIRE(inspected.reserved_filter == ((raw >> 4) > 3 ? valid_mask : 0));
+			REQUIRE(inspected.reserved_range == ((raw & 0x0f) > maximum_range ? valid_mask : 0));
+			REQUIRE(inspected.valid() == ((raw >> 4) <= 3 && (raw & 0x0f) <= maximum_range));
+		}
+	}
+
+	std::array<uint8_t, 128> compound_group{};
+	std::array<uint8_t, 8> compound_parameters{};
+	write_reference_group_parameters(compound_group, 4, compound_parameters);
+	compound_group[6] = 0x4d;
+	compound_parameters[5] = 0x3d;
+	compound_parameters[7] = 0x40;
+	write_reference_group_parameters(compound_group, 4, compound_parameters);
+	compound_group[6] = 0x4d;
+	const cdic_hle::xa_group_parameters compound =
+		cdic_hle::inspect_xa_group_parameters(compound_group.data(), 4);
+	REQUIRE_FALSE(compound.valid());
+	REQUIRE(compound.copy_mismatch == 0x04);
+	REQUIRE(compound.reserved_filter == 0x84);
+	REQUIRE(compound.reserved_range == 0x24);
+
+	std::array<uint8_t, 128> group{};
+	std::array<int16_t, 225> left;
+	std::array<int16_t, 225> right;
+	left.fill(0x5555);
+	right.fill(0x5555);
+	std::array<int16_t, 4> history{ 1234, -2345, -3000, 4000 };
+	const std::array<int16_t, 4> original_history = history;
+	group[0] = 0x00;
+	group[4] = 0x01;
+	group[8] = 0x00;
+	group[12] = 0x00;
+	const cdic_hle::xa_group_decode_result malformed = cdic_hle::decode_xa_group(
+		8, 2, group.data(), history.data(), left.data(), right.data());
+	REQUIRE_FALSE(malformed.valid());
+	REQUIRE(malformed.parameters.copy_mismatch == 0x01);
+	REQUIRE(malformed.samples_per_channel == 56);
+	REQUIRE(history == original_history);
+	for (uint16_t sample = 0; sample < malformed.samples_per_channel; sample++)
+	{
+		REQUIRE(left[sample] == 0);
+		REQUIRE(right[sample] == 0);
+	}
+	REQUIRE(left[malformed.samples_per_channel] == 0x5555);
+	REQUIRE(right[malformed.samples_per_channel] == 0x5555);
+
+	const cdic_hle::xa_group_parameters unsupported = cdic_hle::inspect_xa_group_parameters(group.data(), 16);
+	REQUIRE_FALSE(unsupported.valid());
+	REQUIRE_FALSE(unsupported.supported_sample_width);
+	REQUIRE(unsupported.unit_count == 0);
+}
+
+TEST_CASE("CDIC XA sound groups preserve channel order and history in every PCM mode", "[emu][philips][cdic][xa][group][decode]")
+{
+	static constexpr std::array<uint8_t, 8> CODINGS =
+	{
+		0x00, 0x04, 0x01, 0x05, 0x10, 0x14, 0x11, 0x15
+	};
+
+	for (const uint8_t coding : CODINGS)
+	{
+		const cdic_hle::xa_coding format = cdic_hle::decode_xa_coding(coding);
+		REQUIRE(format.valid());
+		std::array<uint8_t, 128> group{};
+		for (uint16_t i = 16; i < group.size(); i++)
+			group[i] = uint8_t(i * 73 + 41);
+
+		std::array<uint8_t, 8> parameters{};
+		const uint8_t units = format.bits_per_sample == 8 ? 4 : 8;
+		const uint8_t maximum_range = format.bits_per_sample == 8 ? 8 : 12;
+		for (uint8_t unit = 0; unit < units; unit++)
+			parameters[unit] = uint8_t(((unit & 3) << 4) | ((unit * 3 + 1) % (maximum_range + 1)));
+		write_reference_group_parameters(group, format.bits_per_sample, parameters);
+
+		std::array<int16_t, 4> actual_history{ 1234, -2345, -3000, 4000 };
+		std::array<int16_t, 4> expected_history = actual_history;
+		for (uint8_t pass = 0; pass < 2; pass++)
+		{
+			std::array<int16_t, 225> actual_left;
+			std::array<int16_t, 225> actual_right;
+			std::array<int16_t, 225> expected_left;
+			std::array<int16_t, 225> expected_right;
+			actual_left.fill(0x5555);
+			actual_right.fill(0x5555);
+			expected_left.fill(0x5555);
+			expected_right.fill(0x5555);
+
+			const uint16_t expected_samples = reference_decode_xa_group(
+				format.bits_per_sample, format.channels, group,
+				expected_history, expected_left, expected_right);
+			const cdic_hle::xa_group_decode_result actual = cdic_hle::decode_xa_group(
+				format.bits_per_sample, format.channels, group.data(), actual_history.data(),
+				actual_left.data(), actual_right.data());
+			INFO("coding " << unsigned(coding) << ", pass " << unsigned(pass));
+			REQUIRE(actual.valid());
+			REQUIRE(actual.samples_per_channel == expected_samples);
+			REQUIRE(actual.parameters.unit_count == units);
+			for (uint16_t sample = 0; sample < expected_samples; sample++)
+			{
+				REQUIRE(actual_left[sample] == expected_left[sample]);
+				if (format.channels == 2)
+					REQUIRE(actual_right[sample] == expected_right[sample]);
+			}
+			REQUIRE(actual_left[expected_samples] == 0x5555);
+			REQUIRE(actual_right[expected_samples] == 0x5555);
+			REQUIRE(actual_history == expected_history);
+		}
+	}
+}
+
+TEST_CASE("CDIC XA PCM is bit-identical to the retained FFmpeg reference", "[emu][philips][cdic][xa][decode][reference]")
+{
+	struct landmark
+	{
+		uint16_t index;
+		int16_t sample;
+	};
+	static constexpr std::array<landmark, 15> FFMPEG_LANDMARKS =
+	{{
+		{    0, -14336 }, {    1, -1280 }, {    2, -6144 }, {    3, -1968 },
+		{   31,  -3022 }, {  127,   353 }, {  511,  8912 }, { 1023,  -911 },
+		{ 2015,     87 }, { 4031,  2048 }, { 4032, -22485 }, { 4095,  -768 },
+		{ 6000, -18743 }, { 8062,    64 }, { 8063,   472 }
+	}};
+
+	std::array<int16_t, 4> history{};
+	std::array<int16_t, 8064> pcm{};
+	uint16_t pcm_index = 0;
+	uint64_t fnv = UINT64_C(14695981039346656037);
+	for (uint8_t sector = 0; sector < 2; sector++)
+	{
+		for (uint8_t group_index = 0; group_index < 18; group_index++)
+		{
+			std::array<uint8_t, 128> group{};
+			std::array<uint8_t, 8> parameters{};
+			for (uint8_t unit = 0; unit < 8; unit++)
+			{
+				parameters[unit] = uint8_t(
+					(((unit + group_index + sector) & 3) << 4) |
+					((unit * 3 + group_index * 5 + sector * 7 + 1) % 13));
+			}
+			write_reference_group_parameters(group, 4, parameters);
+			for (uint8_t i = 16; i < 128; i++)
+				group[i] = uint8_t(sector * 101 + group_index * 29 + i * 73 + 41);
+
+			std::array<int16_t, 224> left{};
+			std::array<int16_t, 224> right{};
+			const cdic_hle::xa_group_decode_result decoded = cdic_hle::decode_xa_group(
+				4, 2, group.data(), history.data(), left.data(), right.data());
+			REQUIRE(decoded.valid());
+			REQUIRE(decoded.samples_per_channel == 112);
+			for (uint16_t sample = 0; sample < decoded.samples_per_channel; sample++)
+			{
+				for (const int16_t value : { left[sample], right[sample] })
+				{
+					pcm[pcm_index++] = value;
+					for (uint8_t byte = 0; byte < 2; byte++)
+					{
+						fnv ^= uint8_t(uint16_t(value) >> (byte * 8));
+						fnv *= UINT64_C(1099511628211);
+					}
+				}
+			}
+		}
+	}
+
+	REQUIRE(pcm_index == pcm.size());
+	REQUIRE(fnv == UINT64_C(0x19f5a1a69dbe9187));
+	for (const landmark &expected : FFMPEG_LANDMARKS)
+	{
+		INFO("interleaved sample " << expected.index);
+		REQUIRE(pcm[expected.index] == expected.sample);
+	}
 }
 
 TEST_CASE("CDIC XA coding exhausts all supported and reserved byte combinations", "[emu][philips][cdic][xa][coding][exhaustive]")

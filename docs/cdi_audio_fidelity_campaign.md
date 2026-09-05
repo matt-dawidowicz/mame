@@ -108,20 +108,33 @@ in-stream rate-change, and DSP-rounding evidence limits.
 - [x] Exhaustive Mode-2 sector routing matrix for file/channel/submode combinations.
 - [x] Exhaustive supported/unsupported XA coding combinations.
 - [x] Validate EOF/EOR and audio/data mixed-sector transitions.
-- [ ] Add malformed/contradictory group signaling cases.
+- [x] Add malformed/contradictory group signaling cases.
 
 The sector-level portion now exhausts 67,108,864 file/channel/submode/channel-mask
 states, all 256 coding bytes, and every unequal pair of duplicated subheader byte
-values.  The remaining unchecked line refers specifically to contradictory sound-group
-parameter copies inside the 2304-byte audio payload; it is not satisfied merely by
-the completed sector-subheader checks.
+values.  Sound-group validation now checks all two copies of each 4-bit parameter and
+all four copies of each 8-bit parameter, identifies the affected sound units, and
+classifies reserved filters and width-specific ranges.  Because raw-image reads lack
+the CIRC reliability evidence needed to choose a contradictory copy, the current MAME
+model preserves the group's duration as silence without advancing predictor history.
+No undocumented CDIC status bit or interrupt is fabricated; the physical error signal
+remains an explicit hardware-evidence limitation.
 
 ### 7. XA ADPCM decode
 
-- [ ] Exhaust predictor/filter/range combinations.
-- [ ] Compare decoder output against independent XA decoder/reference vectors.
-- [ ] Validate clipping, predictor-history reset, channel interleave, 4-bit/8-bit modes, mono/stereo, and 18.9/37.8 kHz.
+- [x] Exhaust predictor/filter/range combinations.
+- [x] Compare decoder output against independent XA decoder/reference vectors.
+- [x] Validate clipping, predictor-history reset, channel interleave, 4-bit/8-bit modes, mono/stereo, and 18.9/37.8 kHz.
 - [ ] Resolve exact rounding/saturation rules where observable.
+
+The software/reference portion covers 813,888 legal predictor input states, all raw
+4-bit and 8-bit code expansions, consecutive-group history, both channel layouts,
+both sampling-rate codes, and group-buffer boundaries.  A deterministic two-sector
+4-bit stereo fixture produces exactly the same 16,128 PCM bytes as FFmpeg's independent
+fixed-point `adpcm_xa` decoder.  The Green Book defines the coefficients, ranges,
+16-bit output, and final clipping, but not the CDIC's internal accumulator width or
+rounding circuit.  The existing `+0.5` fixed-point model is independently corroborated
+by FFmpeg; it is not yet promoted to silicon-confirmed behavior.
 
 ### 8. XA/CDIC timing and buffering
 
@@ -162,9 +175,13 @@ the completed sector-subheader checks.
 ### 13. DSP saturation and silicon rounding
 
 - [ ] Identify accumulator/intermediate widths where documentation permits.
-- [ ] Build adversarial overflow/underflow vectors.
+- [x] Build adversarial overflow/underflow vectors.
 - [ ] Compare candidate rounding/saturation models against hardware/reference captures.
-- [ ] Centralize arithmetic behavior in testable helpers instead of scattered casts/clamps.
+- [x] Centralize arithmetic behavior in testable helpers instead of scattered casts/clamps.
+
+The checked lines currently cover the XA ADPCM path.  MPEG synthesis and attenuation
+arithmetic remain separate work, and no checked line implies that CDIC silicon widths
+or rounding have been measured.
 
 ### 14. De-emphasis
 

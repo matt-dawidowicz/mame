@@ -120,24 +120,6 @@ private:
 		SUBMODE_VIDEO      = 0x02,
 		SUBMODE_EOR        = 0x01,
 
-		CODING_BPS_MASK    = 0x30,
-		CODING_4BPS        = 0x00,
-		CODING_8BPS        = 0x10,
-		CODING_16BPS       = 0x20,
-		CODING_BPS_MPEG    = 0x30,
-
-		CODING_RATE_MASK   = 0x0c,
-		CODING_37KHZ       = 0x00,
-		CODING_18KHZ       = 0x04,
-		CODING_RATE_RESV   = 0x08,
-		CODING_44KHZ       = 0x0c,
-
-		CODING_CHAN_MASK   = 0x03,
-		CODING_MONO        = 0x00,
-		CODING_STEREO      = 0x01,
-		CODING_CHAN_RESV   = 0x02,
-		CODING_CHAN_MPEG   = 0x03,
-
 		SUBCODE_Q_CONTROL       = 12,
 		SUBCODE_Q_TRACK         = 13,
 		SUBCODE_Q_INDEX         = 14,
@@ -198,10 +180,7 @@ private:
 	std::unique_ptr<uint8_t[]> m_ram;
 	std::unique_ptr<int16_t[]> m_samples[2];
 
-	void decode_xa_unit(const uint8_t param, int16_t sample, int16_t &sample0, int16_t &sample1, int16_t &out_buffer);
-	void decode_8bit_xa_unit(int channel, uint8_t param, const uint8_t *data, int16_t *out_buffer);
-	void decode_4bit_xa_unit(int channel, uint8_t param, const uint8_t *data, uint8_t shift, int16_t *out_buffer);
-	void play_xa_group(const uint8_t coding, const uint8_t *data, const uint16_t idx);
+	void play_xa_group(const cdic_hle::xa_coding &coding, const uint8_t *data, const uint16_t idx);
 	void play_audio_sector(const uint8_t coding, const uint8_t *data);
 	void play_cdda_sector(const uint8_t *data);
 	void process_audio_map();

@@ -261,65 +261,22 @@ const uint8_t cdicdic_device::s_sector_scramble[2448] =
 //  MEMBER FUNCTIONS
 //**************************************************************************
 
-void cdicdic_device::decode_xa_unit(const uint8_t param, int16_t sample, int16_t &sample0, int16_t &sample1, int16_t &out_buffer)
+void cdicdic_device::play_xa_group(const cdic_hle::xa_coding &coding, const uint8_t *data, const uint16_t idx)
 {
-	const cdic_hle::xa_sample decoded = cdic_hle::decode_xa_sample(param, sample, sample0, sample1);
-	sample0 = decoded.recent;
-	sample1 = decoded.older;
-	out_buffer = decoded.output;
-}
-
-void cdicdic_device::decode_8bit_xa_unit(int channel, uint8_t param, const uint8_t *data, int16_t *out_buffer)
-{
-	int16_t *const old_samples = &m_xa_last[channel << 1];
-	for (int i = 0; i < 28; i++)
+	const cdic_hle::xa_group_decode_result result = cdic_hle::decode_xa_group(
+		coding.bits_per_sample,
+		coding.channels,
+		data,
+		m_xa_last,
+		&m_samples[0][idx],
+		&m_samples[1][idx]);
+	if (!result.valid())
 	{
-		int16_t sample = int16_t(uint16_t(*data) << 8);
-		decode_xa_unit(param, sample, old_samples[0], old_samples[1], out_buffer[i]);
-		data += 4;
-	}
-}
-
-void cdicdic_device::decode_4bit_xa_unit(int channel, uint8_t param, const uint8_t *data, uint8_t shift, int16_t *out_buffer)
-{
-	int16_t *const old_samples = &m_xa_last[channel << 1];
-	for (int i = 0; i < 28; i++)
-	{
-		int16_t sample = int16_t(uint16_t((*data >> shift) & 0xf) << 12);
-		decode_xa_unit(param, sample, old_samples[0], old_samples[1], out_buffer[i]);
-		data += 4;
-	}
-}
-
-void cdicdic_device::play_xa_group(const uint8_t coding, const uint8_t *data, const uint16_t idx)
-{
-	static const uint16_t HEADER_OFFSET_4BIT[8] = { 4, 5, 6, 7, 12, 13, 14, 15 };
-	static const uint16_t HEADER_OFFSET_8BIT[4] = { 4, 5, 6, 7 };
-	static const uint16_t DATA_OFFSET_4BIT[8] = { 16, 16, 17, 17, 18, 18, 19, 19 };
-	static const uint16_t DATA_OFFSET_8BIT[4] = { 16, 17, 18, 19 };
-
-	const uint8_t num_samples = coding & CODING_8BPS ? 4 : 8;
-
-	for (uint8_t i = 0; i < num_samples; i++)
-	{
-		switch (coding & (CODING_BPS_MASK | CODING_CHAN_MASK))
-		{
-		case CODING_4BPS | CODING_MONO:
-			decode_4bit_xa_unit(0, data[HEADER_OFFSET_4BIT[i]], data + DATA_OFFSET_4BIT[i], (i & 1) ? 4 : 0, &m_samples[0][idx + i * 28]);
-			break;
-
-		case CODING_4BPS | CODING_STEREO:
-			decode_4bit_xa_unit(i & 1, data[HEADER_OFFSET_4BIT[i]], data + DATA_OFFSET_4BIT[i], (i & 1) ? 4 : 0, &m_samples[i & 1][idx + (i >> 1) * 28]);
-			break;
-
-		case CODING_8BPS | CODING_MONO:
-			decode_8bit_xa_unit(0, data[HEADER_OFFSET_8BIT[i]], data + DATA_OFFSET_8BIT[i], &m_samples[0][idx + i * 28]);
-			break;
-
-		case CODING_8BPS | CODING_STEREO:
-			decode_8bit_xa_unit(i & 1, data[HEADER_OFFSET_8BIT[i]], data + DATA_OFFSET_8BIT[i], &m_samples[i & 1][idx + (i >> 1) * 28]);
-			break;
-		}
+		LOGMASKED(LOG_SECTORS,
+			"Malformed XA sound group at sample %u (width %u, copy %02x, filter %02x, range %02x), substituting silence\n",
+			unsigned(idx), unsigned(coding.bits_per_sample),
+			unsigned(result.parameters.copy_mismatch), unsigned(result.parameters.reserved_filter),
+			unsigned(result.parameters.reserved_range));
 	}
 }
 
@@ -374,7 +331,7 @@ void cdicdic_device::play_audio_sector(const uint8_t coding, const uint8_t *data
 	uint16_t offset = 0;
 	for (uint16_t i = 0; i < SECTOR_AUDIO_SIZE; i += 128, data += 128)
 	{
-		play_xa_group(coding, data, offset);
+		play_xa_group(coding_info, data, offset);
 		offset += 28 * num_samples;
 	}
 
@@ -1116,7 +1073,7 @@ void cdicdic_device::regs_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 					m_audio_sector_counter = 1;
 
 				m_decoding_audio_map = true;
-				std::fill_n(m_xa_last, 4, 0);
+				cdic_hle::reset_xa_history(m_xa_last);
 			}
 			update_interrupt_state();
 			break;
@@ -1387,7 +1344,7 @@ void cdicdic_device::device_reset()
 	m_dmadac[1]->enable(1);
 
 	std::fill_n(m_atten, 4, 0);
-	std::fill_n(m_xa_last, 4, 0);
+	cdic_hle::reset_xa_history(m_xa_last);
 }
 
 void cdicdic_device::ram_w(offs_t offset, uint16_t data, uint16_t mem_mask)

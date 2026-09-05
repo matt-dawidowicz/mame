@@ -133,6 +133,57 @@ wrapper could not be linked in the campaign container because its OSD support
 requires unavailable SDL2 development headers; the same Philips test sources
 were compiled and run through the standalone Catch harness above.
 
+## XA sound-group and ADPCM checkpoint (2026-09-05)
+
+The fourth campaign batch replaces the CDIC path's implicit sound-parameter choice
+and reserved-range coercion with one validated, testable group decoder.
+
+1. The Green Book's 128-byte sound group contains 16 parameter bytes followed by
+   112 sample-data bytes.  In 8-bit mode each of four sound-unit parameters occurs
+   four times; in 4-bit mode each of eight parameters occurs twice.  MAME now checks
+   every copy before decoding and reports per-unit masks for contradiction, reserved
+   filter values, and reserved ranges (9-15 for 8-bit, 13-15 for 4-bit).
+2. A malformed group is not decoded through an arbitrary copy.  Raw-image input has
+   no per-byte CIRC reliability with which to choose one, so MAME emits the correct
+   number of zero samples and retains the last reliable predictor history.  This is
+   an explicit concealment model.  No physical CDIC status/IRQ behavior is claimed.
+3. Sign extension, predictor arithmetic, final 16-bit clipping, channel interleave,
+   and history updates now live in the pure helper used by production.  Device reset
+   and audio-map start use the same tested history-reset helper.  Reserved ranges are
+   rejected at the group boundary instead of being silently clamped to 12.
+4. An independent integer oracle exhausts 813,888 legal combinations: all four
+   filters, every legal range for each width, every 4-bit or 8-bit code, and 81
+   adversarial pairs of predictor-history endpoints.  Whole-group cases cover 4/8-bit,
+   mono/stereo, both 37.8/18.9 kHz coding values, two consecutive groups, clipping,
+   output bounds, channel order, and reset.
+5. A retained synthetic reference procedure wraps 36 deterministic groups in two
+   raw Mode 2/Form 2 stereo sectors.  FFmpeg 6.1.1's separate fixed-point `adpcm_xa`
+   decoder produced 16,128 interleaved little-endian PCM bytes, exactly matching MAME.
+   Each 2,352-byte sector is zero-initialized, carries the standard 12-byte sync and
+   Mode 2 byte, repeats subheader `01 00 24 01`, places the generated payload at byte
+   24, and leaves the final 24 bytes zero; the payload algorithm is retained in the
+   reference test.
+   The raw sectors hash to
+   `2e0bde2df9977d8daccd4cbdcf582ac2900c77ecd87a835c345886bec5023a88`;
+   the PCM hashes to
+   `47a6ee3539f4694d1e4ac0c04f91e30b180efbfb870f64774031445c795acc2a`.
+   The regression retains 15 PCM landmarks and the byte-order-independent FNV-1a
+   value `19f5a1a69dbe9187`.
+
+FFmpeg corroborates 4-bit XA layout, clipped-history feedback, exact rational
+coefficients, and the current add-half/arithmetic-shift predictor term.  Pinned jPSXdec
+source independently corroborates both 4-bit and 8-bit group layouts and recognizes
+all redundant parameter copies.  Its majority recovery and floating-point history
+are extraction policies, not CDIC evidence, and were deliberately not copied.
+
+The focused CDIC gate now passes 2,710,835 assertions in 15 cases; its XA subset is
+2,449,377 assertions in six cases.  Optimized, unoptimized, and
+AddressSanitizer/UndefinedBehaviorSanitizer builds pass (LeakSanitizer is disabled in
+the ptraced campaign container).  The standalone Philips gate passes 5,043,282
+assertions in 111 cases, and the extended pure mametests gate passes 5,044,352
+assertions in 118 cases.  The generated native MAME C++20 `release64` CD-i production
+archive also compiles after the refactor.
+
 ## Evidence register
 
 | ID | Class | Source | Supported claim | Limit |
@@ -147,6 +198,10 @@ were compiled and run through the standalone Catch harness above.
 | XA-STD-001 | Standards-derived | [Philips/Sony CD-i Green Book, May 1994 Release 2](https://archive.org/download/cdi_may94_r2/cdi_may94_r2.pdf), Chapter II sections 4.5/4.9 and Appendix II | Defines double-written subheaders, channel ranges, legal Audio/Video/Data and Form combinations, empty/message restrictions, audio-mask routing, and every audio coding field. | A media/system specification does not identify the private CDIC register response to malformed input. |
 | XA-STD-002 | Standards-derived | [Philips/Sony CD-ROM XA System Description, May 1991](https://archive.org/download/xa-10-may-1991/CD-ROM%20XA%20Specification%20May%201991%20-%20print%20to%20pdf%20in%20chrome.pdf), Chapter II sections 4.3 and 6.2 | Trigger is not channel-allocated; EOF/EOR are channel-allocated. The decoder model uses CIRC reliability flags to select trustworthy duplicated subheader bytes. | MAME's raw image interface does not expose those per-byte CIRC flags. |
 | XA-REF-001 | Independently corroborated | [jPSXdec duplicated-subheader and coding parser at `fd54036`](https://github.com/m35/jpsxdec/blob/fd5403629ac81aaca0feff0dc89e6cadd6353b26/jpsxdec/src/jpsxdec/cdreaders/CdSectorXaSubHeader.java) | An independent XA extraction tool flags unequal duplicated fields as corruption and recognizes the same reserved coding subfields. | Its confidence-based recovery is a PlayStation media-extraction compatibility policy, not CDIC hardware behavior, so MAME does not copy that guess. |
+| XA-STD-003 | Standards-derived | [Philips/Sony CD-i Green Book, May 1994 Release 2](https://archive.org/download/cdi_may94_r2/cdi_may94_r2.pdf), Appendix II audio coding and decoder sections | Defines the 128-byte sound-group layouts for 4/8-bit and mono/stereo, redundant parameter positions, legal filters/ranges, exact predictor coefficients, 16-bit output, and clipping. | It specifies neither private CDIC malformed-group signaling nor observable accumulator/rounding circuitry. |
+| XA-REF-002 | Independently corroborated | [FFmpeg `adpcm.c` at `ef5929f`](https://github.com/FFmpeg/FFmpeg/blob/ef5929f4ebb158ae689845055513a5725f5de28c/libavcodec/adpcm.c) and [PSX STR demuxer](https://github.com/FFmpeg/FFmpeg/blob/ef5929f4ebb158ae689845055513a5725f5de28c/libavformat/psxstr.c) | Independently corroborates 4-bit group/channel layout, rational predictor coefficients, clipped-history feedback, add-half/arithmetic-shift rounding, and exact PCM for the retained two-sector fixture. | Supports 4-bit XA only and does not validate redundant parameter copies; software agreement is not CDIC silicon proof. |
+| XA-REF-003 | Independently corroborated | [jPSXdec `XaAdpcmDecoder` at `fd54036`](https://github.com/m35/jpsxdec/blob/fd5403629ac81aaca0feff0dc89e6cadd6353b26/jpsxdec/src/jpsxdec/adpcm/XaAdpcmDecoder.java) and [`XaAdpcmSoundUnit`](https://github.com/m35/jpsxdec/blob/fd5403629ac81aaca0feff0dc89e6cadd6353b26/jpsxdec/src/jpsxdec/adpcm/XaAdpcmSoundUnit.java) | Independently corroborates both width layouts and explicitly collects redundant sound parameters. | Its majority selection, invalid-filter repair, double-precision predictor history, and final rounding are extraction/compatibility choices rather than hardware facts. |
+| XA-MODEL-001 | Current implementation model | `cdic_hle::decode_xa_group` and `[cdic][xa][group][malformed]` | Contradictory/reserved groups retain their sample duration as silence while leaving the last reliable predictor history intact. | Physical CDIC concealment, status, and interrupt behavior require hardware evidence. |
 
 ## Explicit implementation boundaries
 
@@ -169,10 +224,16 @@ were compiled and run through the standalone Catch harness above.
   junk is a software streaming model.  The exact VMPEG false-sync and error-event
   policy has not been measured.
 - **Malformed XA signaling:** deterministic MAME behavior now rejects contradictory
-  duplicated subheaders and invalid CD-i sector/coding combinations.  Which CDIC
-  status bit or interrupt physical hardware exposes is still unknown, so rejection
-  is not mislabeled as hardware error signaling.  Contradictory sound-group
-  parameter-copy behavior remains open in the campaign matrix.
+  duplicated subheaders, invalid CD-i sector/coding combinations, contradictory
+  sound-parameter copies, and reserved sound parameters.  Malformed groups keep their
+  time slot as silence and do not alter predictor history.  Which CDIC status bit,
+  interrupt, or concealment response physical hardware exposes remains unknown, so
+  this policy is not mislabeled as hardware error signaling.
+- **XA rounding/saturation:** the Green Book fixes the predictor coefficients, output
+  width, and final clipping.  FFmpeg independently agrees bit-for-bit with MAME's
+  current fixed-point result over the retained 4-bit fixture and the exhaustive oracle.
+  CDIC accumulator width, intermediate overflow behavior, and tie rounding have not
+  been captured; software agreement is not a hardware claim.
 - **EOF termination:** XA establishes that EOF is channel-allocated.  Stopping the
   current HLE read after delivery of a selected EOF remains the current implementation
   model; exact CDIC command-completion signaling is not established by the media
@@ -189,5 +250,5 @@ header space, explicit rejection classes, malformed resynchronization, legal
 bitrate/channel-mode transitions, backend exact/partial-frame termination, and
 independent non-silent decoder comparison now have deterministic coverage.
 Remaining blockers include CRC policy, VMPEG-specific header/update events,
-stream-switch edges, XA sound-group redundancy and independent PCM comparison,
+stream-switch edges, CDIC silicon rounding/error signaling, XA de-emphasis/timing,
 and the hardware-dependent matrix areas listed in the campaign specification.
