@@ -25,16 +25,18 @@ replace_once(
     "production PL_MPEG implementation split",
 )
 
-replace_once(
-    "src/mame/philips/cdi.cpp",
-    '#include "cdi.lh"\n',
-    '#include "cdi.lh"\n\n'
-    "// Keep the single-header PL_MPEG implementation out of cdidvc.cpp so edits to\n"
-    "// DVC scheduling/register logic do not recompile the decoder implementation.\n"
+production_impl = Path("src/mame/philips/cdidvc_plmpeg.cpp")
+if production_impl.exists():
+    raise SystemExit("production PL_MPEG implementation TU already exists")
+production_impl.write_text(
+    "// license:BSD-3-Clause\n"
+    "// copyright-holders:Matt Jordan\n\n"
+    "// Keep the single-header decoder implementation in a tiny, stable\n"
+    "// translation unit so ordinary DVC scheduling/register edits compile faster.\n"
     "#define PLM_NO_STDIO\n"
     "#define PL_MPEG_IMPLEMENTATION\n"
     '#include "../../../3rdparty/pl_mpeg/pl_mpeg.h"\n',
-    "production PL_MPEG implementation owner",
+    encoding="utf-8",
 )
 
 dvc = read("src/mame/philips/cdidvc.cpp")
@@ -161,7 +163,10 @@ replace_once(
     "test PL_MPEG implementation split",
 )
 
-Path("tests/emu/philips/cdidvc_plmpeg.cpp").write_text(
+test_impl = Path("tests/emu/philips/cdidvc_plmpeg.cpp")
+if test_impl.exists():
+    raise SystemExit("test PL_MPEG implementation TU already exists")
+test_impl.write_text(
     "// license:BSD-3-Clause\n"
     "// copyright-holders:Matt Jordan\n\n"
     "// Keep the single-header decoder implementation in a tiny, stable\n"
@@ -182,7 +187,7 @@ replace_once(
 
 production = sum(
     read(path).count("#define PL_MPEG_IMPLEMENTATION")
-    for path in ["src/mame/philips/cdi.cpp", "src/mame/philips/cdidvc.cpp"]
+    for path in ["src/mame/philips/cdidvc.cpp", "src/mame/philips/cdidvc_plmpeg.cpp"]
 )
 tests = sum(
     read(path).count("#define PL_MPEG_IMPLEMENTATION")
