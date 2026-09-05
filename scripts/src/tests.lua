@@ -86,3 +86,83 @@ project("mametests")
 		MAME_DIR .. "tests/emu/attotime.cpp",
 		MAME_DIR .. "tests/emu/video/rgbutil.cpp",
 	}
+
+-- Full-machine integration fixtures use a separate executable.  Keeping them
+-- out of mametests preserves the lightweight helper-only suite and prevents
+-- helper translation units that embed third-party implementations (notably
+-- PL_MPEG) from colliding with the production device objects.
+if _OPTIONS["with-emulator"] then
+	project("cdiintegrationtests")
+		uuid ("a709a76c-88da-4f83-a9e9-f391d68cf850")
+		kind "ConsoleApp"
+
+		flags {
+			"Symbols",
+		}
+
+		if _OPTIONS["SEPARATE_BIN"]~="1" then
+			targetdir(MAME_DIR)
+		end
+
+		configuration { "Release" }
+			targetsuffix ""
+		configuration { "Debug" }
+			targetsuffix "d"
+		configuration { "mingw*" or "vs*" }
+			targetextension ".exe"
+		configuration { }
+
+		includedirs {
+			MAME_DIR .. "3rdparty/catch/single_include",
+			MAME_DIR .. "src/osd",
+			MAME_DIR .. "src/emu",
+			MAME_DIR .. "src/devices",
+			MAME_DIR .. "src/frontend/mame",
+			MAME_DIR .. "src/mame",
+			MAME_DIR .. "src/mame/philips",
+			MAME_DIR .. "src/lib",
+			MAME_DIR .. "src/lib/util",
+			MAME_DIR .. "3rdparty",
+			GEN_DIR .. "emu",
+			GEN_DIR .. "mame/layout",
+			ext_includedir("expat"),
+			ext_includedir("zlib"),
+			ext_includedir("flac"),
+		}
+
+		files {
+			MAME_DIR .. "tests/main.cpp",
+			MAME_DIR .. "tests/emu/philips/cdi_dvc_dma_test_support.cpp",
+			MAME_DIR .. "src/osd/interface/inputseq.cpp",
+			MAME_DIR .. "src/osd/interface/nethandler.cpp",
+		}
+
+		links {
+			"emu",
+			"optional",
+			"formats",
+			"dasm",
+			"ocore_" .. _OPTIONS["osd"],
+			"utils",
+			ext_lib("expat"),
+			ext_lib("zlib"),
+			ext_lib("zstd"),
+			ext_lib("flac"),
+			ext_lib("utf8proc"),
+			ext_lib("jpeg"),
+			"softfloat3",
+			"wdlfft",
+			"ymfm",
+			"7z",
+		}
+
+		if (_OPTIONS["SOURCES"] ~= nil) or (_OPTIONS["SOURCEFILTER"] ~= nil) then
+			links {
+				"mame_" .. _OPTIONS["subtarget"],
+			}
+		else
+			links {
+				"philips",
+			}
+		end
+end
