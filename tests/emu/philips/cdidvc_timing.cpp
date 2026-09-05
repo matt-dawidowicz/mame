@@ -23,6 +23,40 @@ TEST_CASE("CD-i DVC anchored MPEG clock advances from 45 kHz DCLK", "[emu][phili
 	REQUIRE(cdi_dvc::mpeg_clock_from_dclk(10, 0xfffffffeU, 1) == 16);
 }
 
+TEST_CASE("CD-i DVC packet scheduling compares timestamps with the live anchored clock", "[emu][philips][dvc][avsync][schedule]")
+{
+	constexpr uint64_t scr90 = 1'000;
+	constexpr uint32_t anchor45 = 100;
+	constexpr uint32_t current45 = 145;
+	uint64_t const current90 = cdi_dvc::mpeg_clock_from_dclk(scr90, anchor45, current45);
+	REQUIRE(current90 == 1'090);
+
+	// A stale-SCR comparison would report +100/+80 ticks and therefore add
+	// packet-processing time to the requested delay.  The live clock correctly
+	// leaves only the remaining +10 tick play delay and sees decode as overdue.
+	auto const live = cdi_dvc::measure_packet_schedule(1'100, 1'080, current90);
+	REQUIRE(live.play90 == 10);
+	REQUIRE(live.decode90 == -10);
+	REQUIRE(live.play45 == 5);
+	REQUIRE(live.decode45 == -5);
+
+	auto const stale = cdi_dvc::measure_packet_schedule(1'100, 1'080, scr90);
+	REQUIRE(stale.play90 == 100);
+	REQUIRE(stale.decode90 == 80);
+	REQUIRE(stale.play45 == 50);
+	REQUIRE(stale.decode45 == 40);
+
+	// The same rule must survive the 33-bit MPEG timestamp wrap.
+	constexpr uint64_t mask = cdi_dvc::MPEG_TIMESTAMP_MASK;
+	uint64_t const wrapped_clock = cdi_dvc::mpeg_clock_from_dclk(mask - 9, 0, 5);
+	REQUIRE(wrapped_clock == 0);
+	auto const wrapped = cdi_dvc::measure_packet_schedule(4, mask - 2, wrapped_clock);
+	REQUIRE(wrapped.play90 == 4);
+	REQUIRE(wrapped.decode90 == -2);
+	REQUIRE(wrapped.play45 == 2);
+	REQUIRE(wrapped.decode45 == -1);
+}
+
 TEST_CASE("CD-i DVC presentation due comparison follows 33-bit timestamp ordering", "[emu][philips][dvc]")
 {
 	REQUIRE(cdi_dvc::mpeg_presentation_due(100, 100));
