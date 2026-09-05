@@ -20,8 +20,10 @@ jobs:
         with:
           ref: audio/cdi-fidelity-100-campaign-20260905
           fetch-depth: 0
-      - name: Apply deterministic source patch
-        run: python3 scripts/cdi-optimization-apply.py
+      - name: Apply deterministic source patches
+        run: |
+          python3 scripts/cdi-optimization-apply.py
+          python3 scripts/cdi-test-optimization-apply.py
       - name: Verify patch
         run: |
           git diff --check
@@ -30,6 +32,6 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add src/mame/philips/cdidvc.cpp src/mame/philips/cdidvc.h src/mame/philips/cdidvc_plmpeg.cpp src/mame/philips/cdicdic.cpp tests/emu/philips/cdidvc.cpp tests/emu/philips/cdidvc_plmpeg.cpp scripts/src/tests.lua
+          git add src/mame/philips/cdidvc.cpp src/mame/philips/cdidvc.h src/mame/philips/cdidvc_plmpeg.cpp src/mame/philips/cdicdic.cpp tests/emu/philips/cdidvc.cpp tests/emu/philips/cdidvc_plmpeg.cpp tests/emu/philips/cdi_audio_arithmetic.cpp scripts/src/tests.lua
           git commit -m 'philips/cdi: reduce audio-video runtime overhead'
           git push origin HEAD:${GITHUB_REF_NAME}
