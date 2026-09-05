@@ -86,3 +86,44 @@ project("mametests")
 		MAME_DIR .. "tests/emu/attotime.cpp",
 		MAME_DIR .. "tests/emu/video/rgbutil.cpp",
 	}
+
+-- Full-device integration tests are intentionally compiled only when the
+-- emulator and tests are requested together.  Helper-only mametests builds
+-- remain lightweight and do not acquire the driver/device dependency graph.
+if _OPTIONS["with-emulator"] then
+	includedirs {
+		MAME_DIR .. "src/devices",
+		MAME_DIR .. "src/mame",
+		MAME_DIR .. "src/lib",
+		MAME_DIR .. "3rdparty",
+		GEN_DIR .. "emu",
+		GEN_DIR .. "mame/layout",
+	}
+
+	files {
+		MAME_DIR .. "tests/emu/philips/cdi_dvc_dma_integration.cpp",
+	}
+
+	links {
+		"emu",
+		"optional",
+		"formats",
+		ext_lib("zstd"),
+		ext_lib("flac"),
+		ext_lib("jpeg"),
+		"softfloat3",
+		"wdlfft",
+		"ymfm",
+		"7z",
+	}
+
+	if (_OPTIONS["SOURCES"] ~= nil) or (_OPTIONS["SOURCEFILTER"] ~= nil) then
+		links {
+			"mame_" .. _OPTIONS["subtarget"],
+		}
+	else
+		links {
+			"philips",
+		}
+	end
+end
