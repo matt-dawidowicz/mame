@@ -1,19 +1,25 @@
 // license:BSD-3-Clause
 // copyright-holders:Matt Jordan
 
-#if defined(_WIN32)
-#include <windows.h>
-
-#include <cstdint>
-#include <cstdio>
-#endif
-
 // Build the live fixture and its synthetic game driver in this translation
 // unit so the driver-list shim can reference the anonymous-namespace driver
 // without exporting test-only symbols from the fixture.
 #include "cdi_dvc_dma_integration.cpp"
 
 #include "drivenum.h"
+
+#if defined(_WIN32)
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+
+#include <cstdint>
+#include <cstdio>
+#endif
 
 #if defined(_WIN32) && (defined(_M_X64) || defined(__x86_64__))
 namespace
