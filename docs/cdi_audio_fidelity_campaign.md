@@ -209,11 +209,29 @@ transitions, and long-run timestamp drift remain open, so this area is not 100%.
 
 ### 10. Attenuation and quantization
 
-- [ ] Identify authoritative attenuation register semantics.
+- [x] Identify authoritative attenuation register semantics.
 - [ ] Derive the exact transfer function or lookup table.
 - [ ] Verify every register step with hardware measurements or a documented formula.
-- [ ] Add exhaustive amplitude test vectors.
+- [x] Add exhaustive amplitude test vectors.
 - [ ] Verify channel independence and transition behavior.
+
+Green Book IV.6.3 fixes the four public paths (LL, LR, RR, RL), bit-7 mute,
+and the seven-bit nominal one-decibel setting.  MAME now has a shared nominal
+transfer/matrix helper and exhaustive coverage of all 256 byte values plus all
+four paths at every non-mute setting.  The FMA DSP indirect transaction is no
+longer telemetry-only: a retained `madriv` trace fixes mode `$80`, target `$93`,
+and wire order RR, LR, RL, LL.  Its state is saved, partial transfers resume
+exactly, and each active path write advances the sound stream before changing gain.
+
+A retained physical 210/05+VMPEG recording verifies all four routes and steps
+0-29.  The measured DVC slope is within 0.0019 dB of an ideal one-decibel line;
+the concurrent CDIC measurement remains within 0.30 dB.  This does not establish
+the unrecorded high-range coefficient table, exact transition waveform, DSP
+accumulator/rounding, or analogue floor.  Philips also documents different ADPCM
+attenuator anomalies by player generation.  Those hardware-specific gaps keep
+the combined attenuation/quantization area below 100%; the nominal semantics and
+known DVC register-path defect are closed without disguising the remaining evidence
+limit.
 
 ### 11. AUDCTL fidelity
 

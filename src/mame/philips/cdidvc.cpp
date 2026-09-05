@@ -109,6 +109,11 @@ void cdi_dvc_device::device_start()
 
 	save_item(NAME(m_dsp_bootstrap_write_count));
 	save_item(NAME(m_dsp_bootstrap_last));
+	save_item(NAME(m_fma_dsp_audio.address));
+	save_item(NAME(m_fma_dsp_audio.mode));
+	save_item(NAME(m_fma_dsp_audio.target));
+	save_item(NAME(m_fma_dsp_audio.attenuation_write_index));
+	save_item(NAME(m_fma_dsp_audio.attenuation));
 	save_item(NAME(m_av_last_audio_pts90));
 	save_item(NAME(m_av_last_video_pts90));
 	save_item(NAME(m_av_audio_pts_valid));
@@ -813,6 +818,7 @@ void cdi_dvc_device::device_reset()
 	m_video_overlay_top64_pixels = 0;
 	m_dsp_bootstrap_write_count.fill(0);
 	m_dsp_bootstrap_last.fill(0);
+	m_fma_dsp_audio = {};
 	m_av_last_audio_pts90 = 0;
 	m_av_last_video_pts90 = 0;
 	m_av_audio_pts_valid = false;
@@ -1218,6 +1224,9 @@ void cdi_dvc_device::audio_output_set_rate(uint32_t rate)
 
 void cdi_dvc_device::sound_stream_update(sound_stream &stream)
 {
+	cdi_audio::attenuation_gains const attenuation =
+		cdi_audio::make_nominal_attenuation_gains(m_fma_dsp_audio.attenuation);
+
 	for (int i = 0; i < stream.samples(); ++i)
 	{
 		cdi_dvc::audio_output_frame const output =
@@ -1272,8 +1281,16 @@ void cdi_dvc_device::sound_stream_update(sound_stream &stream)
 			}
 		}
 
-		stream.put_int(0, i, output.left, 32768);
-		stream.put_int(1, i, output.right, 32768);
+		cdi_audio::stereo_sample const mixed = cdi_audio::mix_attenuated_stereo(
+				attenuation,
+				double(output.left) / 32768.0,
+				double(output.right) / 32768.0);
+
+		// Clamp only at MAME's normalized output boundary.  This prevents an
+		// over-range four-path mix escaping the sound stream, but is not a claim
+		// about the DSP56001 accumulator width or its final rounding circuit.
+		stream.put_clamp(0, i, mixed.left);
+		stream.put_clamp(1, i, mixed.right);
 
 		if (have_pcm && output.drained)
 		{
@@ -2929,9 +2946,20 @@ void cdi_dvc_device::write(offs_t offset, uint16_t data, uint16_t mem_mask)
 		break;
 	case 0xe03022:
 		record_dsp_bootstrap_write(0, address, data, mem_mask);
+		if (mem_mask & 0x00ff)
+			cdi_audio::fma_dsp_address_write(m_fma_dsp_audio, uint8_t(data));
 		break;
 	case 0xe03024:
 		record_dsp_bootstrap_write(1, address, data, mem_mask);
+		if (mem_mask & 0x00ff)
+		{
+			// End the preceding stream segment before a path gain changes so the
+			// write takes effect at its emulated CPU time rather than retroactively.
+			if (cdi_audio::fma_dsp_attenuation_selected(m_fma_dsp_audio)
+					&& m_audio_stream)
+				m_audio_stream->update();
+			cdi_audio::fma_dsp_data_write(m_fma_dsp_audio, uint8_t(data));
+		}
 		break;
 
 	case 0xe04060:

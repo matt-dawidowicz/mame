@@ -160,6 +160,52 @@ boundary.  The private VMPEG response to prohibited/malformed input remains an
 explicit evidence limitation, while desired/current stream-switch and CSU timing
 remain separate section-17 behavior rather than parser defects.
 
+## DVC attenuation semantics checkpoint (2026-09-05)
+
+This batch closes the known absence of FMA attenuation without promoting an
+unmeasured DSP lookup table to fact.
+
+1. Green Book IV.6.3 defines four independent paths in public API order LL, LR,
+   RR, RL.  Bit 7 mutes one path; otherwise bits 6:0 specify nominal attenuation
+   in one-decibel steps.  The new common helper owns those byte semantics, the
+   nominal `10^(-dB/20)` amplitude conversion, and the four-path stereo matrix.
+   Tests exhaust all 256 byte values and every path at all 128 non-mute settings.
+2. A retained `madriv` trace independently establishes how `MA_Cntrl(...,
+   $42434445, ...)` reaches the VMPEG DSP56001 indirect registers: mode `$80` at
+   `$e03022/$e03024`, target `$93`, followed by data bytes `$44,$43,$45,$42` at
+   DSP address 7.  That is wire order RR, LR, RL, LL.  MAME now implements this
+   control transaction instead of merely counting the writes.
+3. An Audacity project retained with the CDi_FMVTest procedure records a physical
+   CD-i 210/05 plus VMPEG and the same 440 Hz source through both FMA and CDIC.
+   RMS analysis of the 30 stable FMA plateaus from 0 through 29 dB finds a mean
+   step of -0.99994 dB (left) and -0.99996 dB (right), with maximum deviation
+   from the ideal line below 0.0019 dB.  The shorter CDIC plateaus have mean steps
+   of -1.0012/-1.0016 dB and remain within 0.30 dB of the ideal line.  Channel
+   offsets cancel in these relative measurements.  This is direct low-range
+   confirmation, not evidence for unrecorded settings 30-127.
+4. Each accepted DSP path write first advances the MAME stream to the current
+   emulated time, then changes that path.  The indirect address, mode, target,
+   two-bit transfer index, and active matrix are all registered for save states;
+   a partial-transfer regression proves exact continuation.  Device reset uses
+   the Green Book MA descriptor's all-muted values.  FMA PCM now passes through
+   the matrix, and an over-range sum is clamped only at MAME's normalized sound
+   boundary.
+
+The optimized, unoptimized, and ASan/UBSan focused DVC gates each pass 3,038,709
+assertions in 65 cases.  The complete standalone Philips gate passes 6,472,465
+assertions in 136 cases; the extended pure gate including unchanged `rgbutil`
+passes 6,472,739/137.  The native C++20 `release64` CDIC/DVC archive compiles.
+The four new attenuation cases contribute 2,082 assertions.  The existing
+decoded PCM hash remains deliberately pre-attenuation so decoder/replay equivalence
+does not become dependent on analogue-output policy.
+
+The Green Book specifies nominal levels and conformance tolerances, not the
+DSP56001 coefficient representation, accumulator width, or rounding circuit.
+Moreover, Philips' player guidance reports a separate ADPCM attenuator anomaly
+that differs between early and late board groups.  Therefore this checkpoint
+closes DVC register decoding and nominal mixing, but leaves exact high-range
+quantization, CDIC board-revision response, and silicon clipping/rounding open.
+
 ## Independent PCM reference checkpoint (2026-09-05)
 
 `tests/emu/philips/cdidvc_audio_reference_data.h` retains three independently
@@ -373,6 +419,10 @@ preserved and no RGB source is part of this checkpoint.
 | DVC-HW-001 | Hardware-confirmed | [CDi_FMVTest FMA playback-delay capture at `991b9cb`](https://github.com/Slamy/CDi_FMVTest/tree/991b9cb22905942d969a6d3219f89c5e941a7741/fma_playback_delay) | On the recorded 210/05 + VMPEG system, `MA_TRIG_DEC` occurs close enough to analogue sample output to serve as a software timing marker; the retained analysis bounds any additional decode delay to roughly 4 ms after accounting for encoder silence. | One hardware/configuration and one fixture; it does not establish long-duration drift or underflow edges. |
 | DVC-RE-001 | Independently corroborated | [MiSTer CD-i DVC notes at `1d0d29b`](https://github.com/MiSTer-devel/CDi_MiSTer/blob/1d0d29b164a05d11db0094564feacf0f66c1d4e4/doc/dvc.md) | FMA DCLK is treated as 45 kHz and the audio clock is the driver-visible link to MPEG SCR timing. | Reverse-engineering notes, not a Philips register specification. |
 | DVC-RE-002 | Independent implementation | [MiSTer VMPEG/FMA RTL at `1d0d29b`](https://github.com/MiSTer-devel/CDi_MiSTer/blob/1d0d29b164a05d11db0094564feacf0f66c1d4e4/rtl/vmpeg.sv) and [audio path](https://github.com/MiSTer-devel/CDi_MiSTer/blob/1d0d29b164a05d11db0094564feacf0f66c1d4e4/rtl/mpeg/fma/mpeg_audio.sv) | Keeps DSP-reported underflow and stream-change events distinct from output-FIFO occupancy; its compatibility output starts half-full and slowly ramps a held sample toward zero after empty. | The source labels stream-change handling probably inaccurate, and its FIFO/ramp policy is RTL compatibility behavior rather than a hardware capture.  MAME therefore does not copy these exact edges. |
+| ATTEN-STD-001 | Standards-derived | [Philips/Sony CD-i Green Book, May 1994 Release 2](https://archive.org/download/cdi_may94_r2/cdi_may94_r2.pdf), IV.6.3, VIII.4, and IX.8 | Defines LL/LR/RR/RL paths, bit-7 mute, the seven-bit nominal dB value, one-decibel steps, conformance tolerances, immediate control of an active map, and MA reset/abort mute values. | It does not disclose digital coefficient width, rounding, accumulator behavior, or each player's analogue floor. |
+| ATTEN-HW-001 | Hardware-confirmed | [CDi_FMVTest attenuation procedure and retained 210/05 recording at `991b9cb`](https://github.com/Slamy/CDi_FMVTest/tree/991b9cb22905942d969a6d3219f89c5e941a7741/audio_attenuation_vs_cdic) | The four routes operate independently; on this VMPEG the measured 0-29 range follows one dB per step to within 0.0019 dB after channel-offset cancellation, while the concurrent CDIC path follows the same low-range slope within 0.30 dB. | One analogue capture, one Mono-I player/DVC, one tone, and only steps 0-29; it cannot resolve high-range floor, coefficient quantization, or sub-sample transition shape. |
+| ATTEN-RE-001 | Independently corroborated | [MiSTer DVC trace notes](https://github.com/MiSTer-devel/CDi_MiSTer/blob/1d0d29b164a05d11db0094564feacf0f66c1d4e4/doc/dvc.md) and [DSP register model](https://github.com/MiSTer-devel/CDi_MiSTer/blob/1d0d29b164a05d11db0094564feacf0f66c1d4e4/rtl/mpeg/fma/dsp_registers.sv) | Retains the `madriv` mode/target transaction, RR/LR/RL/LL wire order, bit-7 mute interpretation, and a nominal dB-to-linear model. | Its eight-bit LUT and 9/16 gain are capture-fitted implementation choices, not authoritative VMPEG silicon values, so MAME does not copy them as specification. |
+| ATTEN-PHILIPS-001 | Authoritative compatibility guidance | [Philips player-type ADPCM volume note, mirrored by ICDIA](https://www.icdia.co.uk/cdprosupport/cdi/mm/adpcm_volume.htm) | Reports that the ADPCM attenuator departs from the nominal curve differently on maxi/miniMMC and Mono-I/II versus Mono-III/IV players. | Applies explicitly to ADPCM, gives family-level analogue behavior rather than a register-level circuit specification, and must not be generalized to VMPEG. |
 | XA-STD-001 | Standards-derived | [Philips/Sony CD-i Green Book, May 1994 Release 2](https://archive.org/download/cdi_may94_r2/cdi_may94_r2.pdf), Chapter II sections 4.5/4.9 and Appendix II | Defines double-written subheaders, channel ranges, legal Audio/Video/Data and Form combinations, empty/message restrictions, audio-mask routing, and every audio coding field. | A media/system specification does not identify the private CDIC register response to malformed input. |
 | XA-STD-002 | Standards-derived | [Philips/Sony CD-ROM XA System Description, May 1991](https://archive.org/download/xa-10-may-1991/CD-ROM%20XA%20Specification%20May%201991%20-%20print%20to%20pdf%20in%20chrome.pdf), Chapter II sections 4.3 and 6.2 | Trigger is not channel-allocated; EOF/EOR are channel-allocated. The decoder model uses CIRC reliability flags to select trustworthy duplicated subheader bytes. | MAME's raw image interface does not expose those per-byte CIRC flags. |
 | XA-REF-001 | Independently corroborated | [jPSXdec duplicated-subheader and coding parser at `fd54036`](https://github.com/m35/jpsxdec/blob/fd5403629ac81aaca0feff0dc89e6cadd6353b26/jpsxdec/src/jpsxdec/cdreaders/CdSectorXaSubHeader.java) | An independent XA extraction tool flags unequal duplicated fields as corruption and recognizes the same reserved coding subfields. | Its confidence-based recovery is a PlayStation media-extraction compatibility policy, not CDIC hardware behavior, so MAME does not copy that guess. |
@@ -424,6 +474,12 @@ preserved and no RGB source is part of this checkpoint.
   observed-ended latch are now replayed exactly at the software boundary.  This
   proves deterministic backend continuation; it is not a physical VMPEG state or
   cross-version save-format promise.
+- **Attenuation:** the public four-path byte semantics, nominal dB conversion,
+  measured low-range FMA response, and VMPEG DSP transfer order are now isolated
+  and implemented.  Exact coefficients above the measured range, DSP accumulator
+  width/rounding, analogue gain, and the documented board-family-dependent ADPCM
+  anomaly remain separate evidence gaps.  The output clamp is a safe MAME boundary,
+  not a claim that VMPEG saturates at the same internal stage.
 - **Malformed XA signaling:** deterministic MAME behavior rejects contradictory
   duplicated subheaders and invalid CD-i sector/coding combinations.  For sound
   groups it follows the measured Mono-I copy selection, treating disagreement in a
@@ -477,5 +533,6 @@ parser claims.
 No other incomplete matrix area is promoted to 100% by this checkpoint.  Remaining
 blockers include VMPEG CRC/profile-error and stream-transition behavior, DVC
 rate/reset/active-A/V save and clock runtime gates, CDIC invalid-coding/error
-signaling, XA/CD-DA de-emphasis, silicon rounding and attenuation, exact DAC sample
-edges, long-duration A/V drift, and full CD-DA Q/R-W/track/seek behavior.
+signaling, board-specific ADPCM/high-range attenuation, XA/CD-DA de-emphasis,
+silicon rounding, exact DAC sample edges, long-duration A/V drift, and full CD-DA
+Q/R-W/track/seek behavior.

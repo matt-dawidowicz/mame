@@ -5,7 +5,149 @@
 
 #include "catch.hpp"
 
+#include "cdiaudio.h"
 #include "cdidvc_utils.h"
+
+TEST_CASE("CD-i attenuation bytes exhaust the Green Book nominal curve", "[emu][philips][audio][attenuation][exhaustive]")
+{
+	// Independent fixed reference for 10^(-1/20); repeated multiplication
+	// prevents this oracle from merely repeating the production pow expression.
+	double constexpr one_db_ratio = 0.8912509381337456;
+	double previous = 0.0;
+	double expected = 1.0;
+
+	for (unsigned raw = 0; raw <= 0xff; ++raw)
+	{
+		uint8_t const value = uint8_t(raw);
+		double const gain = cdi_audio::nominal_attenuation_gain(value);
+		INFO("raw=" << raw);
+
+		REQUIRE(cdi_audio::attenuation_muted(value) == bool(raw & 0x80));
+		REQUIRE(cdi_audio::attenuation_decibels(value) == (raw & 0x7f));
+		if (raw & 0x80)
+		{
+			REQUIRE(gain == 0.0);
+		}
+		else
+		{
+			REQUIRE(gain == Approx(expected).epsilon(1e-14));
+			if (raw)
+			{
+				REQUIRE(gain < previous);
+				REQUIRE(gain / previous == Approx(one_db_ratio).epsilon(1e-14));
+			}
+			previous = gain;
+			expected *= one_db_ratio;
+		}
+	}
+
+	REQUIRE(cdi_audio::nominal_attenuation_gain(0) == 1.0);
+	REQUIRE(cdi_audio::nominal_attenuation_gain(20) == Approx(0.1).epsilon(1e-14));
+	REQUIRE(cdi_audio::nominal_attenuation_gain(40) == Approx(0.01).epsilon(1e-14));
+	REQUIRE(cdi_audio::nominal_attenuation_gain(60) == Approx(0.001).epsilon(1e-14));
+	REQUIRE(cdi_audio::nominal_attenuation_gain(0x80) == 0.0);
+	REQUIRE(cdi_audio::nominal_attenuation_gain(0xff) == 0.0);
+}
+
+TEST_CASE("CD-i four-path attenuation routes channels independently", "[emu][philips][audio][attenuation][exhaustive]")
+{
+	double constexpr left = 0.25;
+	double constexpr right = -0.5;
+
+	for (unsigned path = 0; path < 4; ++path)
+	{
+		double expected_gain = 1.0;
+		for (unsigned db = 0; db < 128; ++db)
+		{
+			cdi_audio::attenuation_matrix matrix = { 0x80, 0x80, 0x80, 0x80 };
+			matrix[path] = uint8_t(db);
+			auto const gains = cdi_audio::make_nominal_attenuation_gains(matrix);
+			auto const output = cdi_audio::mix_attenuated_stereo(gains, left, right);
+			double const expected_left = path == cdi_audio::ATTEN_LL
+				? left * expected_gain
+				: path == cdi_audio::ATTEN_RL ? right * expected_gain : 0.0;
+			double const expected_right = path == cdi_audio::ATTEN_LR
+				? left * expected_gain
+				: path == cdi_audio::ATTEN_RR ? right * expected_gain : 0.0;
+
+			INFO("path=" << path << " db=" << db);
+			REQUIRE(std::abs(output.left - expected_left) <= 1e-15);
+			REQUIRE(std::abs(output.right - expected_right) <= 1e-15);
+			expected_gain *= 0.8912509381337456;
+		}
+	}
+
+	auto const straight = cdi_audio::make_nominal_attenuation_gains(
+		cdi_audio::STRAIGHT_ATTENUATION);
+	auto const straight_output = cdi_audio::mix_attenuated_stereo(straight, left, right);
+	REQUIRE(straight_output.left == left);
+	REQUIRE(straight_output.right == right);
+}
+
+TEST_CASE("CD-i FMA DSP attenuation follows the captured MA_Cntrl wire order", "[emu][philips][dvc][audio][attenuation][hardware]")
+{
+	cdi_audio::fma_dsp_audio_control dsp;
+	REQUIRE(dsp.attenuation == cdi_audio::RESET_ATTENUATION);
+
+	// Data at the attenuation address is inert until mode 80/target 93 has
+	// selected the control block.
+	cdi_audio::fma_dsp_address_write(dsp, 7);
+	REQUIRE_FALSE(cdi_audio::fma_dsp_data_write(dsp, 0x11));
+	REQUIRE(dsp.attenuation == cdi_audio::RESET_ATTENUATION);
+
+	cdi_audio::fma_dsp_address_write(dsp, 0);
+	REQUIRE_FALSE(cdi_audio::fma_dsp_data_write(dsp, 0x80));
+	cdi_audio::fma_dsp_address_write(dsp, 1);
+	REQUIRE_FALSE(cdi_audio::fma_dsp_data_write(dsp, 0x93));
+	REQUIRE(dsp.attenuation_write_index == 0);
+
+	// Retained madriv trace for MA_Cntrl(..., 42434445, ...) writes
+	// 44,43,45,42, producing the API-order matrix 42,43,44,45.
+	cdi_audio::fma_dsp_address_write(dsp, 7);
+	REQUIRE(cdi_audio::fma_dsp_data_write(dsp, 0x44));
+	REQUIRE(dsp.attenuation[cdi_audio::ATTEN_RR] == 0x44);
+	REQUIRE(cdi_audio::fma_dsp_data_write(dsp, 0x43));
+	REQUIRE(dsp.attenuation[cdi_audio::ATTEN_LR] == 0x43);
+	REQUIRE(cdi_audio::fma_dsp_data_write(dsp, 0x45));
+	REQUIRE(dsp.attenuation[cdi_audio::ATTEN_RL] == 0x45);
+	REQUIRE(cdi_audio::fma_dsp_data_write(dsp, 0x42));
+	REQUIRE((dsp.attenuation == cdi_audio::attenuation_matrix{ 0x42, 0x43, 0x44, 0x45 }));
+	REQUIRE(dsp.attenuation_write_index == 0);
+
+	// Leaving DSP control mode prevents accidental gain changes from later
+	// writes at the same indirect address.
+	cdi_audio::fma_dsp_address_write(dsp, 0);
+	REQUIRE_FALSE(cdi_audio::fma_dsp_data_write(dsp, 0xe2));
+	cdi_audio::fma_dsp_address_write(dsp, 7);
+	REQUIRE_FALSE(cdi_audio::fma_dsp_data_write(dsp, 0x00));
+	REQUIRE((dsp.attenuation == cdi_audio::attenuation_matrix{ 0x42, 0x43, 0x44, 0x45 }));
+}
+
+TEST_CASE("CD-i FMA DSP attenuation resumes exactly from a partial saved transfer", "[emu][philips][dvc][audio][attenuation][save]")
+{
+	cdi_audio::fma_dsp_audio_control live;
+	cdi_audio::fma_dsp_address_write(live, 0);
+	cdi_audio::fma_dsp_data_write(live, 0x80);
+	cdi_audio::fma_dsp_address_write(live, 1);
+	cdi_audio::fma_dsp_data_write(live, 0x93);
+	cdi_audio::fma_dsp_address_write(live, 7);
+	cdi_audio::fma_dsp_data_write(live, 0x02);
+	cdi_audio::fma_dsp_data_write(live, 0x01);
+
+	cdi_audio::fma_dsp_audio_control restored = live;
+	for (uint8_t const value : { uint8_t(0x03), uint8_t(0x00) })
+	{
+		REQUIRE(cdi_audio::fma_dsp_data_write(live, value));
+		REQUIRE(cdi_audio::fma_dsp_data_write(restored, value));
+	}
+
+	REQUIRE(live.address == restored.address);
+	REQUIRE(live.mode == restored.mode);
+	REQUIRE(live.target == restored.target);
+	REQUIRE(live.attenuation_write_index == restored.attenuation_write_index);
+	REQUIRE(live.attenuation == restored.attenuation);
+	REQUIRE((live.attenuation == cdi_audio::attenuation_matrix{ 0x00, 0x01, 0x02, 0x03 }));
+}
 
 TEST_CASE("CD-i DVC MPEG-1 Layer II header decoding covers valid syntax fields", "[emu][philips][dvc][audio]")
 {

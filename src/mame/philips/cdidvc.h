@@ -6,6 +6,7 @@
 
 #pragma once
 
+#include "cdiaudio.h"
 #include "cdidvc_save_state.h"
 
 #include <array>
@@ -169,6 +170,10 @@ private:
 	// Measurement-only firmware bootstrap register telemetry.
 	std::array<uint32_t, 6> m_dsp_bootstrap_write_count{};
 	std::array<uint16_t, 6> m_dsp_bootstrap_last{};
+
+	// FMA DSP56001 indirect-port state.  Unlike the counters above, the
+	// MA_Cntrl attenuation matrix is guest-visible audio behavior.
+	cdi_audio::fma_dsp_audio_control m_fma_dsp_audio{};
 
 	// Measurement-only common-clock telemetry.
 	uint64_t m_av_last_audio_pts90 = 0;

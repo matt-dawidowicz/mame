@@ -20,6 +20,7 @@ TODO:
 
 #include "emu.h"
 #include "cdicdic.h"
+#include "cdiaudio.h"
 
 #include "cdrom.h"
 #include "sound/cdda.h"
@@ -39,19 +40,6 @@ TODO:
 
 #define VERBOSE         (0)
 #include "logmacro.h"
-
-
-namespace {
-
-float attenuation_scale(uint8_t attenuation)
-{
-	if (attenuation & 0x80)
-		return 0.0f;
-
-	return powf(10.0f, -(attenuation & 0x7f) / 20.0f);
-}
-
-} // anonymous namespace
 
 
 // device type definition
@@ -340,12 +328,12 @@ void cdicdic_device::play_audio_sector(const uint8_t coding, const uint8_t *data
 	}
 
 	int16_t sampleL = 0, sampleR = 0, outL = 0, outR = 0;
-	// Attenuation is logarithmic (decibels).
-	// Floats are not chip accurate, but the formula is correct.
-	const float scaleLL = attenuation_scale(m_atten[0]);
-	const float scaleLR = attenuation_scale(m_atten[1]);
-	const float scaleRR = attenuation_scale(m_atten[2]);
-	const float scaleRL = attenuation_scale(m_atten[3]);
+	// Green Book nominal curve.  Board-family quantization and the documented
+	// ADPCM high-attenuation anomaly remain outside this compatibility model.
+	const double scaleLL = cdi_audio::nominal_attenuation_gain(m_atten[0]);
+	const double scaleLR = cdi_audio::nominal_attenuation_gain(m_atten[1]);
+	const double scaleRR = cdi_audio::nominal_attenuation_gain(m_atten[2]);
+	const double scaleRL = cdi_audio::nominal_attenuation_gain(m_atten[3]);
 	for (uint16_t i = 0; i < 18 * 28 * num_samples; i++)
 	{
 		sampleL = m_samples[0][i];
