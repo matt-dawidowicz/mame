@@ -3,7 +3,7 @@ name: Apply CD-i optimization batch
 on:
   push:
     paths:
-      - 'docs/.cdi-optimization-trigger'
+      - '.cdi-optimization-trigger'
 
 concurrency:
   group: cdi-optimization-apply
