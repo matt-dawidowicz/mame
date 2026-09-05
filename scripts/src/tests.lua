@@ -75,6 +75,7 @@ project("mametests")
 		MAME_DIR .. "tests/emu/philips/cdi_audio_arithmetic.cpp",
 		MAME_DIR .. "tests/emu/philips/cdidvc_audio_reference.cpp",
 		MAME_DIR .. "tests/emu/philips/cdidvc_audio_replay.cpp",
+		MAME_DIR .. "tests/emu/philips/cdidvc_video_conversion.cpp",
 		MAME_DIR .. "tests/emu/philips/cdislavehle_pointer.cpp",
 		MAME_DIR .. "tests/emu/philips/cdislavehle_commands.cpp",
 		MAME_DIR .. "tests/emu/philips/cdislavehle_transport.cpp",
