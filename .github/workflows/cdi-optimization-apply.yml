@@ -5,6 +5,10 @@ on:
     paths:
       - 'docs/.cdi-optimization-trigger'
 
+concurrency:
+  group: cdi-optimization-apply
+  cancel-in-progress: true
+
 permissions:
   contents: write
 
