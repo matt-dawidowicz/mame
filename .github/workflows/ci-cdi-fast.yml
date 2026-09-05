@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - '.github/workflows/ci-cdi-fast.yml'
+      - 'docs/.cdi-fast-ci-trigger'
       - '3rdparty/pl_mpeg/**'
       - 'scripts/src/tests.lua'
       - 'src/devices/cpu/m68000/scc68070*'
@@ -19,6 +20,10 @@ on:
       - 'src/mame/philips/**'
       - 'tests/emu/machine/scc68070.cpp'
       - 'tests/emu/philips/**'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
