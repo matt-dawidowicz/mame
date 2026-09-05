@@ -93,6 +93,7 @@ project("mametests")
 if _OPTIONS["with-emulator"] then
 	includedirs {
 		MAME_DIR .. "src/devices",
+		MAME_DIR .. "src/frontend/mame",
 		MAME_DIR .. "src/mame",
 		MAME_DIR .. "src/lib",
 		MAME_DIR .. "3rdparty",
