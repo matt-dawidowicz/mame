@@ -3,12 +3,16 @@ name: Compile UI translations
 on:
   push:
     paths:
-    - '.github/workflows/**'
+    - '.github/workflows/language.yml'
     - 'language/**'
   pull_request:
     paths:
-    - '.github/workflows/**'
+    - '.github/workflows/language.yml'
     - 'language/**'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
