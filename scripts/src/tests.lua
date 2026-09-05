@@ -134,6 +134,7 @@ if _OPTIONS["with-emulator"] then
 			MAME_DIR .. "tests/main.cpp",
 			MAME_DIR .. "tests/emu/philips/cdi_dvc_dma_test_support.cpp",
 			MAME_DIR .. "src/osd/interface/inputseq.cpp",
+			MAME_DIR .. "src/osd/interface/nethandler.cpp",
 		}
 
 		links {
