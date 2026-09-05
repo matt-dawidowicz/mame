@@ -67,6 +67,7 @@ public:
 	cdi_dma_test_manager(emu_options &options, osd_interface &osd)
 		: machine_manager(options, osd)
 	{
+		start_http_server();
 	}
 
 	ui_manager *create_ui(running_machine &machine) override
