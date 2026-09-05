@@ -259,7 +259,10 @@ private:
 	uint32_t m_audio_output_nonzero = 0;
 	uint32_t m_audio_output_hash = 2166136261U;
 	uint32_t m_audio_queue_events = 0;
+	uint64_t m_audio_starvation_frames = 0;
+	uint32_t m_audio_starvation_events = 0;
 	bool m_audio_output_started = false;
+	bool m_audio_starved = false;
 
 	plm_buffer_t *m_audio_buffer = nullptr;
 	plm_audio_t *m_audio_decoder = nullptr;
@@ -268,12 +271,15 @@ private:
 	uint32_t m_audio_decoded_samples = 0;
 	uint32_t m_audio_header_events = 0;
 	uint32_t m_audio_decode_events = 0;
+	uint32_t m_audio_profile_violations = 0;
 	uint16_t m_audio_bitrate_kbps = 0;
 	uint16_t m_audio_samplerate = 0;
 	uint8_t m_audio_channel_mode = 0;
 	uint8_t m_audio_backend_status = 0;
 	bool m_audio_have_es_header = false;
 	bool m_audio_have_header = false;
+	bool m_audio_decoder_end_signalled = false;
+	bool m_audio_backend_ended = false;
 
 	// MPEG video decode and MAME video presentation.
 	std::vector<uint8_t> m_video_rgb24;

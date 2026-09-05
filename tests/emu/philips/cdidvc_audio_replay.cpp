@@ -166,3 +166,127 @@ TEST_CASE(
 	plm_audio_destroy(live_decoder);
 	plm_audio_destroy(replay_decoder);
 }
+
+TEST_CASE(
+		"CD-i DVC audio replay reconstruction preserves a frame-boundary starvation",
+		"[emu][philips][dvc][audio][save]")
+{
+	std::vector<uint8_t> stream = make_audio_replay_fixture();
+	std::size_t const snapshot_bytes = AUDIO_FRAME_SIZE * 2;
+
+	plm_buffer_t *const live_buffer = plm_buffer_create_with_capacity(stream.size());
+	plm_buffer_t *const replay_buffer = plm_buffer_create_with_capacity(stream.size());
+	REQUIRE(live_buffer != nullptr);
+	REQUIRE(replay_buffer != nullptr);
+	REQUIRE(plm_buffer_write(live_buffer, stream.data(), snapshot_bytes) == snapshot_bytes);
+	REQUIRE(plm_buffer_write(replay_buffer, stream.data(), snapshot_bytes) == snapshot_bytes);
+
+	plm_audio_t *const live_decoder = plm_audio_create_with_buffer(live_buffer, 1);
+	plm_audio_t *const replay_decoder = plm_audio_create_with_buffer(replay_buffer, 1);
+	REQUIRE(live_decoder != nullptr);
+	REQUIRE(replay_decoder != nullptr);
+	REQUIRE(plm_audio_has_header(live_decoder));
+	REQUIRE(plm_audio_has_header(replay_decoder));
+
+	for (unsigned frame = 0; frame < 2; ++frame)
+		require_matching_samples(plm_audio_decode(live_decoder), plm_audio_decode(replay_decoder));
+
+	// Both decoders are at an exact frame boundary with no end marker.  This is
+	// starvation, not termination, and must leave them refillable.
+	REQUIRE(plm_audio_decode(live_decoder) == nullptr);
+	REQUIRE(plm_audio_decode(replay_decoder) == nullptr);
+	REQUIRE_FALSE(plm_audio_has_ended(live_decoder));
+	REQUIRE_FALSE(plm_audio_has_ended(replay_decoder));
+
+	std::size_t const remaining = stream.size() - snapshot_bytes;
+	REQUIRE(plm_buffer_write(live_buffer, stream.data() + snapshot_bytes, remaining) == remaining);
+	REQUIRE(plm_buffer_write(replay_buffer, stream.data() + snapshot_bytes, remaining) == remaining);
+
+	for (unsigned frame = 2; frame < 4; ++frame)
+		require_matching_samples(plm_audio_decode(live_decoder), plm_audio_decode(replay_decoder));
+
+	REQUIRE(plm_audio_get_time(live_decoder) == plm_audio_get_time(replay_decoder));
+	plm_audio_destroy(live_decoder);
+	plm_audio_destroy(replay_decoder);
+}
+
+TEST_CASE(
+		"CD-i DVC audio replay reconstruction preserves signalled and observed decoder termination",
+		"[emu][philips][dvc][audio][save]")
+{
+	struct termination_case
+	{
+		std::size_t snapshot_bytes;
+		unsigned decoded_frames;
+		bool backend_observes_end;
+	};
+	constexpr std::array<termination_case, 3> cases {{
+		{ 3, 0, false },
+		{ AUDIO_FRAME_SIZE * 2, 2, true },
+		{ AUDIO_FRAME_SIZE * 2 + AUDIO_FRAME_SIZE / 2, 2, true }
+	}};
+
+	for (termination_case const &test : cases)
+	{
+		std::vector<uint8_t> stream = make_audio_replay_fixture();
+		INFO("snapshot_bytes=" << test.snapshot_bytes
+			<< " decoded_frames=" << test.decoded_frames
+			<< " backend_observes_end=" << test.backend_observes_end);
+
+		plm_buffer_t *const live_buffer = plm_buffer_create_with_capacity(stream.size());
+		plm_buffer_t *const replay_buffer = plm_buffer_create_with_capacity(stream.size());
+		REQUIRE(live_buffer != nullptr);
+		REQUIRE(replay_buffer != nullptr);
+		REQUIRE(plm_buffer_write(live_buffer, stream.data(), test.snapshot_bytes) == test.snapshot_bytes);
+		REQUIRE(plm_buffer_write(replay_buffer, stream.data(), test.snapshot_bytes) == test.snapshot_bytes);
+
+		plm_audio_t *const live_decoder = plm_audio_create_with_buffer(live_buffer, 1);
+		plm_audio_t *const replay_decoder = plm_audio_create_with_buffer(replay_buffer, 1);
+		REQUIRE(live_decoder != nullptr);
+		REQUIRE(replay_decoder != nullptr);
+
+		if (test.decoded_frames)
+		{
+			REQUIRE(plm_audio_has_header(live_decoder));
+			REQUIRE(plm_audio_has_header(replay_decoder));
+		}
+		else
+		{
+			REQUIRE_FALSE(plm_audio_has_header(live_decoder));
+			REQUIRE_FALSE(plm_audio_has_header(replay_decoder));
+		}
+
+		for (unsigned frame = 0; frame < test.decoded_frames; ++frame)
+			require_matching_samples(plm_audio_decode(live_decoder), plm_audio_decode(replay_decoder));
+
+		// The live device signals the program end after its bounded pump.  A
+		// postload rebuild must restore the same marker only after replaying and
+		// advancing the new decoder to the saved frame count.
+		plm_buffer_signal_end(live_buffer);
+		plm_buffer_signal_end(replay_buffer);
+		if (test.backend_observes_end)
+		{
+			REQUIRE(plm_audio_decode(live_decoder) == nullptr);
+			REQUIRE(plm_audio_decode(replay_decoder) == nullptr);
+		}
+		REQUIRE(bool(plm_audio_has_ended(live_decoder)) == test.backend_observes_end);
+		REQUIRE(bool(plm_audio_has_ended(replay_decoder)) == test.backend_observes_end);
+
+		// A later dynamic-buffer write clears PL_MPEG's end marker.  Exact-boundary,
+		// partial-frame and pre-header snapshots must all resume identically.
+		std::size_t const remaining = stream.size() - test.snapshot_bytes;
+		REQUIRE(plm_buffer_write(live_buffer, stream.data() + test.snapshot_bytes, remaining) == remaining);
+		REQUIRE(plm_buffer_write(replay_buffer, stream.data() + test.snapshot_bytes, remaining) == remaining);
+		REQUIRE_FALSE(plm_audio_has_ended(live_decoder));
+		REQUIRE_FALSE(plm_audio_has_ended(replay_decoder));
+
+		REQUIRE(plm_audio_has_header(live_decoder));
+		REQUIRE(plm_audio_has_header(replay_decoder));
+		for (unsigned frame = test.decoded_frames; frame < 4; ++frame)
+			require_matching_samples(plm_audio_decode(live_decoder), plm_audio_decode(replay_decoder));
+
+		REQUIRE(plm_audio_get_time(live_decoder) == plm_audio_get_time(replay_decoder));
+		plm_audio_destroy(live_decoder);
+		plm_audio_destroy(replay_decoder);
+	}
+}

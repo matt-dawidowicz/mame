@@ -128,6 +128,50 @@ CDIC confidence after this checkpoint:
 - Evidence: service-manual topology, direct 210/05 capture programs, independent RTL/source cross-checks, synthetic tests, and compatibility models explicitly marked above.
 - Remaining: an IMS66490 specification; seek/command completion; exact Q/R-W and track/lead behavior; EDC/ECC/error status; DAC queue/sample-edge behavior; long-run audio timing; cycle-level DMA/IRQ behavior.
 
+## Audio campaign DVC profile/queue/save checkpoint
+
+Scope: close software- and specification-provable DVC audio gaps without turning
+the host PL_MPEG backend or MAME PCM queue into an undocumented VMPEG silicon
+specification.  No DMA architecture or FMV tracing behavior changes in this batch.
+
+Evidence boundary: Green Book IX.5.3.2 defines the CD-i Full Motion MPEG-audio
+profile, and IX.5.4.3.1 requires muted output during decoded-frame starvation while
+leaving playback active at an ISO end code.  Those are **H** system requirements.
+PL_MPEG buffer reconstruction and MAME output-queue mechanics are **S/C** adapter
+behavior with deterministic **T** coverage.  Exact VMPEG underflow IRQ timing,
+analogue hold/ramp edges, optional first-frame mute, and invalid-profile response
+remain **U**.
+
+Implemented in this checkpoint:
+
+- separate generic MPEG-1 Layer II syntax parsing from Full Motion profile validation;
+- expose the private bit and exhaust the Green Book bitrate/channel, 44.1 kHz,
+  private-zero, and emphasis constraints with independent violation flags;
+- diagnose an out-of-profile initial header without guessing whether VMPEG rejects,
+  conceals, or reports it;
+- route production PCM output through one tested whole-stereo-frame transition,
+  preserving scheduled silence, zero-on-starvation, exact drain, incomplete-pair
+  retention, and first-sample refill order;
+- retain a deterministic `fdc1c8bc` FNV transition hash and save-stateable
+  starvation telemetry without generating a guessed guest-visible underflow IRQ;
+- save and reconstruct both PL_MPEG's signalled-end and observed-ended states after
+  byte-journal/frame-count replay;
+- cover pre-header, exact frame, partial frame, starvation, end, and refill-after-end
+  reconstruction in addition to the existing mid-frame bit-equivalence fixture.
+
+Validation from this tree: focused optimized, unoptimized, and ASan/UBSan audio
+gates each pass 1,135,145 assertions in 14 cases; the combined DVC gate passes
+2,413,670 assertions in 55 cases; the standalone Philips gate passes 5,847,426
+assertions in 126 cases; and the extended pure selection passes 5,847,700 assertions
+in 127 cases.  The production CDIC/DVC `release64` archive compiles.  The generated
+SDL `mametests` link remains blocked by the container's missing `SDL2/SDL.h`, the
+same host prerequisite recorded for the prior checkpoint.
+
+Remaining DVC-audio boundaries: actual PES/stream-selector interaction, PTS-defined
+sequence changes, rate/restart/mute/reset transitions, guest-visible underflow and
+stream-change events, active simultaneous A/V save/load, long continuation hashes,
+and hardware DAC/rounding/de-emphasis behavior.
+
 ## Phase D checkpoint
 
 Scope: retain the Mono-I SLAVE HLE while replacing ad-hoc nested parsing with an explicit, bounded command model. This checkpoint preserves the established response-readiness, replacement, pointer, IRQ2, and reset behavior. It does not attempt MCU LLE, add title-specific paths, or invent responses for commands whose protocol is unknown.
@@ -281,18 +325,19 @@ Mono-II confidence after this checkpoint:
 | CDIC | `[#######---] 70%` functional / `[######----] 60%` fidelity | Command/register audit, direct 210/05 AUDCTL/audio captures, independent state/filter/buffer/IRQ/XA tests, and SCC-owned DMA client. | Capture seek completion, DAC sample/flush edges, full Q/R-W/track transitions, and malformed/error IRQ behavior. |
 | SLAVE/HLE | `[#######---] 65%` functional / `[####------] 45%` fidelity | Complete classified command map, bounded parser, documented revision response, and pointer/transport/readiness/IRQ2 tests. | Add keyboard and SERVO/X-bus behavior only from MCU, firmware, or bus-trace evidence. |
 | SERVO/MCU | `[###-------] 30%` | Mostly existing HLE/integration behavior. | Capture command/response timing from a known firmware/disc pair. |
-| DVC | `[#####-----] 50%` | Broad native DVC tests and SCC-owned DMA path; prior runtime vertical-slice evidence. | Compare PES/DMA/status/IRQ traces at the first failing scene; no title-specific bypasses. |
+| DVC | `[######----] 55%` | Broad native DVC tests, Full Motion audio-profile oracle, deterministic PCM/save replay, and SCC-owned DMA path; prior runtime vertical-slice evidence. | Validate PES stream changes, audio status/IRQ transitions, and active long-run A/V behavior. |
 | Mono-I / Mono-II glue | `[######----] 60%` | Machine configurations and validation build. | Add clean-boot checkpoints for representative firmware revisions. |
-| Audio | `[#####-----] 50%` | CDIC/DVC decode paths and unit coverage. | Runtime A/V clock and underflow trace comparison. |
+| Audio | `[######----] 55%` | CDIC/XA transport plus DVC reference decode, Full Motion profile, PCM starvation/refill, termination replay, and deterministic unit coverage. | Runtime A/V clock, stream-change, DAC-edge, attenuation, and de-emphasis evidence. |
 | Video | `[######----] 60%` | MCD212 QHY/timing/control tests, DVC suite, and external-video mask regression coverage. | Frame/scanline captures tied to register and overlay traces. |
 | Input | `[#####-----] 50%` | Existing machine input paths; pre-existing local edits are outside this checkpoint. | Validate pointing-device range and button behavior on Mono-I/II. |
 | IRQ/DMA integration | `[######----] 60%` | SCC arbitration tests, channel register semantics, CDIC/DVC clients. | Bus-level IACK/DREQ timing and error injection. |
-| Save states | `[######----] 60%` | SCC fields and queues registered; existing DVC save-state helpers/tests. | Round-trip active I2C/UART/DMA operations and document cross-version limits. |
+| Save states | `[#######---] 65%` | SCC fields/queues plus DVC byte journals, dynamic PCM/video mirrors, bounded replay schedules, and exact audio end-state reconstruction. | Round-trip active simultaneous A/V and I2C/UART/DMA operations; document cross-version limits. |
 
 ## Compatibility models and unknowns
 
 - `dma_channel_external_start()` is an explicit peripheral-DREQ compatibility bridge: it clears stale COC and asserts CA so existing DVC/CDIC clients can enter an SCC-owned transfer. It is not proof of the SCC68070 hardware start sequence.
 - The DVC remains a functional vertical slice, not a cycle-accurate MPEG board model. Runtime success in one scene must not be generalized to later sequences.
+- DVC PCM queue exhaustion emits deterministic zero as required at the presentation boundary, but it is not equated with a measured VMPEG FIFO threshold or underflow IRQ edge.
 - UART TXEMT is forced high for Magicard compatibility and TXRDY is set at reset. Both require firmware trace comparison before removal.
 - ICCR divider code zero uses a one-cycle fallback even though the hardware document marks the code illegal.
 - DMA priority-register values are placeholders. DMA NDT, request modes, bus errors, zero-count behavior, and reset retention require more evidence.

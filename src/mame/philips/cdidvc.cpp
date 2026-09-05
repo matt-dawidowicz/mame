@@ -170,18 +170,24 @@ void cdi_dvc_device::device_start()
 	save_item(NAME(m_audio_output_nonzero));
 	save_item(NAME(m_audio_output_hash));
 	save_item(NAME(m_audio_queue_events));
+	save_item(NAME(m_audio_starvation_frames));
+	save_item(NAME(m_audio_starvation_events));
 	save_item(NAME(m_audio_output_started));
+	save_item(NAME(m_audio_starved));
 	save_item(NAME(m_audio_header_shift));
 	save_item(NAME(m_audio_decoded_frames));
 	save_item(NAME(m_audio_decoded_samples));
 	save_item(NAME(m_audio_header_events));
 	save_item(NAME(m_audio_decode_events));
+	save_item(NAME(m_audio_profile_violations));
 	save_item(NAME(m_audio_bitrate_kbps));
 	save_item(NAME(m_audio_samplerate));
 	save_item(NAME(m_audio_channel_mode));
 	save_item(NAME(m_audio_backend_status));
 	save_item(NAME(m_audio_have_es_header));
 	save_item(NAME(m_audio_have_header));
+	save_item(NAME(m_audio_decoder_end_signalled));
+	save_item(NAME(m_audio_backend_ended));
 
 	save_item(NAME(m_video_pts_anchor90));
 	save_item(NAME(m_video_backend_anchor90));
@@ -390,6 +396,8 @@ void cdi_dvc_device::save_state_presave()
 bool cdi_dvc_device::save_state_rebuild_audio_decoder()
 {
 	uint32_t const wanted_frames = m_audio_decoded_frames;
+	bool const wanted_end_signalled = m_audio_decoder_end_signalled;
+	bool const wanted_backend_ended = m_audio_backend_ended;
 	audio_decoder_destroy();
 	m_audio_buffer = plm_buffer_create_with_capacity(128 * 1024);
 	m_audio_decoder = plm_audio_create_with_buffer(m_audio_buffer, 1);
@@ -407,6 +415,20 @@ bool cdi_dvc_device::save_state_rebuild_audio_decoder()
 		if (!plm_audio_decode(m_audio_decoder))
 			return false;
 	}
+
+	// PL_MPEG's end marker belongs to its opaque input buffer rather than the
+	// journalled bytes.  Reapply it after replaying those bytes.  If the live
+	// backend had already observed the end, reproduce the final failed decode
+	// that sets PL_MPEG's has-ended latch; it must not reveal another frame.
+	if (wanted_end_signalled)
+		plm_buffer_signal_end(m_audio_buffer);
+	if (wanted_backend_ended)
+	{
+		if (!wanted_end_signalled || plm_audio_decode(m_audio_decoder))
+			return false;
+	}
+	if (bool(plm_audio_has_ended(m_audio_decoder)) != wanted_backend_ended)
+		return false;
 	return true;
 }
 
@@ -1170,7 +1192,10 @@ void cdi_dvc_device::audio_output_reset()
 	m_audio_output_nonzero = 0;
 	m_audio_output_hash = 2166136261U;
 	m_audio_queue_events = 0;
+	m_audio_starvation_frames = 0;
+	m_audio_starvation_events = 0;
 	m_audio_output_started = false;
+	m_audio_starved = false;
 }
 
 void cdi_dvc_device::audio_output_set_rate(uint32_t rate)
@@ -1192,58 +1217,69 @@ void cdi_dvc_device::sound_stream_update(sound_stream &stream)
 {
 	for (int i = 0; i < stream.samples(); ++i)
 	{
-		int16_t left = 0;
-		int16_t right = 0;
-		bool have_pcm = false;
+		cdi_dvc::audio_output_frame const output =
+			cdi_dvc::take_audio_output_frame(
+				m_audio_pcm_queue, m_audio_pcm_read, m_audio_wait_samples);
+		bool const have_pcm = output.kind == cdi_dvc::audio_output_kind::pcm;
 
-		if (m_audio_wait_samples)
+		if (output.kind == cdi_dvc::audio_output_kind::scheduled_silence)
 		{
-			--m_audio_wait_samples;
 			++m_audio_silence_frames;
 		}
-		else if (m_audio_pcm_read + 1 < m_audio_pcm_queue.size())
+		else if (have_pcm)
 		{
+			if (m_audio_starved)
+			{
+				m_audio_starved = false;
+				LOGMASKED(LOG_AUDIO,
+						"%s: DVC AUDIO refill after starvation events=%u frames=%llu pending=%u\n",
+						machine().describe_context(), m_audio_starvation_events,
+						(unsigned long long)m_audio_starvation_frames,
+						unsigned(output.pending_frames_before));
+			}
 			if (!m_audio_output_started)
 			{
 				m_audio_output_started = true;
-				uint32_t const pending = uint32_t((m_audio_pcm_queue.size() - m_audio_pcm_read) / 2);
 				LOGMASKED(LOG_AUDIO,
 						"%s: DVC AUDIO output start rate=%u silence=%llu pending=%u\n",
 						machine().describe_context(), m_audio_output_rate,
-						(unsigned long long)m_audio_silence_frames, pending);
+						(unsigned long long)m_audio_silence_frames,
+						unsigned(output.pending_frames_before));
 			}
 
-			left = m_audio_pcm_queue[m_audio_pcm_read++];
-			right = m_audio_pcm_queue[m_audio_pcm_read++];
-			have_pcm = true;
-
-			auto hash_sample = [this](int16_t sample)
-			{
-				uint16_t const u = uint16_t(sample);
-				m_audio_output_hash ^= uint8_t(u & 0xff);
-				m_audio_output_hash *= 16777619U;
-				m_audio_output_hash ^= uint8_t(u >> 8);
-				m_audio_output_hash *= 16777619U;
-			};
-			hash_sample(left);
-			hash_sample(right);
+			m_audio_output_hash = cdi_dvc::hash_pcm16_sample(
+					m_audio_output_hash, output.left);
+			m_audio_output_hash = cdi_dvc::hash_pcm16_sample(
+					m_audio_output_hash, output.right);
 			++m_audio_output_frames;
-			if (left != 0 || right != 0)
+			if (output.left != 0 || output.right != 0)
 				++m_audio_output_nonzero;
 		}
+		else if (m_audio_output_started)
+		{
+			++m_audio_starvation_frames;
+			if (!m_audio_starved)
+			{
+				m_audio_starved = true;
+				++m_audio_starvation_events;
+				LOGMASKED(LOG_AUDIO,
+						"%s: DVC AUDIO starvation event=%u emitted=%u queue_events=%u\n",
+						machine().describe_context(), m_audio_starvation_events,
+						m_audio_output_frames, m_audio_queue_events);
+			}
+		}
 
-		stream.put_int(0, i, left, 32768);
-		stream.put_int(1, i, right, 32768);
+		stream.put_int(0, i, output.left, 32768);
+		stream.put_int(1, i, output.right, 32768);
 
-		if (have_pcm && m_audio_pcm_read >= m_audio_pcm_queue.size())
+		if (have_pcm && output.drained)
 		{
 			LOGMASKED(LOG_AUDIO,
-					"%s: DVC AUDIO output drain frames=%u nonzero=%u silence=%llu fnv=%08x events=%u\n",
+					"%s: DVC AUDIO output drain frames=%u nonzero=%u silence=%llu starvation=%llu fnv=%08x events=%u\n",
 					machine().describe_context(), m_audio_output_frames,
 					m_audio_output_nonzero, (unsigned long long)m_audio_silence_frames,
+					(unsigned long long)m_audio_starvation_frames,
 					m_audio_output_hash, m_audio_queue_events);
-			m_audio_pcm_queue.clear();
-			m_audio_pcm_read = 0;
 		}
 	}
 }
@@ -1275,12 +1311,15 @@ void cdi_dvc_device::audio_decoder_reset()
 	m_audio_decoded_samples = 0;
 	m_audio_header_events = 0;
 	m_audio_decode_events = 0;
+	m_audio_profile_violations = 0;
 	m_audio_bitrate_kbps = 0;
 	m_audio_samplerate = 0;
 	m_audio_channel_mode = 0;
 	m_audio_backend_status = 0;
 	m_audio_have_es_header = false;
 	m_audio_have_header = false;
+	m_audio_decoder_end_signalled = false;
+	m_audio_backend_ended = false;
 
 	m_audio_buffer = plm_buffer_create_with_capacity(128 * 1024);
 	m_audio_decoder = plm_audio_create_with_buffer(m_audio_buffer, 1);
@@ -1288,6 +1327,11 @@ void cdi_dvc_device::audio_decoder_reset()
 
 void cdi_dvc_device::audio_decoder_feed(uint8_t data)
 {
+	// A write reopens PL_MPEG's dynamic ring after signal_end().  Mirror that
+	// otherwise-opaque transition so a later save reconstructs it exactly.
+	m_audio_decoder_end_signalled = false;
+	m_audio_backend_ended = false;
+
 	if (m_audio_replay_journal.size() < cdi_dvc::SAVE_AUDIO_REPLAY_CAPACITY)
 	{
 		m_audio_replay_journal.push_back(data);
@@ -1312,6 +1356,19 @@ void cdi_dvc_device::audio_decoder_feed(uint8_t data)
 			m_audio_samplerate = header.sample_rate_hz;
 			m_audio_channel_mode = header.channel_mode;
 			m_audio_backend_status |= 0x01;
+			uint8_t const profile_violations =
+				cdi_dvc::cdi_full_motion_layer2_profile_violations(header);
+			if (profile_violations)
+			{
+				m_audio_backend_status |= 0x08;
+				++m_audio_profile_violations;
+				LOGMASKED(LOG_AUDIO,
+						"%s: DVC AUDIO Green Book profile violation flags=%02x bitrate=%u rate=%u mode=%u private=%u emphasis=%u event=%u\n",
+						machine().describe_context(), profile_violations,
+						header.bitrate_kbps, header.sample_rate_hz,
+						header.channel_mode, header.private_bit ? 1U : 0U,
+						header.emphasis, m_audio_profile_violations);
+			}
 			++m_audio_header_events;
 			LOGMASKED(LOG_AUDIO, "%s: DVC AUDIO ES header bitrate=%u rate=%u mode=%u status=%02x event=%u\n",
 				machine().describe_context(), m_audio_bitrate_kbps, m_audio_samplerate,
@@ -1344,8 +1401,13 @@ void cdi_dvc_device::audio_decoder_feed(uint8_t data)
 
 void cdi_dvc_device::audio_decoder_pump()
 {
-	if (!m_audio_decoder || !m_audio_have_header)
+	if (!m_audio_decoder)
 		return;
+	if (!m_audio_have_header)
+	{
+		m_audio_backend_ended = plm_audio_has_ended(m_audio_decoder) != 0;
+		return;
+	}
 
 	// Synchronize the stream before changing its future sample queue. This is
 	// the standard MAME sound-device rule for state changes that affect output.
@@ -1368,11 +1430,7 @@ void cdi_dvc_device::audio_decoder_pump()
 		for (size_t i = 0; i < values; ++i)
 		{
 			int16_t const pcm = cdi_dvc::quantize_plm_audio_sample(samples->interleaved[i]);
-			uint16_t const u = uint16_t(pcm);
-			hash ^= uint8_t(u & 0xff);
-			hash *= 16777619U;
-			hash ^= uint8_t(u >> 8);
-			hash *= 16777619U;
+			hash = cdi_dvc::hash_pcm16_sample(hash, pcm);
 			m_audio_pcm_queue.push_back(pcm);
 		}
 
@@ -1388,6 +1446,7 @@ void cdi_dvc_device::audio_decoder_pump()
 				m_audio_decoded_samples, m_audio_decode_events,
 				m_audio_backend_status, hash);
 	}
+	m_audio_backend_ended = plm_audio_has_ended(m_audio_decoder) != 0;
 
 	uint32_t const added_frames = m_audio_decoded_samples - decoded_before;
 	if (!added_frames)
@@ -1425,6 +1484,7 @@ void cdi_dvc_device::audio_decoder_flush()
 		return;
 
 	plm_buffer_signal_end(m_audio_buffer);
+	m_audio_decoder_end_signalled = true;
 	audio_decoder_pump();
 }
 

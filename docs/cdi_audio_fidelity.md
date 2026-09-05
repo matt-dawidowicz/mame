@@ -28,23 +28,67 @@ accepted header profile explicit.
    The scan now stops exactly at the buffer end.  Deterministic tests cover a
    three-byte header fragment, header completion, one-byte-short frame,
    exact-frame refill, end signalling, and no duplicate output.
-2. PL_MPEG rejected a legal change of Layer II bitrate between adjacent frames.
-   Frame size and allocation tables are selected by each frame header, so the
-   decoder now permits bitrate and channel-mode changes while retaining its
-   per-instance sample-rate lock.  The regression changes bitrate, padding, and
-   all four channel modes across four adjacent frames.
+2. PL_MPEG rejected a conventional Layer II bitrate change between adjacent
+   frames.  Frame size and allocation tables are selected by each frame header,
+   so the backend now permits bitrate and channel-mode changes while retaining
+   its per-instance sample-rate lock.  This is decoder capability, not permission
+   to change bitrate inside a CD-i audio sequence: Green Book IX.5.3.2.1 requires
+   a presentation-time sequence boundary for that change.
 3. The DVC header helper now returns the parsed bitrate/sample-rate indices,
    frame size, CRC presence, padding, channel mode, mode extension, emphasis,
-   and an acceptance/rejection classification.  Free format (bitrate index
-   zero) is distinguished from the reserved bitrate index, and the reserved
-   emphasis value is accepted for robust decoding but labelled explicitly
-   rather than silently promoted to a legal profile value.
+   private bit, and an MPEG-syntax acceptance/rejection classification.  Free
+   format (bitrate index zero) is distinguished from the reserved bitrate index,
+   and the reserved emphasis value is accepted for robust decoding but labelled
+   explicitly rather than silently promoted to a legal Full Motion profile value.
 
 The focused audio gate at this checkpoint is 1,046,230 assertions in nine test
 cases.  The combined DVC/parser/save-replay/reference test binary is 2,235,334
 assertions in 32 test cases.  The broader standalone Philips gate is 2,332,516
 assertions in 104 test cases, including the unchanged CDIC/XA baseline of 69
 assertions in eight test cases.
+
+## Full Motion profile, PCM queue, and audio-save checkpoint (2026-09-05)
+
+This batch separates three layers that were previously easy to conflate: legal
+MPEG-1 Layer II syntax, the narrower CD-i Full Motion authoring profile, and
+VMPEG behavior on input that violates that profile.
+
+1. Green Book IX.5.3.2 mandates 44.1 kHz, private bit zero, no emphasis or
+   50/15-microsecond emphasis, no free format, and a mode-dependent Layer II
+   bitrate matrix.  It also holds ID, layer, bitrate index, and sampling frequency
+   constant within an audio sequence.  The profile checker exhausts every
+   combination of 14 indexed bitrates, three syntactic sample rates, four channel
+   modes, both private-bit values, and all four emphasis values.  Independent
+   violation flags make compound malformed cases deterministic.  The ordinary
+   parser still recognizes a syntactically decodable initial 32/48 kHz or other
+   out-of-profile header and records a diagnostic; silently inventing the
+   VMPEG's error/concealment response would not be justified by the specification.
+2. Green Book IX.5.4.3.1 requires the decoder to mute while no decoded audio frame
+   is available and to remain in MPEG-audio playback mode at an ISO end code.
+   MAME's current output model now passes through one production-used pure helper:
+   scheduled silence wins first, only complete stereo pairs are consumed, queue
+   exhaustion emits zero, and a later refill resumes without replay or loss.  A
+   retained transition fixture produces FNV-1a `fdc1c8bc`.  Save-stateable
+   starvation counters are diagnostic only; no VMPEG underflow IRQ edge is
+   fabricated from host-queue occupancy.
+3. PL_MPEG stores `signal_end` and `has_ended` inside an opaque buffer.  The replay
+   journal did not preserve either, so a state saved at ISO end reconstructed a
+   decoder with different termination state.  Both states are now registered.
+   Postload replays bytes and the exact decoded-frame count before reapplying the
+   marker; it performs the terminal failed decode only if the live backend had
+   already done so.  Regressions cover pre-header, exact-boundary, partial-frame,
+   starvation, observed/unobserved end, refill after end, and the existing
+   bit-identical mid-frame continuation.
+
+The optimized and unoptimized focused audio gates pass 1,135,145 assertions in
+14 cases, as does the ASan/UBSan build with LeakSanitizer disabled.  The combined
+DVC/parser/timing gate passes 2,413,670 assertions in 55 cases.  The standalone
+Philips gate passes 5,847,426 assertions in 126 cases, and the extended pure
+selection including the repository's unchanged `rgbutil` test passes 5,847,700
+assertions in 127 cases.  Exact VMPEG DAC hold/ramp edges, first-frame optional
+muting, profile-error signaling, complete stream switching, active A/V save/load,
+and long continuation remain outside this checkpoint and are still open in the
+campaign matrix.
 
 ## Independent PCM reference checkpoint (2026-09-05)
 
@@ -251,12 +295,14 @@ preserved and no RGB source is part of this checkpoint.
 | ID | Class | Source | Supported claim | Limit |
 | --- | --- | --- | --- | --- |
 | MPEG-STD-001 | Standards-derived | [RFC 3003](https://www.rfc-editor.org/rfc/rfc3003), referring normatively to ISO/IEC 11172-3:1993 | MPEG elementary audio is a sequence of independently headed frames and may be interspersed with non-MPEG data, so deterministic resynchronization is required. | RFC 3003 is not a VMPEG hardware specification. |
+| MPEG-STD-002 | Standards-derived | [Philips/Sony CD-i Green Book, May 1994 Release 2](https://archive.org/download/cdi_may94_r2/cdi_may94_r2.pdf), Chapter IX sections 5.3.1, 5.3.2, and 5.4.3 | Defines Full Motion audio stream IDs/packet limits, the Layer II bitrate-by-mode table, 44.1 kHz/private/emphasis constraints, audio-sequence invariants, muted output under starvation, stream-switch acceptance, and ISO-end playback continuity. | It permits optional first-frame muting and does not specify the physical VMPEG response to malformed/profile-invalid input or exact DAC/IRQ edges. |
 | MPEG-REF-001 | Independently corroborated | [FFmpeg `mpegaudiodecheader.c` at `ef5929f`](https://github.com/FFmpeg/FFmpeg/blob/ef5929f4ebb158ae689845055513a5725f5de28c/libavcodec/mpegaudiodecheader.c) | Indexed Layer II frame size is recalculated from each frame's bitrate, sample rate, and padding; free format is represented separately when a size cannot be derived from one header. | FFmpeg behavior is reference-decoder evidence, not VMPEG evidence. |
 | MPEG-REF-002 | Independently corroborated | [mpg123 `mpeghead.h` at `f6c19f4`](https://github.com/madebr/mpg123/blob/f6c19f46031088efc8d0e5b83305a6f36ceceb65/src/libmpg123/mpeghead.h) and [parser](https://github.com/madebr/mpg123/blob/f6c19f46031088efc8d0e5b83305a6f36ceceb65/src/libmpg123/parse.c) | The ordinary compatible-header mask excludes bitrate, while the parser rejects bitrate index 15 and handles index zero as free format. | mpg123 supports profiles beyond CD-i Full Motion. |
-| MPEG-REF-003 | Current implementation model | [PL_MPEG upstream at `c871f2b`](https://github.com/phoboslab/pl_mpeg/blob/c871f2be022ece7ef4f64230b4fb8e1fb9eb6023/pl_mpeg.h) | Documents the inherited decoder architecture and the upstream constant-header restriction from which MAME's streaming fixes diverge. | Upstream PL_MPEG is not an independent hardware model. |
+| MPEG-REF-003 | Current implementation model | [PL_MPEG upstream at `c871f2b`](https://github.com/phoboslab/pl_mpeg/blob/c871f2be022ece7ef4f64230b4fb8e1fb9eb6023/pl_mpeg.h) | Documents the inherited decoder architecture, the upstream constant-header restriction from which MAME's streaming fixes diverge, and the dynamic buffer's separate `total_size`/`has_ended` state: `signal_end` fixes the former and a later write clears both. | Upstream PL_MPEG is not an independent hardware model; these fields explain required save reconstruction rather than VMPEG state. |
 | MPEG-REF-004 | Controlled synthetic experiment | `tests/emu/philips/cdidvc_audio_reference.cpp` and its retained data header | Non-silent mono, dual-channel, stereo, and joint-stereo PL_MPEG output remains within measured bounds of FFmpeg 6.1.1's independent fixed-point Layer II decoder. | This compares software decoders; it does not establish VMPEG DSP rounding. |
 | DVC-HW-001 | Hardware-confirmed | [CDi_FMVTest FMA playback-delay capture at `991b9cb`](https://github.com/Slamy/CDi_FMVTest/tree/991b9cb22905942d969a6d3219f89c5e941a7741/fma_playback_delay) | On the recorded 210/05 + VMPEG system, `MA_TRIG_DEC` occurs close enough to analogue sample output to serve as a software timing marker; the retained analysis bounds any additional decode delay to roughly 4 ms after accounting for encoder silence. | One hardware/configuration and one fixture; it does not establish long-duration drift or underflow edges. |
 | DVC-RE-001 | Independently corroborated | [MiSTer CD-i DVC notes at `1d0d29b`](https://github.com/MiSTer-devel/CDi_MiSTer/blob/1d0d29b164a05d11db0094564feacf0f66c1d4e4/doc/dvc.md) | FMA DCLK is treated as 45 kHz and the audio clock is the driver-visible link to MPEG SCR timing. | Reverse-engineering notes, not a Philips register specification. |
+| DVC-RE-002 | Independent implementation | [MiSTer VMPEG/FMA RTL at `1d0d29b`](https://github.com/MiSTer-devel/CDi_MiSTer/blob/1d0d29b164a05d11db0094564feacf0f66c1d4e4/rtl/vmpeg.sv) and [audio path](https://github.com/MiSTer-devel/CDi_MiSTer/blob/1d0d29b164a05d11db0094564feacf0f66c1d4e4/rtl/mpeg/fma/mpeg_audio.sv) | Keeps DSP-reported underflow and stream-change events distinct from output-FIFO occupancy; its compatibility output starts half-full and slowly ramps a held sample toward zero after empty. | The source labels stream-change handling probably inaccurate, and its FIFO/ramp policy is RTL compatibility behavior rather than a hardware capture.  MAME therefore does not copy these exact edges. |
 | XA-STD-001 | Standards-derived | [Philips/Sony CD-i Green Book, May 1994 Release 2](https://archive.org/download/cdi_may94_r2/cdi_may94_r2.pdf), Chapter II sections 4.5/4.9 and Appendix II | Defines double-written subheaders, channel ranges, legal Audio/Video/Data and Form combinations, empty/message restrictions, audio-mask routing, and every audio coding field. | A media/system specification does not identify the private CDIC register response to malformed input. |
 | XA-STD-002 | Standards-derived | [Philips/Sony CD-ROM XA System Description, May 1991](https://archive.org/download/xa-10-may-1991/CD-ROM%20XA%20Specification%20May%201991%20-%20print%20to%20pdf%20in%20chrome.pdf), Chapter II sections 4.3 and 6.2 | Trigger is not channel-allocated; EOF/EOR are channel-allocated. The decoder model uses CIRC reliability flags to select trustworthy duplicated subheader bytes. | MAME's raw image interface does not expose those per-byte CIRC flags. |
 | XA-REF-001 | Independently corroborated | [jPSXdec duplicated-subheader and coding parser at `fd54036`](https://github.com/m35/jpsxdec/blob/fd5403629ac81aaca0feff0dc89e6cadd6353b26/jpsxdec/src/jpsxdec/cdreaders/CdSectorXaSubHeader.java) | An independent XA extraction tool flags unequal duplicated fields as corruption and recognizes the same reserved coding subfields. | Its confidence-based recovery is a PlayStation media-extraction compatibility policy, not CDIC hardware behavior, so MAME does not copy that guess. |
@@ -273,23 +319,35 @@ preserved and no RGB source is part of this checkpoint.
 ## Explicit implementation boundaries
 
 - **Free format:** ISO-family reference decoders recognize bitrate index zero as
-  free format.  MAME classifies it as `unsupported_free_format`; PL_MPEG cannot
-  derive its length by searching for a following compatible header.  Whether
-  the CD-i Full Motion profile or VMPEG silicon accepts it remains unproven.
-- **Sample-rate changes:** the current PL_MPEG instance locks sample rate so
-  MAME's sound stream is never changed underneath queued samples.  A rate change
-  currently requires an explicit decoder restart; simple stream selection does
-  not yet provide that transition.  Exact VMPEG behavior for an in-stream rate
-  change is unknown.
+  free format, but Green Book IX.5.3.2.5 explicitly excludes it from CD-i Full
+  Motion.  MAME classifies it as `unsupported_free_format`; PL_MPEG cannot derive
+  its length by searching for a following compatible header.  The VMPEG response
+  to prohibited input remains unmeasured.
+- **Sample rate and sequence continuity:** the Full Motion profile permits only
+  44.1 kHz and holds bitrate/sample frequency constant within an audio sequence.
+  The conventional parser deliberately distinguishes syntactically valid 48/32
+  kHz input and reports it as out of profile.  PL_MPEG locks each decoder instance's
+  sample rate, while stream selection does not yet model a PTS-defined sequence
+  boundary or rate restart.  Prohibited-input behavior remains unknown.
 - **CRC:** protection and CRC length are parsed, but PL_MPEG does not validate
   the Layer II CRC.  Error signalling/concealment on VMPEG is unknown.
-- **Emphasis:** the two header bits are exposed for evidence gathering.  The
-  reserved value has its own `accepted_reserved_emphasis` classification; this
-  checkpoint does not call it standards-valid and does not implement MPEG
-  de-emphasis.
+- **Private bit and emphasis:** Full Motion reserves the private bit as zero and
+  permits only no emphasis and 50/15-microsecond emphasis.  Independent profile
+  flags expose every violation.  The conventional parser still distinguishes the
+  reserved emphasis code, and MAME does not yet implement MPEG de-emphasis or
+  claim a VMPEG malformed-input response.
 - **Resynchronization:** accepting a structurally valid indexed header after
   junk is a software streaming model.  The exact VMPEG false-sync and error-event
   policy has not been measured.
+- **DVC PCM starvation:** Green Book requires muted output until another decoded
+  frame is ready.  MAME's zero-output, whole-stereo-pair queue rule is deterministic
+  and production-tested, but host-queue exhaustion is not asserted to be the exact
+  VMPEG FIFO threshold or underflow-event edge.  Hold/ramp behavior at the analogue
+  boundary remains unresolved.
+- **DVC audio save reconstruction:** the opaque PL_MPEG input-end marker and its
+  observed-ended latch are now replayed exactly at the software boundary.  This
+  proves deterministic backend continuation; it is not a physical VMPEG state or
+  cross-version save-format promise.
 - **Malformed XA signaling:** deterministic MAME behavior rejects contradictory
   duplicated subheaders and invalid CD-i sector/coding combinations.  For sound
   groups it follows the measured Mono-I copy selection, treating disagreement in a
@@ -334,7 +392,7 @@ assigned a function.  This certification does not include the separately listed 
 mute/flush edge area.
 
 No other incomplete matrix area is promoted to 100% by this checkpoint.  Remaining
-blockers include VMPEG CRC and stream-transition behavior, DVC queue/save/clock
-runtime gates, CDIC invalid-coding/error signaling, XA/CD-DA de-emphasis, silicon
-rounding and attenuation, exact DAC sample edges, long-duration A/V drift, and full
-CD-DA Q/R-W/track/seek behavior.
+blockers include VMPEG CRC/profile-error and stream-transition behavior, DVC
+rate/reset/active-A/V save and clock runtime gates, CDIC invalid-coding/error
+signaling, XA/CD-DA de-emphasis, silicon rounding and attenuation, exact DAC sample
+edges, long-duration A/V drift, and full CD-DA Q/R-W/track/seek behavior.

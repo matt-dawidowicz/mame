@@ -86,10 +86,36 @@ struct mpeg1_layer2_audio_header
 	uint8_t channel_mode;
 	uint8_t mode_extension;
 	uint8_t emphasis;
+	bool private_bit;
 	bool has_crc;
 	bool padding;
 	mpeg1_layer2_audio_header_status status;
 	bool valid;
+};
+
+enum : uint8_t
+{
+	CDI_LAYER2_PROFILE_INVALID_HEADER = 0x01,
+	CDI_LAYER2_PROFILE_BITRATE_CHANNEL = 0x02,
+	CDI_LAYER2_PROFILE_SAMPLE_RATE = 0x04,
+	CDI_LAYER2_PROFILE_PRIVATE_BIT = 0x08,
+	CDI_LAYER2_PROFILE_EMPHASIS = 0x10
+};
+
+enum class audio_output_kind : uint8_t
+{
+	scheduled_silence,
+	pcm,
+	starvation
+};
+
+struct audio_output_frame
+{
+	int16_t left;
+	int16_t right;
+	std::size_t pending_frames_before;
+	audio_output_kind kind;
+	bool drained;
 };
 
 // Current scheduler implementation model: when multiple timestamped decoded
@@ -334,6 +360,18 @@ constexpr int16_t quantize_plm_audio_sample(float sample)
 		: int32_t(scaled - 0.5F));
 }
 
+// Byte-order-independent FNV-1a over signed 16-bit PCM represented in little
+// endian order.  This is diagnostic hashing, not part of the audio signal path.
+constexpr uint32_t hash_pcm16_sample(uint32_t hash, int16_t sample)
+{
+	uint16_t const value = uint16_t(sample);
+	hash ^= uint8_t(value & 0xff);
+	hash *= 16777619U;
+	hash ^= uint8_t(value >> 8);
+	hash *= 16777619U;
+	return hash;
+}
+
 // Decode a complete MPEG-1 Layer II frame header.  This is elementary-stream
 // format parsing, not a VMPEG register/hardware claim.  Free-format headers are
 // syntactically distinct from the reserved bitrate index, but remain unsupported
@@ -360,6 +398,7 @@ constexpr mpeg1_layer2_audio_header decode_mpeg1_layer2_audio_header(uint32_t he
 		uint8_t((header >> 6) & 0x03),
 		uint8_t((header >> 4) & 0x03),
 		uint8_t(header & 0x03),
+		((header >> 8) & 1U) != 0,
 		((header >> 16) & 1U) == 0,
 		((header >> 9) & 1U) != 0,
 		mpeg1_layer2_audio_header_status::supported,
@@ -389,6 +428,36 @@ constexpr mpeg1_layer2_audio_header decode_mpeg1_layer2_audio_header(uint32_t he
 	}
 
 	return result;
+}
+
+// Green Book IX.5.3.2 constrains conventional MPEG-1 Layer II syntax to the
+// CD-i Full Motion profile: a mode-dependent bitrate table, 44.1 kHz only,
+// private bit zero, and either no emphasis or 50/15 microsecond emphasis.
+// Stereo includes independent, intensity (joint), and dual-channel modes.
+// Return independent flags so malformed fixtures cannot hide one violation
+// behind another.  This remains separate from syntax parsing because the
+// VMPEG response to out-of-profile input is not specified by available evidence.
+constexpr uint8_t cdi_full_motion_layer2_profile_violations(
+		mpeg1_layer2_audio_header const &header)
+{
+	if (!header.valid)
+		return CDI_LAYER2_PROFILE_INVALID_HEADER;
+
+	bool const mono = header.channel_mode == 3;
+	bool const bitrate_permitted = mono
+		? header.bitrate_index >= 1 && header.bitrate_index <= 10
+		: (header.bitrate_index >= 4 && header.bitrate_index <= 14
+			&& header.bitrate_index != 5);
+	uint8_t violations = 0;
+	if (!bitrate_permitted)
+		violations |= CDI_LAYER2_PROFILE_BITRATE_CHANNEL;
+	if (header.sample_rate_index != 0)
+		violations |= CDI_LAYER2_PROFILE_SAMPLE_RATE;
+	if (header.private_bit)
+		violations |= CDI_LAYER2_PROFILE_PRIVATE_BIT;
+	if (header.emphasis > 1)
+		violations |= CDI_LAYER2_PROFILE_EMPHASIS;
+	return violations;
 }
 
 // ISO/IEC 11172 picture-rate codes permitted by the CD-i Full Motion profile.
@@ -433,6 +502,37 @@ inline void compact_consumed_audio_samples(std::vector<int16_t> &samples, std::s
 		samples.erase(samples.begin(), samples.begin() + read);
 	}
 	read = 0;
+}
+
+// Consume exactly one stereo output frame from the current MAME queue model.
+// Timestamp-scheduled silence takes priority, a complete stereo pair is never
+// split, and an empty/incomplete queue deterministically emits zero without
+// consuming data.  This deliberately does not claim VMPEG DAC-edge behavior.
+inline audio_output_frame take_audio_output_frame(
+		std::vector<int16_t> &samples, std::size_t &read, uint64_t &wait_samples)
+{
+	std::size_t const pending = read < samples.size()
+		? (samples.size() - read) / 2U
+		: 0;
+
+	if (wait_samples)
+	{
+		--wait_samples;
+		return { 0, 0, pending, audio_output_kind::scheduled_silence, false };
+	}
+
+	if (read >= samples.size() || samples.size() - read < 2U)
+		return { 0, 0, pending, audio_output_kind::starvation, false };
+
+	int16_t const left = samples[read++];
+	int16_t const right = samples[read++];
+	bool const drained = read >= samples.size();
+	if (drained)
+	{
+		samples.clear();
+		read = 0;
+	}
+	return { left, right, pending, audio_output_kind::pcm, drained };
 }
 
 constexpr video_command_effects decode_video_command(uint16_t command)

@@ -68,7 +68,15 @@ These percentages are working estimates of implementation plus evidence complete
 - [x] Validate rejected sync/version/layer/bitrate/sample-rate combinations.
 - [x] Add malformed/truncated/resynchronization vectors.
 - [ ] Verify stream-ID and PES routing interaction for audio packets.
-- [ ] Document any VMPEG-specific behavior that differs from conventional MPEG expectations.
+- [x] Document Full Motion profile behavior that differs from conventional MPEG expectations.
+
+The May 1994 Green Book profile is now kept separate from generic MPEG syntax.
+An exhaustive profile oracle covers the Layer II mono/stereo bitrate table,
+44.1 kHz-only sampling, reserved private bit, and the two allowed emphasis values.
+It also records that free format is forbidden and bitrate/sample frequency cannot
+change inside one audio sequence.  MAME diagnoses an out-of-profile initial header
+but continues to decode because the physical VMPEG error response is not specified;
+that compatibility policy is not presented as hardware behavior.
 
 100% gate: deterministic parser behavior over the legal profile space plus adversarial malformed vectors, with no known unmodeled VMPEG-specific behavior.
 
@@ -85,17 +93,31 @@ in-stream rate-change, and DSP-rounding evidence limits.
 
 ### 3. DVC PCM buffering/output
 
-- [ ] Validate queue refill/starvation behavior.
+- [x] Validate queue refill/starvation behavior.
 - [ ] Validate exact output-rate changes and stream restart behavior.
 - [ ] Validate mute/unmute, flush, and decoder-reset transitions.
-- [ ] Add deterministic PCM hashes for representative transition fixtures.
+- [x] Add deterministic PCM hashes for representative transition fixtures.
+
+The production output path now uses the same pure stereo-frame transition helper
+as the regression.  Timestamp silence has priority, incomplete pairs are retained,
+starvation produces deterministic zero, draining compacts exactly once, and refill
+resumes at its first sample.  The retained transition fixture hashes to `fdc1c8bc`.
+Green Book IX.5.4.3.1 requires muted output while no decoded frames are available;
+the exact VMPEG DAC edge and underflow interrupt timing remain open.
 
 ### 4. DVC audio save states
 
-- [ ] Keep current mid-frame replay equivalence test.
-- [ ] Add snapshots at frame boundary, partial frame, starvation, decoder flush, sequence end, and stream switch.
+- [x] Keep current mid-frame replay equivalence test.
+- [x] Add snapshots at frame boundary, partial frame, starvation, and backend flush/end-marker boundaries.
+- [ ] Add full program-sequence-end and stream-switch device snapshots.
 - [ ] Add active simultaneous A/V save/load runtime regression.
 - [ ] Validate long post-load continuation hashes/timestamps.
+
+The save image now records both PL_MPEG's input-end marker and whether its opaque
+buffer has already observed that end.  Postload reapplies the marker after journal
+replay and recreates the terminal failed decode only when it occurred live.  Tests
+cover a three-byte pre-header, exact frame boundary, partial following frame,
+starvation/refill, observed end, unobserved signalled end, and reopening after end.
 
 ### 5. DVC DMA audio ingress
 
@@ -234,15 +256,16 @@ lead-in/lead-out, pause, and seek behavior remain unresolved.
 ### 17. Audio decoder termination, starvation, and stream switching
 
 - [ ] Termination at every meaningful packet/frame boundary.
-- [ ] Refill after starvation without duplicate/drop.
+- [x] Refill after starvation without duplicate/drop.
 - [ ] Rapid stop/start and stream-ID changes.
 - [ ] Interactive-FMV branch changes.
 - [ ] Simultaneous audio/video state-transition regression.
 
-The CDIC portion now has deterministic `$ff`, interrupt-masked abort, immediate
+The CDIC portion has deterministic `$ff`, interrupt-masked abort, immediate
 replacement, XA double-buffer starvation/refill, and pre-start CD-DA coverage.
-These checks do not close the DVC packet/frame boundaries, interactive branching,
-or exact DAC flush rules required by this combined row.
+The DVC portion now covers queue drain/starvation/refill and PL_MPEG end-marker
+reconstruction without duplicate/drop.  Packet-level termination, rapid stream
+selection, interactive branching, and exact DAC flush rules remain open.
 
 ## Evidence hierarchy
 
@@ -273,8 +296,8 @@ Before merging any substantive audio batch:
 
 ## Deliverables
 
-- [ ] Source fixes/refactors with no title-specific hacks.
-- [ ] New deterministic unit/regression fixtures.
+- [x] Source fixes/refactors with no title-specific hacks.
+- [x] New deterministic unit/regression fixtures.
 - [ ] Runtime telemetry only where needed, removed or reduced after evidence is captured.
 - [x] `docs/cdi_audio_fidelity.md` documenting confirmed behavior, inferred models, evidence sources, and unresolved hardware questions.
 - [ ] Compatibility matrix for representative XA/CDDA/DVC titles.

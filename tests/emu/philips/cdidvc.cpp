@@ -366,7 +366,7 @@ TEST_CASE("CD-i DVC picture-event reordering covers every picture type and marke
 	}
 }
 
-TEST_CASE("CD-i DVC audio queue compaction discards only consumed samples", "[emu][philips][dvc]")
+TEST_CASE("CD-i DVC audio queue compaction discards only consumed samples", "[emu][philips][dvc][audio]")
 {
 	std::vector<int16_t> samples { 10, 11, 20, 21, 30, 31 };
 	std::size_t read = 2;
@@ -389,6 +389,81 @@ TEST_CASE("CD-i DVC audio queue compaction discards only consumed samples", "[em
 	cdi_dvc::compact_consumed_audio_samples(samples, read);
 	REQUIRE(read == 0);
 	REQUIRE(samples.empty());
+}
+
+TEST_CASE("CD-i DVC PCM output preserves order across scheduled silence starvation and refill", "[emu][philips][dvc][audio]")
+{
+	using kind = cdi_dvc::audio_output_kind;
+	std::vector<int16_t> samples { 10, 11, 20, 21 };
+	std::size_t read = 0;
+	uint64_t wait = 2;
+	uint32_t hash = 2166136261U;
+
+	auto take = [&]()
+	{
+		return cdi_dvc::take_audio_output_frame(samples, read, wait);
+	};
+	auto hash_frame = [&hash](cdi_dvc::audio_output_frame const &frame)
+	{
+		hash = cdi_dvc::hash_pcm16_sample(hash, frame.left);
+		hash = cdi_dvc::hash_pcm16_sample(hash, frame.right);
+	};
+
+	auto output = take();
+	REQUIRE(output.kind == kind::scheduled_silence);
+	REQUIRE(output.left == 0);
+	REQUIRE(output.right == 0);
+	REQUIRE(output.pending_frames_before == 2);
+	REQUIRE_FALSE(output.drained);
+	REQUIRE(wait == 1);
+	REQUIRE(read == 0);
+
+	output = take();
+	REQUIRE(output.kind == kind::scheduled_silence);
+	REQUIRE(wait == 0);
+	REQUIRE(read == 0);
+
+	output = take();
+	REQUIRE(output.kind == kind::pcm);
+	REQUIRE(output.left == 10);
+	REQUIRE(output.right == 11);
+	REQUIRE(output.pending_frames_before == 2);
+	REQUIRE_FALSE(output.drained);
+	hash_frame(output);
+
+	output = take();
+	REQUIRE(output.kind == kind::pcm);
+	REQUIRE(output.left == 20);
+	REQUIRE(output.right == 21);
+	REQUIRE(output.pending_frames_before == 1);
+	REQUIRE(output.drained);
+	REQUIRE(samples.empty());
+	REQUIRE(read == 0);
+	hash_frame(output);
+
+	output = take();
+	REQUIRE(output.kind == kind::starvation);
+	REQUIRE(output.left == 0);
+	REQUIRE(output.right == 0);
+	REQUIRE_FALSE(output.drained);
+	REQUIRE(samples.empty());
+
+	// A refill starts at its first sample: no already-consumed frame is replayed
+	// and no incomplete stereo pair can leak a single-channel value.
+	samples.push_back(30);
+	output = take();
+	REQUIRE(output.kind == kind::starvation);
+	REQUIRE(samples.size() == 1);
+	REQUIRE(read == 0);
+	samples.push_back(31);
+	output = take();
+	REQUIRE(output.kind == kind::pcm);
+	REQUIRE(output.left == 30);
+	REQUIRE(output.right == 31);
+	REQUIRE(output.drained);
+	hash_frame(output);
+
+	REQUIRE(hash == 0xfdc1c8bcU);
 }
 
 TEST_CASE("CD-i DVC MPEG audio accepts legal per-frame channel-mode changes", "[emu][philips][dvc]")
@@ -496,8 +571,11 @@ void append_frame(std::vector<uint8_t> &stream, std::vector<uint8_t> const &fram
 
 } // anonymous namespace
 
-TEST_CASE("CD-i DVC MPEG audio accepts per-frame Layer II bitrate changes", "[emu][philips][dvc][audio]")
+TEST_CASE("CD-i DVC PL_MPEG backend accepts per-frame Layer II bitrate changes", "[emu][philips][dvc][audio]")
 {
+	// This isolates conventional decoder capability.  Green Book IX.5.3.2.1
+	// requires a bitrate change to begin a new CD-i audio sequence, identified
+	// by its presentation-time gap; raw elementary-stream data has no PTS.
 	struct frame_spec
 	{
 		uint8_t bitrate_index;
@@ -509,7 +587,7 @@ TEST_CASE("CD-i DVC MPEG audio accepts per-frame Layer II bitrate changes", "[em
 		{ 10, PLM_AUDIO_MODE_STEREO, false },
 		{ 11, PLM_AUDIO_MODE_JOINT_STEREO, true },
 		{ 8, PLM_AUDIO_MODE_DUAL_CHANNEL, false },
-		{ 12, PLM_AUDIO_MODE_MONO, true }
+		{ 9, PLM_AUDIO_MODE_MONO, true }
 	}};
 
 	std::vector<uint8_t> stream;
