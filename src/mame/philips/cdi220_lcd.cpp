@@ -5,7 +5,7 @@
 #include "cdi220_lcd.h"
 
 // 14 segment display font
-static const uint8_t cdi220_lcd_char[20*22] =
+static constexpr uint8_t cdi220_lcd_char[20*22] =
 {
 	 0, 14,  9,  9,  9,  9,  9,  9,  9,  9,  9,  9,  9,  9,  9,  9,  9,  9, 10,  0,
 	14, 14, 14,  9,  9,  9,  9,  9,  9,  9,  9,  9,  9,  9,  9,  9,  9, 10, 10, 10,
@@ -32,7 +32,7 @@ static const uint8_t cdi220_lcd_char[20*22] =
 };
 
 // 3x5 pixel font. Only A-Z are needed.
-static const uint16_t cdi220_lcd_font[26] =
+static constexpr uint16_t cdi220_lcd_font[26] =
 {
 	0x7bed, 0x6bae, 0x3923, 0x6b6e, 0x79a7, 0x79a4, 0x396b, 0x5bed, 0x7497, 0x126a,     // A-J
 	0x5bad, 0x4927, 0x5fed, 0x5ffd, 0x2b6a, 0x6ba4, 0x2b7b, 0x6bad, 0x388e, 0x7492,     // K-T
@@ -47,42 +47,33 @@ static constexpr int LCD_SIDE_Y0 = 12;
 static constexpr int LCD_SIDE_Y1 = 18;
 static constexpr int LCD_SIDE_Y2 = 24;
 
-static const struct
+static constexpr struct
 {
 	uint16_t id;
 	const char *text;
 	int x, y;
 } cdi220_lcd_indicators[] =
 {
-	{ 0x2000, "MUTE",					2, LCD_SIDE_Y0 },
-	{ 0x0004, "PAUSE",					2, LCD_SIDE_Y1 },
-	{ 0x1000, "PLAY",					2, LCD_SIDE_Y2 },
-	{ 0x0400, "FTS",          LCD_DIGIT_X,           6 },
-	{ 0x0100, "COMPACT DISC", LCD_RIGHT_X, LCD_SIDE_Y0 },
-	{ 0x0200, "INTERACTIVE",  LCD_RIGHT_X, LCD_SIDE_Y1 },
-	{ 0x0800, "GRAPHICS",     LCD_RIGHT_X, LCD_SIDE_Y2 },
-
-	// TODO: Unused indicator lights. If these are drawn, there is an unknown behavior.
-	{ 0x0001, "ONE",      0, 0 },
-	{ 0x0002, "TWO",      0, 0 },
-	{ 0x0008, "FOUR",	  0, 0 },
-	{ 0x0010, "FIVE",     0, 0 },
-	{ 0x0020, "SIX",      0, 0 },
-	{ 0x0040, "SEVEN",    0, 0 },
-	{ 0x0080, "EIGHT",    0, 0 },
-	{ 0x4000, "FIFTEEN",  0, 0 },
-	{ 0x8000, "SIXTEEN",  0, 0 }
+	{ 0x2000, "MUTE",                     2, LCD_SIDE_Y0 },
+	{ 0x0004, "PAUSE",                    2, LCD_SIDE_Y1 },
+	{ 0x1000, "PLAY",                     2, LCD_SIDE_Y2 },
+	{ 0x0400, "FTS",            LCD_DIGIT_X,           6 },
+	{ 0x0100, "COMPACT DISC",   LCD_RIGHT_X, LCD_SIDE_Y0 },
+	{ 0x0200, "INTERACTIVE",    LCD_RIGHT_X, LCD_SIDE_Y1 },
+	{ 0x0800, "GRAPHICS",       LCD_RIGHT_X, LCD_SIDE_Y2 }
 };
 
-static const char *const cdi220_lcd_digit_legend[16] =
+// Blank entries are unidentified/unused LCD segments. Do not render invented
+// labels for them until front-panel or firmware evidence identifies a symbol.
+static constexpr const char *cdi220_lcd_digit_legend[16] =
 {
 	"",         "",         // 0: play icon, unused
 	" TRACK",   "SHUFFLE",  // 1
-	"UNKNOWN",  "UNKNOWN",  // 2: unused, unused
+	"",         "",         // 2: unidentified/unused
 	"REPEAT",   "TOTAL",    // 3
-	"",         "UNKNOWN",  // 4: colon, unused
+	"",         "",         // 4: colon, unidentified/unused
 	"SCAN",     "TRACK",    // 5
-	"UNKNOWN",  "TIME",     // 6: unused, time
+	"",         "TIME",     // 6: unidentified/unused, time
 	"",         ""          // 7: extra indicators
 };
 
@@ -114,8 +105,10 @@ void cdi220_lcd::draw_digit(bitmap_rgb32& bitmap, const rectangle& bounds, const
 		for (int x = 0; x < D_WIDTH; x++)
 		{
 			const uint8_t seg = cdi220_lcd_char[y * D_WIDTH + x];
-			if (seg != 0 && BIT(data, seg - 1))
-				bitmap.pix(LCD_DIGIT_Y + y, x0 + x) = rgb_t::white();
+			const int px = x0 + x;
+			const int py = LCD_DIGIT_Y + y;
+			if (seg != 0 && BIT(data, seg - 1) && bounds.contains(px, py))
+				bitmap.pix(py, px) = rgb_t::white();
 		}
 	}
 
@@ -128,7 +121,7 @@ void cdi220_lcd::draw_digit(bitmap_rgb32& bitmap, const rectangle& bounds, const
 		draw_lcd_text(bitmap, bounds, x0, y1, cdi220_lcd_digit_legend[idx * 2 + 1]);
 }
 
-void cdi220_lcd::draw(bitmap_rgb32 &bitmap, const rectangle & bounds, const uint8_t *lcd_state)
+void cdi220_lcd::draw(bitmap_rgb32 &bitmap, const rectangle &bounds, const uint8_t *lcd_state)
 {
 	bitmap.fill(rgb_t::black(), bounds);
 
@@ -146,16 +139,21 @@ void cdi220_lcd::draw(bitmap_rgb32 &bitmap, const rectangle & bounds, const uint
 		{
 			for (int x = 0; x < 2; x++)
 			{
-				bitmap.pix(LCD_DIGIT_Y + 6 + y, x0 + 21 + x) = rgb_t::white();
-				bitmap.pix(LCD_DIGIT_Y + 14 + y, x0 + 21 + x) = rgb_t::white();
+				const int upper_y = LCD_DIGIT_Y + 6 + y;
+				const int lower_y = LCD_DIGIT_Y + 14 + y;
+				const int px = x0 + 21 + x;
+				if (bounds.contains(px, upper_y))
+					bitmap.pix(upper_y, px) = rgb_t::white();
+				if (bounds.contains(px, lower_y))
+					bitmap.pix(lower_y, px) = rgb_t::white();
 			}
 		}
 	}
 
-	// Draws a small or big triangle
-	const uint16_t play_data = (lcd_state[7 * 2] << 8)	| lcd_state[7 * 2 + 1];
-	bool upper = BIT(play_data, 7);
-	bool lower = BIT(play_data, 6);
+	// Draw a small or big triangle.
+	const uint16_t play_data = (lcd_state[7 * 2] << 8) | lcd_state[7 * 2 + 1];
+	const bool upper = BIT(play_data, 7);
+	const bool lower = BIT(play_data, 6);
 	if (upper || lower)
 	{
 		for (int y = 0; y < 13; y++)
@@ -163,18 +161,21 @@ void cdi220_lcd::draw(bitmap_rgb32 &bitmap, const rectangle & bounds, const uint
 			const int half = (y <= 6) ? y : (12 - y);
 			for (int x = 0; x <= half; x++)
 			{
-				if((lower && (half-x-2>0)) || (upper && (half-x-2<0)))
-					bitmap.pix(18 + y, 24 + x) = rgb_t::white();
+				const int px = 24 + x;
+				const int py = 18 + y;
+				if (((lower && (half - x - 2 > 0)) || (upper && (half - x - 2 < 0)))
+						&& bounds.contains(px, py))
+				{
+					bitmap.pix(py, px) = rgb_t::white();
+				}
 			}
 		}
 	}
 
-	uint16_t indicators = (lcd_state[0] << 8) | lcd_state[1];
-
-	for (const auto& ind : cdi220_lcd_indicators)
+	const uint16_t indicators = (lcd_state[0] << 8) | lcd_state[1];
+	for (const auto &ind : cdi220_lcd_indicators)
 	{
 		if (indicators & ind.id)
 			draw_lcd_text(bitmap, bounds, ind.x, ind.y, ind.text);
 	}
 }
-
