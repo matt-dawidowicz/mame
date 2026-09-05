@@ -1,12 +1,12 @@
 // license:BSD-3-Clause
 // copyright-holders:Matt Jordan
 
-#include "emu.h"
+// Build the live fixture and its synthetic game driver in this translation
+// unit so the driver-list shim can reference the anonymous-namespace driver
+// without exporting test-only symbols from the fixture.
+#include "cdi_dvc_dma_integration.cpp"
 
 #include "drivenum.h"
-#include "main.h"
-
-GAME_EXTERN(cdidmaint);
 
 std::size_t const driver_list::s_driver_count = 1;
 game_driver const * const driver_list::s_drivers_sorted[] =
