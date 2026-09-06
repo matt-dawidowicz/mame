@@ -155,14 +155,22 @@ private:
 			uint16_t const dma_status = space.read_word(DMA2_STATUS);
 			expect(bool(dma_status & 0x8000U),
 				"audio-dma: SCC COC missing after frame delivery");
-			expect(m_maincpu->input_line_state(DMA_IRQ_LEVEL) == ASSERT_LINE,
-				"audio-dma: SCC completion interrupt missing");
-			space.write_word(DMA2_STATUS, 0x8000);
+
+			// SCC interrupt arbitration is propagated through a scheduled update.
+			// Sample the external IPL on the following scheduler turn rather than
+			// conflating COC latching with line-delivery timing.
 			m_test_timer->adjust(attotime::from_ticks(1, m_maincpu->clock()), 2);
 			break;
 		}
 
 		case 2:
+			expect(m_maincpu->input_line_state(DMA_IRQ_LEVEL) == ASSERT_LINE,
+				"audio-dma: SCC completion interrupt missing");
+			space.write_word(DMA2_STATUS, 0x8000);
+			m_test_timer->adjust(attotime::from_ticks(1, m_maincpu->clock()), 3);
+			break;
+
+		case 3:
 			expect(m_maincpu->input_line_state(DMA_IRQ_LEVEL) == CLEAR_LINE,
 				"audio-dma: SCC completion interrupt did not clear after acknowledgement");
 			m_completed = true;

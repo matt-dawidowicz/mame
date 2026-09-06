@@ -105,6 +105,21 @@ private:
 		return packet;
 	}
 
+	static std::vector<uint8_t> make_25hz_sequence_payload()
+	{
+		// PL_MPEG will not commit a sequence header until its input buffer can
+		// hold the maximum legal header, including both optional 64-byte
+		// quantisation matrices.  Supply that much harmless zero padding after
+		// the minimum header so the fixture tests parser state rather than an
+		// artificial short-buffer condition.
+		std::vector<uint8_t> payload {
+			0x00, 0x00, 0x01, 0xb3,
+			0x01, 0x00, 0x10, 0x13, 0x00, 0xfa, 0x20, 0xa0
+		};
+		payload.resize(4U + 136U, 0);
+		return payload;
+	}
+
 	void feed_words(std::vector<uint8_t> const &bytes)
 	{
 		for (std::size_t index = 0; index < bytes.size(); index += 2)
@@ -282,9 +297,7 @@ private:
 		space.read_word(FMA_IRQ_STATUS);
 
 		space.write_word(FMV_STREAM, video_stream);
-		feed_video_payload(space, video_stream,
-			{ 0x00, 0x00, 0x01, 0xb3,
-			  0x01, 0x00, 0x10, 0x13, 0x00, 0xfa, 0x20, 0xa0 });
+		feed_video_payload(space, video_stream, make_25hz_sequence_payload());
 		expect(space.read_word(FMV_FRAME_PERIOD) == 3'600,
 			"av-save: synthetic 25 Hz video sequence header was not accepted");
 		space.read_word(FMV_IRQ_STATUS);
