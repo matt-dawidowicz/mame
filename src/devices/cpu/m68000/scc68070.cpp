@@ -74,10 +74,8 @@ void scc68070_base_device::device_start()
 	m_write8 = [this](offs_t address, u8 data)
 	{
 		offs_t translated;
-		if (!translate_address(address, scc68070_access_type::write, true, translated))
-			return;
-
-		m_program16.write_word(translated & ~1, data | (data << 8), translated & 1 ? 0x00ff : 0xff00);
+		if (translate_address(address, scc68070_access_type::write, true, translated))
+			m_program16.write_byte(translated, data);
 	};
 	m_write16 = [this](offs_t address, u16 data)
 	{
@@ -91,8 +89,8 @@ void scc68070_base_device::device_start()
 			return;
 		}
 
-		m_program16.write_word(translated[0] & ~1, (data >> 8) * 0x0101, translated[0] & 1 ? 0x00ff : 0xff00);
-		m_program16.write_word(translated[1] & ~1, (data & 0xff) * 0x0101, translated[1] & 1 ? 0x00ff : 0xff00);
+		m_program16.write_byte(translated[0], data >> 8);
+		m_program16.write_byte(translated[1], data & 0xff);
 	};
 	m_write32 = [this](offs_t address, u32 data)
 	{
@@ -109,11 +107,7 @@ void scc68070_base_device::device_start()
 		}
 
 		for (unsigned byte = 0; byte < 4; ++byte)
-		{
-			const u8 value = data >> (24 - byte * 8);
-			const offs_t physical = translated[byte];
-			m_program16.write_word(physical & ~1, value | (value << 8), physical & 1 ? 0x00ff : 0xff00);
-		}
+			m_program16.write_byte(translated[byte], data >> (24 - byte * 8));
 	};
 }
 
