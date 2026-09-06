@@ -40,7 +40,7 @@ The implementation is constrained by the Philips SCC68070 hardware documentation
 
 ## Code organization
 
-The address geometry now lives in `src/devices/machine/scc68070_helpers.h` as a side-effect-free, constexpr-capable translation oracle. The device MMU descriptor type aliases the shared descriptor representation so register emulation and tests cannot drift into different field layouts.
+The address geometry lives in `src/devices/machine/scc68070_helpers.h` as a side-effect-free, constexpr-capable translation oracle. Its descriptor view mirrors the functional fields used by translation. The live device retains its register-layout `mmu_desc_t`, including the documented/unused byte lane, so MMU register and save-state layout are not changed by this checkpoint. CPU integration will convert the live descriptor fields into the shared functional view rather than duplicating translation math.
 
 This is deliberately the foundation layer. The CPU callback path will consume the typed result only after the bus-error/status/attribute machinery is implemented, so an unmapped or out-of-range access cannot silently fall through to physical memory during an intermediate commit.
 
