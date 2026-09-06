@@ -1,5 +1,9 @@
 # Philips CD-i modernization status
 
+> Project entry point: [CDI_MASTER_STATUS.md](CDI_MASTER_STATUS.md). This file
+> retains historical checkpoint detail. Use the master index for current branch
+> scope, certification references, superseded claims and next actions.
+
 Last reviewed: 2026-09-05
 
 Branch: `audio/cdi-fidelity-100-campaign-20260905`
@@ -461,7 +465,12 @@ Latest result (2026-08-23):
 - `cdivalidate -validate`: **PASS** (exit zero, no diagnostics);
 - exact-path `git diff --check`: **PASS**.
 
-There is no direct DVC-to-SCC DMA fixture in the current test tree. The present integration gate is the SCC DMA suite plus all DVC/Philips tests and a linked CD-i target; a live cross-device transfer fixture remains follow-up work and should not be described as already covered.
+At the historical Phase A checkpoint there was no direct DVC-to-SCC DMA fixture.
+This gap was subsequently addressed by commit
+`f0d78dfbda5c7fbbdb11c3fc1ba25a58e731146f`, which adds
+`tests/emu/philips/cdi_dvc_dma_integration.cpp`. See the master index for the
+separate audio-branch edge/Layer II integration certification; the old Phase A
+test totals above are historical and do not include that fixture.
 
 ## Phase B validation gates
 
