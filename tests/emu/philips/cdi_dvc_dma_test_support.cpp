@@ -1,6 +1,8 @@
 // license:BSD-3-Clause
 // copyright-holders:Matt Jordan
 
+#include "cdidvc_utils.h"
+
 // Build the live fixtures and their synthetic game drivers in this translation
 // unit so the driver-list shim can reference the anonymous-namespace drivers
 // without exporting test-only symbols from the fixtures.
