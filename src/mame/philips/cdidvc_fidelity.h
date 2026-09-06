@@ -80,6 +80,28 @@ constexpr int64_t sample_delta_microseconds(int64_t samples, uint32_t sample_rat
 	return sample_rate ? (samples * 1'000'000LL) / int64_t(sample_rate) : 0;
 }
 
+// Arithmetic-only A/V tolerance.  A PCM sample instant generally cannot land
+// exactly on the integer 90 kHz system-clock lattice.  Rounding the rational
+// sample position to the nearest 90 kHz tick can therefore differ from an
+// independently rounded reference by at most one tick.  Projecting that value
+// to the 45 kHz DCLK domain similarly permits one DCLK tick.  These limits are
+// derived from clock quantization; they are deliberately *not* a claim about
+// human perceptual tolerance or physical VMPEG/CDIC servo margins.
+constexpr int64_t AV_ARITHMETIC_TOLERANCE_90 = 1;
+constexpr int32_t AV_ARITHMETIC_TOLERANCE_45 = 1;
+
+constexpr bool clock_delta_within_arithmetic_tolerance90(int64_t delta90)
+{
+	return delta90 >= -AV_ARITHMETIC_TOLERANCE_90
+		&& delta90 <= AV_ARITHMETIC_TOLERANCE_90;
+}
+
+constexpr bool clock_delta_within_arithmetic_tolerance45(int32_t delta45)
+{
+	return delta45 >= -AV_ARITHMETIC_TOLERANCE_45
+		&& delta45 <= AV_ARITHMETIC_TOLERANCE_45;
+}
+
 // Convert a cumulative emitted stereo-frame count into the MPEG 90 kHz clock
 // domain without accumulating per-sample rounding error.  The quotient and
 // remainder split also avoids multiplying the entire 64-bit frame count by
@@ -126,6 +148,15 @@ constexpr audio_clock_observation observe_audio_clock(
 		mpeg_timestamp_delta(sample90, audio_pts90),
 		signed_wrap_delta32(sample45, dclk45)
 	};
+}
+
+constexpr bool audio_clock_within_arithmetic_tolerance(
+		audio_clock_observation const &observation)
+{
+	return clock_delta_within_arithmetic_tolerance90(
+			observation.sample_minus_scr90)
+		&& clock_delta_within_arithmetic_tolerance45(
+			observation.sample_minus_dclk45);
 }
 
 struct packet_schedule_deltas
