@@ -1,7 +1,10 @@
 name: CI (Linux)
 
 on:
+  workflow_dispatch:
   push:
+    branches-ignore:
+      - 'audio/cdi-fidelity-100-campaign-20260905'
     paths:
     - '.github/workflows/ci-linux.yml'
     - '.cdi-full-ci-trigger'
