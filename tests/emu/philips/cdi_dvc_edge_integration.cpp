@@ -159,8 +159,10 @@ private:
 			uint16_t const status = space.read_word(DMA2_STATUS);
 			expect((status & 0x9000U) == 0x9000U,
 				"abort: SCC did not report COC+ERR");
-			expect(m_maincpu->input_line_state(DMA_IRQ_LEVEL) == ASSERT_LINE,
-				"abort: COC+ERR with INE did not assert IPL3");
+
+			// CPU input lines are scheduler-synchronized.  The SCC state above is
+			// already committed, but the visible IPL transition is checked in the
+			// next test state after synchronization rather than in this callback.
 			m_test_timer->adjust(attotime::from_ticks(2, m_maincpu->clock()), 3);
 			break;
 		}
@@ -169,6 +171,8 @@ private:
 		{
 			// The scheduled service callback must observe the SCC abort without
 			// consuming another word or falsely calling DVC dma_done().
+			expect(m_maincpu->input_line_state(DMA_IRQ_LEVEL) == ASSERT_LINE,
+				"abort: COC+ERR with INE did not assert IPL3 after synchronization");
 			expect(!m_dvc_dma_service_active,
 				"abort-observe: driver service remained armed");
 			expect_events(1, "abort-observe");
@@ -177,29 +181,39 @@ private:
 			expect(fma_dma_requested(space),
 				"abort-observe: DVC request cleared as if transfer completed");
 
-			// Clear SCC completion/error status, then restart exactly at the first
-			// untransferred word.  This pins partial-transfer conservation.
+			// Clear SCC completion/error status.  As with assertion, the CPU input
+			// line deassertion is scheduler-synchronized and is checked one tick
+			// later before the channel is reprogrammed.
 			space.write_word(DMA2_STATUS, 0x9000);
-			expect(m_maincpu->input_line_state(DMA_IRQ_LEVEL) == CLEAR_LINE,
-				"abort-ack: IPL3 remained asserted");
-			program_dma(space, 2, SOURCE + 2);
-			space.write_word(DVC_FMA_COMMAND, 0x8000);
-			expect(m_dvc_dma_service_active, "resume: service did not re-arm");
-			expect_events(0, "resume");
 			m_test_timer->adjust(attotime::from_ticks(1, m_maincpu->clock()), 4);
 			break;
 		}
 
 		case 4:
+		{
+			expect(m_maincpu->input_line_state(DMA_IRQ_LEVEL) == CLEAR_LINE,
+				"abort-ack: IPL3 remained asserted after synchronization");
+
+			// Restart exactly at the first untransferred word.  This pins
+			// partial-transfer conservation independently of interrupt delivery.
+			program_dma(space, 2, SOURCE + 2);
+			space.write_word(DVC_FMA_COMMAND, 0x8000);
+			expect(m_dvc_dma_service_active, "resume: service did not re-arm");
+			expect_events(0, "resume");
+			m_test_timer->adjust(attotime::from_ticks(1, m_maincpu->clock()), 5);
+			break;
+		}
+
+		case 5:
 			expect_events(1, "resume-word1");
 			expect_remaining(1, "resume-word1");
 			expect_address(SOURCE + 4, "resume-word1");
 			expect(fma_dma_requested(space),
 				"resume-word1: DVC request cleared before final word");
-			m_test_timer->adjust(attotime::from_ticks(2, m_maincpu->clock()), 5);
+			m_test_timer->adjust(attotime::from_ticks(2, m_maincpu->clock()), 6);
 			break;
 
-		case 5:
+		case 6:
 		{
 			expect_events(2, "resume-complete");
 			expect_remaining(0, "resume-complete");
