@@ -117,7 +117,7 @@ void scc68070_base_device::device_start()
 	};
 }
 
-bool scc68070_base_device::translate_address(offs_t address, scc68070_access_type access, bool side_effects, offs_t &translated)
+bool scc68070_base_device::translate_address(offs_t address, scc68070_access_type, bool, offs_t &translated)
 {
 	// Internal addresses (0x80000000-bfffffff) are only accessible in supervisor mode;
 	// all other accesses use the external 24-bit address bus.  The base device has no
@@ -151,11 +151,15 @@ bool scc68070_base_device::memory_translate(int spacenum, int intention, offs_t 
 	target_space = &space(spacenum);
 	if (spacenum == AS_PROGRAM)
 	{
+		const scc68070_access_type access =
+			(intention == device_memory_interface::TR_FETCH) ? scc68070_access_type::execute :
+			(intention == device_memory_interface::TR_WRITE) ? scc68070_access_type::write :
+			scc68070_access_type::read;
 		offs_t translated;
 		// Debugger/disassembler translation must never mutate the MMU status register or
-		// inject a CPU exception.  Actual fetch/read/write callbacks carry the precise
-		// access type and perform fault side effects.
-		if (!translate_address(address, scc68070_access_type::read, false, translated))
+		// inject a CPU exception.  Actual fetch/read/write callbacks perform fault side
+		// effects; this path only answers whether the requested translation is legal.
+		if (!translate_address(address, access, false, translated))
 			return false;
 		address = translated;
 	}
