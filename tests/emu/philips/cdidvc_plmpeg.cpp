@@ -13,3 +13,4 @@
 #undef PL_MPEG_IMPLEMENTATION
 
 #include "cdidvc.cpp"
+#include "cdidvc_avsync_threshold.cpp"
