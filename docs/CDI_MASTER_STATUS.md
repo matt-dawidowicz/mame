@@ -19,8 +19,9 @@ The 2026-09-06 upstream merge imports all 60 missing commits through
 [merge scope and validation record](cdi_upstream_sync_20260906.md).
 The CD-i implementation and tests are unchanged by upstream; shared runtime and
 file-I/O changes passed the new integration build. Prior percentages remain scoped
-as below, without automatic increases. GitHub default-branch administration remains
-blocked in this workspace; `cdi-unified` is the active development branch regardless.
+as below, without automatic increases. `cdi-unified` is also the fork's GitHub
+default branch, confirmed through repository metadata on 2026-09-06 after Matt
+changed the setting. Branch consolidation and upstream setup are complete.
 
 ## Current unified verification
 

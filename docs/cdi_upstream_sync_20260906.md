@@ -61,8 +61,7 @@ next substantive engineering task.
 
 ## Default branch setting
 
-The requested default is `cdi-unified`, but the connected GitHub tools expose no
-repository-settings mutation. Automatic approval review rejected browser access
-as a workaround for that missing operation. The default remains `master` until
-changed through GitHub repository Settings > General > Default branch. This is
-an administration limitation, not a merge or code-access failure.
+**Complete:** Matt changed the fork's default branch to `cdi-unified`.
+GitHub repository metadata independently confirmed `default_branch: cdi-unified`
+on 2026-09-06. The original connector/browser administration limitation was
+resolved by this manual setting change. Historical branches remain preserved.
