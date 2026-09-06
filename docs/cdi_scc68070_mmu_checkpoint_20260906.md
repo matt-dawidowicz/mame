@@ -2,6 +2,30 @@
 
 This checkpoint closes the architecturally defensible SCC68070 MMU implementation gates that can be derived from the Philips SCC68070 documentation and exercised in the current MAME core. It does **not** claim cycle-exact MMU silicon. Exact bus-error timing, duplicate-CAM electrical behavior, and hardware-observed stack-boundary timing remain evidence gaps.
 
+## Certification
+
+The MMU milestone is certified at commit:
+
+- `0c433789c840c116aa4ad31ccbefa9daa1f8fd2d`
+
+The maintained CD-i fast workflow completed green in GitHub Actions run:
+
+- `34051815017` (`CI (CD-i fast) #42`)
+
+That run completed all of the maintained MMU-relevant gates successfully:
+
+- CD-i helper-test build;
+- CD-i helper-test execution;
+- CD-i integration-test build;
+- CD-i integration-test execution.
+
+Two test-harness corrections were required while reaching the certified run. Neither changed MMU semantics:
+
+1. The full-machine MMU fixture originally called `m_maincpu->memory().translate(...)`, which is ambiguous because `scc68070_device` exposes `memory()` through both `device_t` and `device_memory_interface`. The fixture now binds the CPU explicitly to `device_memory_interface` before calling `translate()`.
+2. An existing DVC DMA edge regression sampled the SCC68070 IPL line in the same scheduler callback that asserted or cleared it. The observed line transition becomes visible on the following scheduler turn, so the fixture now samples the assertion and acknowledgement edges after synchronization rather than treating the scheduler propagation delay as a controller failure.
+
+No further MMU code changes are planned unless a concrete regression, new authoritative documentation, or physical-hardware evidence invalidates a certified behavior below.
+
 ## Evidence basis
 
 The implementation is constrained by the Philips SCC68070 hardware documentation and contemporary Philips technical material:
