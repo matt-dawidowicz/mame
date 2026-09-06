@@ -1,5 +1,5 @@
 // license:BSD-3-Clause
-// copyright-holders:Matt Jordan
+// copyright-holders:Matt Dawidowicz
 
 #ifndef MAME_PHILIPS_CDIDVC_FIDELITY_H
 #define MAME_PHILIPS_CDIDVC_FIDELITY_H
@@ -43,28 +43,6 @@ constexpr video_present_geometry current_video_present_geometry(
 		source_width * VIDEO_PIXEL_X_SCALE,
 		source_height * VIDEO_PIXEL_Y_SCALE
 	};
-}
-
-// CURRENT IMPLEMENTATION MODEL, NOT HARDWARE SPECIFICATION.
-//
-// Break a host DMA transfer into bounded service slices. The caller owns the
-// timer/cadence policy; this helper only enforces conservation and prevents a
-// service callback from consuming more words than remain.
-struct dma_service_slice
-{
-	uint16_t words;
-	uint16_t remaining_after;
-	bool complete;
-};
-
-constexpr dma_service_slice bounded_dma_service(uint16_t remaining, uint16_t budget)
-{
-	if (!remaining || !budget)
-		return { 0, remaining, remaining == 0 };
-
-	uint16_t const words = remaining < budget ? remaining : budget;
-	uint16_t const after = uint16_t(remaining - words);
-	return { words, after, after == 0 };
 }
 
 // Measurement helper for long-session A/V telemetry. Positive values mean the

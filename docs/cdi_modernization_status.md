@@ -442,7 +442,7 @@ Mono-II confidence after this checkpoint:
 - CDIC DSEL, IVEC reset, and unused ABUF/XBUF/DBUF bits remain stored or fixed compatibility values. AUDCTL bits 13/11/0 are measured; the fixed read-one fields and reset/post-write bit-12 difference are retained without an invented function.
 - Mono-II SERVO-SLAVE SPI is documented but not connected because the current MC68HC05 core has no external SPI-pin interface.
 - Mono-II SLAVE host-mailbox LLE remains blocked on asynchronous SCC68070 `/DTACK`; the historical driver-local wait-state shortcut was not restored.
-- The Mono-II DSP56001 is a disabled board placeholder. MAME's current core does not execute instructions or expose the host interface, and no replacement HLE was added.
+- The Mono-II DSP56001 remains disabled and its host register window remains unmapped at the board level. The MAME DSP56001 core now exposes a host interface and a partial genuine instruction interpreter, with native tests covering host/bootstrap behavior, decoder rejection boundaries, 16-bit wraparound, DO-loop semantics, MOVEP peripheral addressing, and bootstrap register state. Full Philips firmware execution, board-level HREQ/interrupt/DMA integration, and commercial-title compatibility are not claimed, and no command HLE was added.
 - No matching `cdimono2` ROM files are present in this checkout, so firmware startup is an explicit unpassed runtime gate.
 
 ## Phase A validation gates
@@ -584,3 +584,30 @@ Runtime limitation:
 - `cdivalidate -verifyroms cdimono2` reports `romset "cdimono2" not found` because this checkout has no matching Mono-II ROM set;
 - therefore no Mono-II firmware boot, CD playback, input, audio, or commercial-title result is claimed;
 - the existing Mono-I firmware-only smoke gate remains required to protect the established machine family while Mono-II runtime media is unavailable.
+
+## DSP56001 audit validation
+
+Scope: validate the current partial DSP56000/DSP56001 interpreter and host/bootstrap behavior independently of Mono-II board mapping. This checkpoint does not map the Mono-II DSP host window, add command HLE, claim complete DSP56001 instruction coverage, or establish commercial-title compatibility.
+
+Validated integration commit: `d39e31ff866bc6cc49f5d280fdef286bdd2d80e7`.
+
+The clean promotion commit `523dca4db56e365ca117d5cdf41d3b952dd39af5` reused the exact validated integration tree (`ae9cb5dcef208072fdf1cb8da21657597367497a`) while removing review-branch merge history and the reverted six-bit CVR experiment.
+
+Latest result (2026-08-26):
+
+- static `git diff --check`: **PASS**;
+- regenerated `cdivalidate` and `mametests` build (`TESTS=1`, `-j2`): **PASS**;
+- focused `[emu][cpu][dsp56000]` tests: **PASS**;
+- all `[emu][philips]` tests: **PASS**;
+- complete native `mametests` suite: **PASS**;
+- `cdivalidate -validate`: **PASS**;
+- `cdivalidate -validate cdimono2`: **PASS**;
+- DSP-specific `cdidsp` build: **PASS**;
+- `cdidsp -validate`: **PASS**;
+- final `git diff --check`: **PASS**.
+
+GCC 11.4.0 compatibility note: the inherited `tests/emu/video/rgbutil.cpp` uses volatile-assignment idioms that GCC diagnoses with `-Wvolatile`, and MAME normally promotes that warning to an error. The validated test build therefore used `ARCHOPTS_CXX=-Wno-error=volatile`; other warning classes remained errors. `rgbutil.cpp` is outside the CD-i/DSP audit delta and was not modified.
+
+Validated DSP behavior in this checkpoint includes stricter partial-decoder masks, non-speculative extension-word reads, reserved JCLR bit rejection, last-word DO-loop termination, architectural zero-count DO behavior, 16-bit execution/address wraparound tests, DSP56001 bootstrap R0/R1/R2 state preservation, and corrected immediate-MOVEP peripheral-address decoding.
+
+Remaining architecture boundaries include migration from temporary private P/X/Y execution backing to correctly mapped device address spaces, board ownership of external Y-space behavior, HREQ/interrupt/DMA integration, broader instruction coverage and legality checks, and instruction-accurate timing. The Mono-II DSP therefore remains disabled/unmapped in the machine configuration until those integration boundaries are addressed.

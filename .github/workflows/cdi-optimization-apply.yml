@@ -2,6 +2,8 @@ name: Apply CD-i optimization batch
 
 on:
   push:
+    branches:
+      - audio/cdi-fidelity-100-campaign-20260905
     paths:
       - '.cdi-optimization-trigger'
 

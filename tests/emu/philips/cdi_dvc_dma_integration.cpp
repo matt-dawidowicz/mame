@@ -200,7 +200,11 @@ private:
 			expect_remaining(WORDS, "program");
 			expect_address(SOURCE, "program");
 			expect(!m_maincpu->dma_channel_active(1),
-					"program: DMA2 became active before peripheral DREQ");
+					"program: DMA2 became active before SCC START");
+
+			space.write_word(DMA2_SEQUENCE, 0x048b); // SCC START + INE + IPL3
+			expect(m_maincpu->dma_channel_active(1), "start: SCC START did not assert CA");
+			expect(!m_dvc_dma_service_active, "start: service ran before DREQ");
 
 			// Use the real readable FMA DMA command as the DVC-side completion
 			// observable. It asserts DREQ here and dma_done() clears bit 15.

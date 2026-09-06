@@ -55,9 +55,9 @@ private:
 			m_failures.push_back(std::move(message));
 	}
 
-	void expect_remaining(uint16_t expected, char const *where)
+	void expect_remaining(uint32_t expected, char const *where)
 	{
-		uint16_t const actual = m_maincpu->dma_channel_remaining(1);
+		uint32_t const actual = m_maincpu->dma_channel_remaining(1);
 		if (actual != expected)
 			m_failures.push_back(util::string_format(
 				"%s: DMA2 remaining expected %u, got %u", where, expected, actual));
@@ -107,9 +107,8 @@ private:
 			space.write_word(SOURCE + 4, 0x3333);
 			space.write_word(SOURCE + 6, 0x4444);
 
-			// A zero transfer count is an unresolved SCC68070 hardware edge.  The
-			// current compatibility model must be deterministic: DVC may request,
-			// but the driver must not arm SCC DMA or fabricate a completion.
+			// DREQ before SCC START must not activate the controller or fabricate
+			// completion, including when MTC is programmed with the 65536 encoding.
 			program_dma(space, 0, SOURCE);
 			space.write_word(DVC_FMA_COMMAND, 0x8000);
 			expect(fma_dma_requested(space), "zero: DVC request bit did not latch");
@@ -131,10 +130,9 @@ private:
 			expect(fma_dma_requested(space),
 				"zero-wait: DVC request cleared without a completed transfer");
 
-			// Reprogramming a non-zero count and restrobing the DVC request must
-			// recover cleanly from the refused zero-count request.
+			// SCC START must service the held request without another DVC edge.
 			program_dma(space, 3, SOURCE);
-			space.write_word(DVC_FMA_COMMAND, 0x8000);
+			space.write_word(DMA2_SEQUENCE, 0x048b);
 			expect(m_dvc_dma_service_active, "restart: service did not arm");
 			expect(m_maincpu->dma_channel_active(1), "restart: SCC CA did not assert");
 			expect_events(0, "restart");
@@ -154,8 +152,8 @@ private:
 			space.write_word(DMA2_SEQUENCE, 0x041b); // SA + INE + IPL3
 			expect(!m_maincpu->dma_channel_active(1),
 				"abort: SCC CA remained active after software abort");
-			expect(m_dvc_dma_service_active,
-				"abort: driver service disappeared before observing SCC abort");
+			expect(!m_dvc_dma_service_active,
+				"abort: reconfigure callback did not stop service immediately");
 			uint16_t const status = space.read_word(DMA2_STATUS);
 			expect((status & 0x9000U) == 0x9000U,
 				"abort: SCC did not report COC+ERR");
@@ -169,7 +167,7 @@ private:
 
 		case 3:
 		{
-			// The scheduled service callback must observe the SCC abort without
+			// The reconfigure callback must observe the SCC abort without
 			// consuming another word or falsely calling DVC dma_done().
 			expect(m_maincpu->input_line_state(DMA_IRQ_LEVEL) == ASSERT_LINE,
 				"abort: COC+ERR with INE did not assert IPL3 after synchronization");
@@ -197,7 +195,7 @@ private:
 			// Restart exactly at the first untransferred word.  This pins
 			// partial-transfer conservation independently of interrupt delivery.
 			program_dma(space, 2, SOURCE + 2);
-			space.write_word(DVC_FMA_COMMAND, 0x8000);
+			space.write_word(DMA2_SEQUENCE, 0x048b);
 			expect(m_dvc_dma_service_active, "resume: service did not re-arm");
 			expect_events(0, "resume");
 			m_test_timer->adjust(attotime::from_ticks(1, m_maincpu->clock()), 5);
@@ -231,10 +229,35 @@ private:
 				"resume-complete: completion IRQ missing");
 			space.write_word(DMA2_STATUS, 0x8000);
 
+			// A started zero MTC means 65536 operands; it must not be truncated
+			// to an empty request at the SCC-to-DVC interface.
+			program_dma(space, 0, SOURCE);
+			space.write_word(DVC_FMA_COMMAND, 0x8000);
+			expect(!m_dvc_dma_service_active, "65536: DREQ bypassed SCC START");
+			space.write_word(DMA2_SEQUENCE, 0x048b);
+			expect_remaining(65536, "65536-start");
+			expect_events(0, "65536-start");
+			expect(m_dvc_dma_initial_words == 65536, "65536: telemetry truncated count");
+			m_test_timer->adjust(attotime::from_ticks(1, m_maincpu->clock()), 7);
+			break;
+		}
+		case 7:
+			expect_events(1, "65536-first");
+			expect_remaining(65535, "65536-first");
+			expect_address(SOURCE + 2, "65536-first");
+			m_test_timer->adjust(attotime::from_ticks(131072, m_maincpu->clock()), 8);
+			break;
+		case 8:
+			expect_events(65536, "65536-complete");
+			expect_remaining(0, "65536-complete");
+			expect_address(SOURCE + 131072, "65536-complete");
+			expect(!m_dvc_dma_service_active, "65536: service remained active");
+			expect(!fma_dma_requested(space), "65536: request remained asserted");
+			expect((space.read_word(DMA2_STATUS) & 0x9800U) == 0x8000U,
+				"65536: completion/error/active state incorrect");
 			m_completed = true;
 			machine().schedule_exit();
 			break;
-		}
 		}
 	}
 
@@ -356,7 +379,7 @@ bool run_presence_fixture(game_driver const &driver)
 } // anonymous namespace
 
 TEST_CASE(
-	"CD-i DVC DMA zero-count abort partial and restart edges stay deterministic",
+	"CD-i DVC DMA START held-request abort restart and 65536-count edges stay deterministic",
 	"[emu][philips][cdi][dvc][dma][integration][edge]")
 {
 	run_dma_edge_fixture();

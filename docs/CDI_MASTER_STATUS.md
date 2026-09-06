@@ -1,12 +1,18 @@
 # Philips CD-i / DVC master status
 
-**Fresh verified-status recalculation: 2026-09-06.** This is the canonical project
+**Active project branch: `cdi-unified`.** All 32 available project branches are
+consolidated; see the [merge inventory, resolutions and verification](cdi_branch_consolidation_20260906.md).
+The table below records the last pre-merge estimates. SCC68070, DMA, interrupts,
+timing, save states and board/DSP integration require reassessment after combined
+validation; do not report their old numbers as newly certified unified results.
+
+**Fresh pre-merge verified-status recalculation: 2026-09-06.** This is the canonical project
 index. Routine status reads the matrix, verification boundary and next actions here;
 do not repeat the audit. [AGENTS.md](../AGENTS.md) defines request modes and worktree
 discipline. The detailed audio campaign controls its task list, subject to the
 explicit verification corrections in this audit.
 
-## Assessed branches and last verification
+## Historical assessed branches and last verification
 
 | ID | Branch | Source HEAD assessed | Code baseline | Last verification |
 | --- | --- | --- | --- | --- |
@@ -20,11 +26,12 @@ Audio's last emulator-linked integration run remains existing CI at `442e505`:
 include the prior documentation commit; the code baselines do not. Documentation
 commits publishing this audit are newer HEADs, not new emulator test milestones.
 
-The audio branch contains MMU and video work as well as audio. Its results do not
-apply to canonical unless explicitly shown in that column. Experimental branches
-and intentional local Windows files were not modified. The named experimental
-`dvc/fmv-clock-underflow-trace-20260905` was not returned by the earlier remote
-branch enumeration; do not infer that local work is absent or recreate it.
+The unified branch includes the audio/MMU work, DSP bootstrap/interpreter audit,
+held-request DMA re-arm policy and the SCC peripheral completion implementation.
+Timer 1/2 and UART behavior now extend beyond the A2 snapshot. Its percentages
+remain scoped historical estimates until reviewed on the combined source.
+The unpushed Windows experiment was unavailable; intentional local Windows files
+were not accessed or modified.
 
 ## Meaning of the new percentages
 
@@ -48,7 +55,7 @@ remaining work. Physical unknowns remain open wherever physical fidelity is in s
 The parser classification and AUDCTL register-model gates retain their narrowly
 scoped 100% claims; whole audio, CDIC, MMU and DVC do not.
 
-## Master completion matrix
+## Last assessed completion matrix (pre-merge)
 
 Each linked subsystem opens its implementation/evidence worksheet, known
 inaccuracies, remaining obligations, relevant source/tests/docs and next action.
@@ -107,9 +114,8 @@ rows. Compatibility remains unquantifiable as a games-working percentage.
   up to 1500 PCM counts; they do not prove bit-exact silicon. Video conversion tests
   compare the same backend's output formats. The 26-picture temporary decode-ahead
   model and finite save-replay capacities also remain material boundaries.
-- **CI trigger gap:** the fast workflow omits `src/devices/machine/scc68070*` from
-  its path filters. A device-only change can skip CI; fix this with the next SCC
-  batch. Existing green runs are still valid for the changes they tested.
+- **CI trigger gap F7 resolved during consolidation:** the fast workflow now
+  includes `src/devices/machine/scc68070*` and the DSP source/test paths.
 
 See [audit findings F1-F7](cdi_verified_status_20260906.md#new-findings-and-corrected-verification-claims)
 for exact production functions, fixture limitations and evidence classifications.
@@ -132,9 +138,8 @@ No production fixes or new retail/hardware measurements were performed in this a
 5. Continue firmware/capture acquisition for exact VMPEG/CDIC arithmetic and DAC
    transitions when evidence exists; do not redo recovered Q22 or de-emphasis.
 
-Perform these as small code/test/docs commits on the audio branch unless the user
-selects a different target. F1 also exists on canonical and should receive a scoped
-backport after validation; do not fold unrelated audio/MMU/video changes into it.
+Perform these as small code/test/docs commits on `cdi-unified`. Historical branches
+remain references. The first task stays CDIC SRAM safety after merge validation.
 
 ## Subsystem-specific next-action index
 
@@ -195,7 +200,9 @@ audit additionally supersedes broad MMU closure, overstated movie/save tests and
 “only hardware blockers” language. Audio campaign, MMU checkpoint and final-report
 notices direct readers to these corrections.
 
-For future routine **status**, report this matrix and its caveats concisely. For
+For future routine **status**, read the unified merge verification first, then
+report unaffected inherited estimates and clearly label changed rows pending
+reassessment. Do not repeat the whole audit. For
 **verified status**, review only the requested or demonstrably changed scopes and
 update their worksheets/weights with reasons. For **development**, inspect current
 branch/HEAD/worktree, affected docs and commits, implement the next real task, run

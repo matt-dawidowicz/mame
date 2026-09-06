@@ -13,11 +13,16 @@
 
 STATUS:
 
-- Just enough for the Mono-I CD-i board to work somewhat properly.
+- Functional MCD212 video/control model covering the documented coding,
+  control-program, timing, overlay, and Extended Case QHY paths currently
+  exercised by CD-i systems.
 
 TODO:
 
-- Unknown yet.
+- Validate QHY edge handling and interpolation rounding against hardware.
+- Refine odd/even interlace edge placement and bus/IRQ timing.
+- Correlate matte, cursor, mosaic, region, and transparency behavior with
+  register-level hardware captures.
 
 *******************************************************************************/
 

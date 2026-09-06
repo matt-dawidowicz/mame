@@ -8,8 +8,11 @@ on:
       - '3rdparty/pl_mpeg/**'
       - 'scripts/src/tests.lua'
       - 'src/devices/cpu/m68000/scc68070*'
+      - 'src/devices/cpu/dsp56000/**'
+      - 'src/devices/machine/scc68070*'
       - 'src/mame/philips/**'
-      - 'tests/emu/machine/scc68070.cpp'
+      - 'tests/emu/machine/scc68070*'
+      - 'tests/emu/cpu/dsp56000*'
       - 'tests/emu/philips/**'
   pull_request:
     paths:
@@ -17,8 +20,11 @@ on:
       - '3rdparty/pl_mpeg/**'
       - 'scripts/src/tests.lua'
       - 'src/devices/cpu/m68000/scc68070*'
+      - 'src/devices/cpu/dsp56000/**'
+      - 'src/devices/machine/scc68070*'
       - 'src/mame/philips/**'
-      - 'tests/emu/machine/scc68070.cpp'
+      - 'tests/emu/machine/scc68070*'
+      - 'tests/emu/cpu/dsp56000*'
       - 'tests/emu/philips/**'
 
 concurrency:
@@ -113,6 +119,9 @@ jobs:
 
       - name: Run CD-i helper tests
         run: ./cdihelpertests
+
+      - name: Check DVC DMA liveness wiring
+        run: python3 scripts/cdi_dvc_dma_liveness_audit.py
 
       - name: Build CD-i integration tests
         run: |

@@ -1,0 +1,235 @@
+{
+  "date": "2026-09-06",
+  "repository": "matt-dawidowicz/mame",
+  "integration_branch": "cdi-unified",
+  "excluded_branch": "master",
+  "excluded_head": "25ae98b69b2ed4f4cd3015c65d4b48a635525741",
+  "source_branches": [
+    {
+      "branch": "archive/cdi-dvc-modernization-pre-rewrite-20260905",
+      "sha": "6b55ed1ed611d70a846fd2df311d917f12791991",
+      "base": "06516a9dc07f68e21092340f04e1a6f6d6a58260",
+      "maximal": false,
+      "unique_vs_audio": "42"
+    },
+    {
+      "branch": "archive/cdi-live-dma-dev-history-20260905",
+      "sha": "d6dfd665ae5f9d35d850989ad73b050eda16a057",
+      "base": "0e8f357b2bbc8ef2054d2868b239e02a37b621d9",
+      "maximal": true,
+      "unique_vs_audio": "23"
+    },
+    {
+      "branch": "audio/cdi-fidelity-100-campaign-20260905",
+      "sha": "213d886190e0f52457f324f1d31278e22d392f22",
+      "base": "213d886190e0f52457f324f1d31278e22d392f22",
+      "maximal": true,
+      "unique_vs_audio": "0"
+    },
+    {
+      "branch": "build/cdi-fast-iteration-20260903",
+      "sha": "f0d78dfbda5c7fbbdb11c3fc1ba25a58e731146f",
+      "base": "f0d78dfbda5c7fbbdb11c3fc1ba25a58e731146f",
+      "maximal": false,
+      "unique_vs_audio": "0"
+    },
+    {
+      "branch": "cdi-audio-completion",
+      "sha": "afc4643afe22ca087ce2c582e2427e822a498f85",
+      "base": "06516a9dc07f68e21092340f04e1a6f6d6a58260",
+      "maximal": true,
+      "unique_vs_audio": "65"
+    },
+    {
+      "branch": "cdi-audit-e1b-vdsc-berr-status",
+      "sha": "8e2ed6f260a8e1d48c130426c130a7538cc67528",
+      "base": "06516a9dc07f68e21092340f04e1a6f6d6a58260",
+      "maximal": true,
+      "unique_vs_audio": "57"
+    },
+    {
+      "branch": "cdi-audit-e1b-vdsc-berr-status-2",
+      "sha": "45d895f11700a427012ecf50dcc11ed6946ba388",
+      "base": "06516a9dc07f68e21092340f04e1a6f6d6a58260",
+      "maximal": true,
+      "unique_vs_audio": "52"
+    },
+    {
+      "branch": "cdi-audit-e1c-dvc-dma",
+      "sha": "a014f032c23c67222c5f6c79634ad89ef2937bf3",
+      "base": "06516a9dc07f68e21092340f04e1a6f6d6a58260",
+      "maximal": false,
+      "unique_vs_audio": "51"
+    },
+    {
+      "branch": "cdi-audit-e1c-dvc-dma-handoff",
+      "sha": "a10e2d071b482e4a1d929e9983873d988a5061c6",
+      "base": "06516a9dc07f68e21092340f04e1a6f6d6a58260",
+      "maximal": false,
+      "unique_vs_audio": "56"
+    },
+    {
+      "branch": "cdi-audit-e1c2-dvc-dma-behavioral-regression",
+      "sha": "1c55a2b244c2f29f293b21f727b538197ca5f2da",
+      "base": "06516a9dc07f68e21092340f04e1a6f6d6a58260",
+      "maximal": true,
+      "unique_vs_audio": "73"
+    },
+    {
+      "branch": "cdi-audit-e1c2-dvc-dma-rearm",
+      "sha": "4f78511be6dc9eeb5bb5938f305c34a818476ec5",
+      "base": "06516a9dc07f68e21092340f04e1a6f6d6a58260",
+      "maximal": false,
+      "unique_vs_audio": "65"
+    },
+    {
+      "branch": "cdi-audit-e1c2-dvc-dma-rearm-2",
+      "sha": "2ae445314d95312910d3e647c31c70821be594a1",
+      "base": "06516a9dc07f68e21092340f04e1a6f6d6a58260",
+      "maximal": true,
+      "unique_vs_audio": "60"
+    },
+    {
+      "branch": "cdi-audit-e1c2-dvc-dma-rearm-3",
+      "sha": "e5156d9505c2b3fb3038c32c1809c006d27d7e72",
+      "base": "06516a9dc07f68e21092340f04e1a6f6d6a58260",
+      "maximal": false,
+      "unique_vs_audio": "63"
+    },
+    {
+      "branch": "cdi-audit-e2b-display-enable",
+      "sha": "a014f032c23c67222c5f6c79634ad89ef2937bf3",
+      "base": "06516a9dc07f68e21092340f04e1a6f6d6a58260",
+      "maximal": false,
+      "unique_vs_audio": "51"
+    },
+    {
+      "branch": "cdi-core-modernization",
+      "sha": "c25e70ee11efddf9416135d99b9658c4dc6256ad",
+      "base": "fbda0e727c853b7af6f4d2c3ebf297b807787900",
+      "maximal": true,
+      "unique_vs_audio": "18"
+    },
+    {
+      "branch": "cdi-dsp56001-lle",
+      "sha": "712386e56f399bcdf071ff30fba856ae860f426a",
+      "base": "06516a9dc07f68e21092340f04e1a6f6d6a58260",
+      "maximal": false,
+      "unique_vs_audio": "45"
+    },
+    {
+      "branch": "cdi-dvc-modernization",
+      "sha": "dd55c7ba57e51239322411657b06548da7f25c10",
+      "base": "f0d78dfbda5c7fbbdb11c3fc1ba25a58e731146f",
+      "maximal": true,
+      "unique_vs_audio": "2"
+    },
+    {
+      "branch": "cdi-dvc-reference-20260824",
+      "sha": "6b55ed1ed611d70a846fd2df311d917f12791991",
+      "base": "06516a9dc07f68e21092340f04e1a6f6d6a58260",
+      "maximal": false,
+      "unique_vs_audio": "42"
+    },
+    {
+      "branch": "cdi-dvc-upstream-cleanup",
+      "sha": "072265b08f27a9b4c006c7933b9c1839340dbcbd",
+      "base": "06516a9dc07f68e21092340f04e1a6f6d6a58260",
+      "maximal": false,
+      "unique_vs_audio": "50"
+    },
+    {
+      "branch": "cdi-dvc-upstream-completion",
+      "sha": "01df3929ceab7f792ab0d51981f21b13b5f25b6e",
+      "base": "06516a9dc07f68e21092340f04e1a6f6d6a58260",
+      "maximal": false,
+      "unique_vs_audio": "53"
+    },
+    {
+      "branch": "cdi-hardening-ci-base",
+      "sha": "d96b4ff4894759ad7a10934e20b67843e2a3987a",
+      "base": "06516a9dc07f68e21092340f04e1a6f6d6a58260",
+      "maximal": false,
+      "unique_vs_audio": "37"
+    },
+    {
+      "branch": "cdi-hardening-ci-run",
+      "sha": "069fc7f87792be04f762c932b61bee3e5cd18a47",
+      "base": "06516a9dc07f68e21092340f04e1a6f6d6a58260",
+      "maximal": true,
+      "unique_vs_audio": "38"
+    },
+    {
+      "branch": "cdi-hardening-slave-100",
+      "sha": "e2f5c1cc9c771c7574708bd093f4fa0a7e2a898c",
+      "base": "06516a9dc07f68e21092340f04e1a6f6d6a58260",
+      "maximal": false,
+      "unique_vs_audio": "34"
+    },
+    {
+      "branch": "cdi-project-audit-20260826",
+      "sha": "a014f032c23c67222c5f6c79634ad89ef2937bf3",
+      "base": "06516a9dc07f68e21092340f04e1a6f6d6a58260",
+      "maximal": false,
+      "unique_vs_audio": "51"
+    },
+    {
+      "branch": "cdi-project-audit-batch3-review-20260826",
+      "sha": "1df0e4dcd8d6aada3acc9f7743f70948fd3f6871",
+      "base": "06516a9dc07f68e21092340f04e1a6f6d6a58260",
+      "maximal": false,
+      "unique_vs_audio": "53"
+    },
+    {
+      "branch": "cdi-project-audit-batch4-review-20260826",
+      "sha": "9477eefec01a0e8ba77b5b51e3c3fa41da63cf6f",
+      "base": "06516a9dc07f68e21092340f04e1a6f6d6a58260",
+      "maximal": false,
+      "unique_vs_audio": "60"
+    },
+    {
+      "branch": "cdi-project-audit-batch5-review-20260826",
+      "sha": "9e620b677396f22e29b17bb6e45b34a4b18b3839",
+      "base": "06516a9dc07f68e21092340f04e1a6f6d6a58260",
+      "maximal": false,
+      "unique_vs_audio": "68"
+    },
+    {
+      "branch": "cdi-project-audit-morning-validation-20260826",
+      "sha": "d39e31ff866bc6cc49f5d280fdef286bdd2d80e7",
+      "base": "06516a9dc07f68e21092340f04e1a6f6d6a58260",
+      "maximal": true,
+      "unique_vs_audio": "70"
+    },
+    {
+      "branch": "cdi-project-audit-promotion-20260826",
+      "sha": "a014f032c23c67222c5f6c79634ad89ef2937bf3",
+      "base": "06516a9dc07f68e21092340f04e1a6f6d6a58260",
+      "maximal": false,
+      "unique_vs_audio": "51"
+    },
+    {
+      "branch": "cdi-upstream-scc68070-completion",
+      "sha": "7039d8e2dcc9742a7fc5bc4539b51379dc7890dc",
+      "base": "81c45c5bdf00904cf5b20c03e9b89d3a75994cdb",
+      "maximal": true,
+      "unique_vs_audio": "31"
+    },
+    {
+      "branch": "cdi-upstream-scc68070-foundation",
+      "sha": "48a0270aaf590d40f3f2bae59a155b162cd1c24c",
+      "base": "81c45c5bdf00904cf5b20c03e9b89d3a75994cdb",
+      "maximal": false,
+      "unique_vs_audio": "2"
+    },
+    {
+      "branch": "dvc/architecture-cleanup",
+      "sha": "bc60c05a9a85dd3ad81e1280e94fe10c1149afd6",
+      "base": "3314e1bf934826724f6a051d13f133b6bf5520bf",
+      "maximal": true,
+      "unique_vs_audio": "16"
+    }
+  ],
+  "unavailable_local_only_branch": "dvc/fmv-clock-underflow-trace-20260905",
+  "policy": "All 32 enumerated project branch tips retained in ancestry. Existing refs preserved; superseded alternatives resolved in favor of current tested implementations."
+}

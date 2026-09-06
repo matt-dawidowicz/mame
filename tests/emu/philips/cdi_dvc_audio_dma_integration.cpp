@@ -114,6 +114,7 @@ private:
 
 			uint16_t const words = uint16_t(frame.size() / 2U);
 			program_dma(space, words);
+			space.write_word(DMA2_SEQUENCE, 0x048b); // SCC START
 			space.write_word(FMA_IRQ_ENABLE, 0xffff);
 			space.write_word(FMA_COMMAND, 0x8000);
 

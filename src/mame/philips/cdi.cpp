@@ -34,19 +34,25 @@ TODO:
   allows the documented half-line to be modeled using the real PAL/NTSC master clocks,
   but exact odd/even field edge placement should still be verified against hardware.
 
-- Proper abstraction of the 68070's internal devices (UART, DMA, Timers, etc.)
+- SCC68070: Timer 1/2 match/capture/event-counter behavior, executed MMU
+  fault delivery, complete I2C slave/multi-master behavior, bus errors, and
+  cycle-level DMA/IRQ timing remain incomplete.
 
-- Mono-I: Full emulation of the CDIC, as well as the SERVO and SLAVE MCUs
+- Mono-I: CDIC remains an evidence-bounded HLE; SERVO and SLAVE MCU LLE still
+  require the missing bus/signal behavior described below.
 
-- Mono-II: SERVO/SLAVE SPI awaits pin-level SPI support in the MC68HC05 core
-- Mono-II: SLAVE host-mailbox LLE awaits asynchronous SCC68070 /DTACK support
-- Mono-II: DSP56001 execution and host-interface support; do not substitute
-  driver-local register storage or command HLE
+- Mono-II: SERVO/SLAVE SPI awaits pin-level SPI support in the MC68HC05 core.
+- Mono-II: SLAVE host-mailbox LLE awaits asynchronous SCC68070 /DTACK support.
+- Mono-II: the DSP56001 core now has standard host transport and partial
+  instruction execution through bootstrap relocation. Board host mapping and
+  device enablement remain blocked until full DRVDSP firmware execution and
+  integration are validated; do not substitute driver-local command HLE.
 
 *******************************************************************************/
 
 #include "emu.h"
 #include "cdi.h"
+#include "cdi_dvc_dma_service.h"
 
 #include "cdimono2.h"
 #include "cpu/m6805/m6805.h"
@@ -137,9 +143,10 @@ void cdi_state::cdimono2_mem(address_map &map)
 #if ENABLE_UART_PRINTING
 	map(0x301400, 0x301403).r(m_maincpu, FUNC(scc68070_device::uart_loopback_enable));
 #endif
-	// The documented DRVDSP and SLAVE ranges remain unmapped until the device
-	// cores expose their real host interfaces.  Do not fill either hole with
-	// register storage or a /DTACK timing shortcut.
+	// The documented DRVDSP and SLAVE ranges remain intentionally unmapped at
+	// the board level. The DSP core now exposes a standard host interface, but
+	// mapping stays blocked until full firmware execution and board integration
+	// are validated. SLAVE LLE still requires asynchronous /DTACK support.
 	map(cdi_mono2::NVRAM_START, cdi_mono2::NVRAM_END).rw("mk48t08", FUNC(timekeeper_device::read), FUNC(timekeeper_device::write)).umask16(0xff00);    /* nvram (only low bytes used) */
 	map(cdi_mono2::BOOT_ROM_START, cdi_mono2::BOOT_ROM_END).r(FUNC(cdi_state::main_rom_r));
 	map(cdi_mono2::MCD212_START, cdi_mono2::MCD212_END).m(m_mcd212, FUNC(mcd212_device::map));
@@ -236,6 +243,7 @@ void cdi_state::machine_start()
 	m_dvc_dma_timer->adjust(attotime::never);
 
 	save_item(NAME(m_dvc_dma_service_active));
+	save_item(NAME(m_dvc_dma_req_state));
 	save_item(NAME(m_dvc_dma_mac_mode));
 	save_item(NAME(m_dvc_dma_initial_words));
 	save_item(NAME(m_dvc_dma_service_events));
@@ -256,6 +264,7 @@ void cdi_state::machine_reset()
 		m_maincpu->in2_w(cdi_mono2::RESET_IRQ2_LINE);
 
 	m_dvc_dma_service_active = false;
+	m_dvc_dma_req_state = false;
 	m_dvc_dma_mac_mode = 0;
 	m_dvc_dma_initial_words = 0;
 	m_dvc_dma_service_events = 0;
@@ -382,6 +391,8 @@ uint8_t cdi_state::irq4_ack_r()
 
 void cdi_state::dvc_dma_req_w(int state)
 {
+	m_dvc_dma_req_state = state != CLEAR_LINE;
+
 	if (!state)
 	{
 		if (m_dvc_dma_service_active)
@@ -411,17 +422,16 @@ void cdi_state::dvc_dma_req_w(int state)
 		return;
 	}
 
-	if (!m_maincpu->dma_channel_memory_to_device(1))
-		return;
-
-	if (!m_maincpu->dma_channel_word_transfer(1))
-		return;
-
 	bool increment_memory = false;
-	if (!m_maincpu->dma_channel_memory_increment(1, increment_memory))
-		return;
+	bool const memory_mode_valid =
+		m_maincpu->dma_channel_memory_increment(1, increment_memory);
+	uint32_t const remaining = m_maincpu->dma_channel_remaining(1);
 
-	if (!m_maincpu->dma_channel_remaining(1))
+	if (!cdi_dvc_dma::request_configuration_valid(
+			m_maincpu->dma_channel_memory_to_device(1),
+			m_maincpu->dma_channel_word_transfer(1),
+			memory_mode_valid,
+			remaining))
 		return;
 
 	if (!m_maincpu->dma_channel_external_start(1))
@@ -429,7 +439,7 @@ void cdi_state::dvc_dma_req_w(int state)
 
 	m_dvc_dma_service_active = true;
 	m_dvc_dma_mac_mode = increment_memory ? 0x04 : 0x00;
-	m_dvc_dma_initial_words = m_maincpu->dma_channel_remaining(1);
+	m_dvc_dma_initial_words = remaining;
 	m_dvc_dma_service_events = 0;
 	++m_dvc_dma_transfer_serial;
 	m_dvc_dma_request_clock =
@@ -444,6 +454,40 @@ void cdi_state::dvc_dma_req_w(int state)
 		(unsigned long long)m_dvc_dma_request_clock);
 
 	m_dvc_dma_timer->adjust(attotime::zero);
+}
+
+void cdi_state::dvc_dma_reconfigure_w(uint8_t channel)
+{
+	if (channel != 1 || !m_dvc_dma_req_state)
+		return;
+
+	// An SCC-side abort can arrive before the scheduled service tick
+	// observes that DMA channel 2 became inactive. The shared transition
+	// policy stops only driver-local service while preserving held DREQ.
+	cdi_dvc_dma::reconfigure_action const action = cdi_dvc_dma::reconfigure(
+		m_dvc_dma_service_active,
+		channel,
+		m_dvc_dma_req_state,
+		m_maincpu->dma_channel_active(1));
+
+	if (action == cdi_dvc_dma::reconfigure_action::stop_service)
+	{
+		LOGMASKED(LOG_DVC_DMA,
+			"DVC_DMA_SERVICE_ABORT_RECONFIG remaining=%u\n",
+			m_maincpu->dma_channel_remaining(1));
+
+		if (m_dvc_dma_timer)
+			m_dvc_dma_timer->adjust(attotime::never);
+
+		return;
+	}
+
+	if (action == cdi_dvc_dma::reconfigure_action::retry_request)
+	{
+		LOGMASKED(LOG_DVC_DMA, "DVC_DMA_SERVICE_REARM remaining=%u\n",
+			m_maincpu->dma_channel_remaining(1));
+		dvc_dma_req_w(ASSERT_LINE);
+	}
 }
 
 TIMER_CALLBACK_MEMBER(cdi_state::dvc_dma_service_tick)
@@ -489,12 +533,13 @@ TIMER_CALLBACK_MEMBER(cdi_state::dvc_dma_service_tick)
 	m_dvc->dma_w(data);
 	++m_dvc_dma_service_events;
 
-	if (!m_maincpu->dma_channel_active(1))
+	if (cdi_dvc_dma::post_transfer(
+			m_dvc_dma_service_active,
+			m_maincpu->dma_channel_active(1))
+		== cdi_dvc_dma::post_transfer_action::complete)
 	{
 		uint64_t const complete_clock =
 			machine().time().as_ticks(m_maincpu->clock());
-
-		m_dvc_dma_service_active = false;
 
 		LOGMASKED(LOG_DVC_DMA, "DVC_DMA_SERVICE_COMPLETE serial=%u words=%u events=%u elapsed_clocks=%llu first_latency_clocks=%llu\n",
 			m_dvc_dma_transfer_serial,
@@ -786,10 +831,11 @@ void cdi_state::cdimono2(machine_config &config)
 	M68HC05C8(config, m_slave, cdi_mono2::MCU_CLOCK);
 	m_slave->portb_w().set(FUNC(cdi_state::cdimono2_slave_portb_w));
 
-	// A DRVDSP/LEMM path is present on Mono-II hardware.  MAME's current
-	// DSP56001 core has no instruction execution or host interface, so retain
-	// the real component and clock as a disabled structural placeholder.  The
-	// 0x300000 host range intentionally remains unmapped.
+	// A DRVDSP/LEMM path is present on Mono-II hardware. The DSP56001 core now
+	// provides standard host transport and partial bootstrap execution, but the
+	// complete DRVDSP firmware path and board host integration are not ready.
+	// Retain the real component and clock while keeping the device disabled and
+	// the 0x300000 host range intentionally unmapped.
 	DSP56001(config, m_dsp, cdi_mono2::DRVDSP_CLOCK).set_disable();
 
 	CDROM(config, m_cdrom).set_interface("cdrom");
@@ -895,6 +941,7 @@ void cdi_state::cdimono1dvc(machine_config &config)
 	// SCC-owned scheduled DMA service through the callbacks below.
 	m_dvc->intreq_callback().set(FUNC(cdi_state::dvc_irq_w));
 	m_dvc->dma_req_callback().set(FUNC(cdi_state::dvc_dma_req_w));
+	m_maincpu->dma_reconfigure_callback().set(FUNC(cdi_state::dvc_dma_reconfigure_w));
 
 	m_slave_hle->read_mousex().set_ioport("MOUSEX");
 	m_slave_hle->read_mousey().set_ioport("MOUSEY");
@@ -919,6 +966,7 @@ void cdi_state::cdimono1dvc_ntsc(machine_config &config)
 	// SCC-owned scheduled DMA service through the callbacks below.
 	m_dvc->intreq_callback().set(FUNC(cdi_state::dvc_irq_w));
 	m_dvc->dma_req_callback().set(FUNC(cdi_state::dvc_dma_req_w));
+	m_maincpu->dma_reconfigure_callback().set(FUNC(cdi_state::dvc_dma_reconfigure_w));
 
 	m_slave_hle->read_mousex().set_ioport("MOUSEX");
 	m_slave_hle->read_mousey().set_ioport("MOUSEY");

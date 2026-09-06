@@ -29,7 +29,7 @@ permissions:
 
 jobs:
   build-macos:
-    if: github.event_name == 'workflow_dispatch' || github.ref != 'refs/heads/audio/cdi-fidelity-100-campaign-20260905'
+    if: github.event_name == 'workflow_dispatch' || (github.ref != 'refs/heads/audio/cdi-fidelity-100-campaign-20260905' && github.ref != 'refs/heads/cdi-unified')
     runs-on: macOS-latest
     steps:
     - uses: actions/checkout@main

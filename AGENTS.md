@@ -26,11 +26,13 @@ conversation history is a handoff hint, not certification evidence.
 
 ## Branch and worktree discipline
 
-- Canonical branch: `cdi-dvc-modernization`.
-- Audio branch: `audio/cdi-fidelity-100-campaign-20260905`; its
-  `docs/cdi_audio_fidelity_campaign.md` controls the detailed audio matrix.
-- Keep unrelated experimental DVC/FMV work isolated. A master row referencing
-  another branch does not mean those changes exist in the current checkout.
+- Single active project branch: `cdi-unified`.
+- Historical canonical branch: `cdi-dvc-modernization`; preserve as a reference.
+- Historical audio branch: `audio/cdi-fidelity-100-campaign-20260905`.
+  `docs/cdi_audio_fidelity_campaign.md` remains the detailed audio ledger on unified.
+- All 32 available project branches were consolidated by user request; see
+  `docs/cdi_branch_consolidation_20260906.md`. Keep new experiments isolated until
+  requested or required. An unavailable local-only branch is not implicitly merged.
 - Preserve unrelated modifications. Do not reset, discard, stash or overwrite
   intentional local work automatically. In the Windows worktree this specifically
   includes `3rdparty/catch/single_include/catch.hpp`,

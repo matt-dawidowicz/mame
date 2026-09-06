@@ -6,8 +6,23 @@
 
 #pragma once
 
+#include "dsp56000host.h"
+#include "dsp56000execute.h"
+
 class dsp56000_device_base : public cpu_device
 {
+public:
+	u8 host_r(offs_t offset) { return m_host.read(unsigned(offset)); }
+	void host_w(offs_t offset, u8 data) { m_host.write(unsigned(offset), data); }
+
+	u16 host_bootstrap_pos() const noexcept { return m_host.bootstrap_pos(); }
+	u32 host_bootstrap_word(u16 address) const noexcept { return m_host.bootstrap_word(address); }
+	bool host_execution_started() const noexcept { return m_host.running(); }
+
+	u16 execution_pc() const noexcept { return m_pc; }
+	u32 execution_opcode() const noexcept { return m_current_opcode; }
+	bool execution_stopped() const noexcept { return m_execution_stopped; }
+
 protected:
 	dsp56000_device_base(machine_config const &mconfig, device_type type, char const *tag, device_t *owner, u32 clock);
 
@@ -34,10 +49,28 @@ protected:
 	address_space_config m_x_config;
 	address_space_config m_y_config;
 
+	dsp56000_host_interface m_host;
+	dsp56000_execution::core_state m_core;
+
+	/*
+	 * Temporary execution backing used by the current partial interpreter.
+	 * This is functional execution state, not yet a claim of final
+	 * DSP56001 external-memory timing/fidelity.
+	 */
+	u32 m_program[0x10000]{};
+	u32 m_x_peripheral[0x40]{};
+	u32 m_y_peripheral[0x40]{};
+	bool m_program_bootstrap_loaded = false;
+
 	int m_icount;
 
 	// program-visible cpu state
 	u16 m_pc;
+	u32 m_current_opcode = 0;
+
+	// Temporary execution gate.  An unsupported instruction stops the
+	// interpreter at that instruction rather than fabricating behavior.
+	bool m_execution_stopped = false;
 };
 
 class dsp56000_device : public dsp56000_device_base

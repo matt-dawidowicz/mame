@@ -68,7 +68,7 @@ TEST_CASE("SCC68070 UART fixed and command bits retain only documented state", "
 {
 	for (unsigned value = 0; value <= 0xff; ++value)
 	{
-		REQUIRE(scc68070::uart_status_read_value(uint8_t(value)) == (value | 0x02));
+		REQUIRE(scc68070::uart_status_read_value(uint8_t(value)) == (value & ~0x02));
 		REQUIRE(scc68070::uart_control_after_misc_command(uint8_t(value)) == (value & 0x0f));
 	}
 }
@@ -394,4 +394,62 @@ TEST_CASE("SCC68070 MMU helpers accept the live descriptor register layout witho
 	REQUIRE(result.status == scc68070::mmu_translation_status::translated);
 	REQUIRE(result.descriptor == 3);
 	REQUIRE(result.physical_address == ((uint32_t(0x0121) << 10) | 0x0155));
+}
+
+namespace
+{
+
+struct dma_reset_model
+{
+	std::uint8_t channel_status;
+	std::uint8_t channel_error;
+	std::uint8_t device_control;
+	std::uint8_t operation_control;
+	std::uint8_t sequence_control;
+	std::uint8_t channel_control;
+	std::uint16_t transfer_counter;
+	std::uint32_t memory_address_counter;
+	std::uint32_t device_address_counter;
+};
+
+} // anonymous namespace
+
+TEST_CASE("SCC68070 DMA address writes preserve untouched byte lanes", "[emu][machine][scc68070][dma]")
+{
+	REQUIRE(scc68070::dma_address_high_write(0x123456, 0x00ab, 0xffff) == 0xab3456);
+	REQUIRE(scc68070::dma_address_high_write(0x123456, 0x00cd, 0x00ff) == 0xcd3456);
+	REQUIRE(scc68070::dma_address_high_write(0x123456, 0xef00, 0xff00) == 0x123456);
+
+	REQUIRE(scc68070::dma_address_low_write(0x123456, 0xbeef, 0xffff) == 0x12beef);
+	REQUIRE(scc68070::dma_address_low_write(0x123456, 0x00aa, 0x00ff) == 0x1234aa);
+	REQUIRE(scc68070::dma_address_low_write(0x123456, 0xbb00, 0xff00) == 0x12bb56);
+}
+
+
+TEST_CASE("SCC68070 DMA RESET preserves transfer and address counters", "[emu][machine][scc68070][dma][reset]")
+{
+	dma_reset_model channel{ 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x1357, 0x123456, 0x654321 };
+
+	scc68070::reset_dma_control_state(channel, 0x30, 0x02, 0x04);
+
+	REQUIRE(channel.channel_status == 0x00);
+	REQUIRE(channel.channel_error == 0x00);
+	REQUIRE(channel.device_control == 0x30);
+	REQUIRE(channel.operation_control == 0x02);
+	REQUIRE(channel.sequence_control == 0x04);
+	REQUIRE(channel.channel_control == 0x00);
+	REQUIRE(channel.transfer_counter == 0x1357);
+	REQUIRE(channel.memory_address_counter == 0x123456);
+	REQUIRE(channel.device_address_counter == 0x654321);
+}
+
+
+TEST_CASE("SCC68070 UART baud clock selects internal divide-by-four or XCKI", "[emu][machine][scc68070][uart][timing]")
+{
+	REQUIRE(scc68070::uart_baud_clock(19'660'800, 7'372'800, false) == 4'915'200);
+	REQUIRE(scc68070::uart_baud_clock(19'660'800, 7'372'800, true) == 7'372'800);
+	REQUIRE(scc68070::uart_baud_clock(19'660'800, 0, true) == 0);
+	REQUIRE(scc68070::uart_baud_divisor(0) == 65536);
+	REQUIRE(scc68070::uart_baud_divisor(7) == 256);
+	REQUIRE(scc68070::uart_baud_divisor(0x0f) == 256);
 }

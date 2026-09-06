@@ -55,38 +55,38 @@ TEST_CASE("check rgb", "[emu][video]")
 		return result;
 	};
 
-	volatile s32 expected_a, expected_r, expected_g, expected_b;
-	volatile s32 actual_a, actual_r, actual_g, actual_b;
-	volatile s32 imm;
+	s32 expected_a = 0, expected_r = 0, expected_g = 0, expected_b = 0;
+	s32 actual_a = 0, actual_r = 0, actual_g = 0, actual_b = 0;
+	s32 imm = 0;
 	rgbaint_t rgb, other;
 	rgb_t packed;
 	auto check_expected = [&] ()
 	{
-		const volatile s32 a = rgb.get_a32();
-		const volatile s32 r = rgb.get_r32();
-		const volatile s32 g = rgb.get_g32();
-		const volatile s32 b = rgb.get_b32();
+		const s32 a = rgb.get_a32();
+		const s32 r = rgb.get_r32();
+		const s32 g = rgb.get_g32();
+		const s32 b = rgb.get_b32();
 		REQUIRE(a == expected_a);
-		(r == expected_r);
+		REQUIRE(r == expected_r);
 		REQUIRE(g == expected_g);
 		REQUIRE(b == expected_b);
 	};
 
 	// check set/get
-	SECTION("rgbaint_t::set(a, r, g, b)") 
 	{
+		INFO("rgbaint_t::set(a, r, g, b)");
 		expected_a = random_i32();
 		expected_r = random_i32();
 		expected_g = random_i32();
 		expected_b = random_i32();
 		rgb.set(expected_a, expected_r, expected_g, expected_b);
-		
+
 		check_expected();
 	}
 
 	// check construct/set
-	SECTION("rgbaint_t::set(rgbaint_t)") 
-	{	
+	{
+		INFO("rgbaint_t::set(rgbaint_t)");
 		expected_a = random_i32();
 		expected_r = random_i32();
 		expected_g = random_i32();
@@ -94,10 +94,10 @@ TEST_CASE("check rgb", "[emu][video]")
 		rgb.set(rgbaint_t(expected_a, expected_r, expected_g, expected_b));
 		check_expected();
 	}
-	
+
 	// check construct/assign
-	SECTION("rgbaint_t assignment") 
-	{	
+	{
+		INFO("rgbaint_t assignment");
 		expected_a = random_i32();
 		expected_r = random_i32();
 		expected_g = random_i32();
@@ -107,41 +107,41 @@ TEST_CASE("check rgb", "[emu][video]")
 	}
 
 	// check piecewise set
-	SECTION("rgbaint_t::set_a") 
-	{	
+	{
+		INFO("rgbaint_t::set_a");
 		rgb.set_a(expected_a = random_i32());
 		check_expected();
 	}
-	
-	SECTION("rgbaint_t::set_r") 
-	{	
+
+	{
+		INFO("rgbaint_t::set_r");
 		rgb.set_r(expected_r = random_i32());
 		check_expected();
 	}
 
-	SECTION("rgbaint_t::set_g") 
-	{	
+	{
+		INFO("rgbaint_t::set_g");
 		rgb.set_g(expected_g = random_i32());
 		check_expected();
 	}
-	
-	SECTION("rgbaint_t::set_b") 
-	{	
+
+	{
+		INFO("rgbaint_t::set_b");
 		rgb.set_b(expected_b = random_i32());
 		check_expected();
 	}
-	
+
 	// test merge_alpha
-	SECTION("rgbaint_t::merge_alpha") 
-	{	
+	{
+		INFO("rgbaint_t::merge_alpha");
 		expected_a = rand();
 		rgb.merge_alpha(rgbaint_t(expected_a, rand(), rand(), rand()));
 		check_expected();
 	}
 
 	// test RGB addition (method)
-	SECTION("rgbaint_t::add") 
-	{	
+	{
+		INFO("rgbaint_t::add");
 		expected_a += actual_a = random_i32();
 		expected_r += actual_r = random_i32();
 		expected_g += actual_g = random_i32();
@@ -149,10 +149,10 @@ TEST_CASE("check rgb", "[emu][video]")
 		rgb.add(rgbaint_t(actual_a, actual_r, actual_g, actual_b));
 		check_expected();
 	}
-	
+
 	// test RGB addition (operator)
-	SECTION("rgbaint_t::operator+=") 
-	{	
+	{
+		INFO("rgbaint_t::operator+=");
 		expected_a += actual_a = random_i32();
 		expected_r += actual_r = random_i32();
 		expected_g += actual_g = random_i32();
@@ -160,10 +160,10 @@ TEST_CASE("check rgb", "[emu][video]")
 		rgb += rgbaint_t(actual_a, actual_r, actual_g, actual_b);
 		check_expected();
 	}
-	
+
 	// test offset addition (method)
-	SECTION("rgbaint_t::add_imm") 
-	{	
+	{
+		INFO("rgbaint_t::add_imm");
 		imm = random_i32();
 		expected_a += imm;
 		expected_r += imm;
@@ -174,8 +174,8 @@ TEST_CASE("check rgb", "[emu][video]")
 	}
 
 	// test offset addition (operator)
-	SECTION("rgbaint_t::operator+=") 
-	{	
+	{
+		INFO("rgbaint_t::operator+=");
 		imm = random_i32();
 		expected_a += imm;
 		expected_r += imm;
@@ -184,10 +184,10 @@ TEST_CASE("check rgb", "[emu][video]")
 		rgb += imm;
 		check_expected();
 	}
-	
+
 	// test immediate RGB addition
-	SECTION("rgbaint_t::add_imm_rgba") 
-	{	
+	{
+		INFO("rgbaint_t::add_imm_rgba");
 		expected_a += actual_a = random_i32();
 		expected_r += actual_r = random_i32();
 		expected_g += actual_g = random_i32();
@@ -195,10 +195,10 @@ TEST_CASE("check rgb", "[emu][video]")
 		rgb.add_imm_rgba(actual_a, actual_r, actual_g, actual_b);
 		check_expected();
 	}
-	
+
 	// test RGB subtraction (method)
-	SECTION("rgbaint_t::sub") 
-	{	
+	{
+		INFO("rgbaint_t::sub");
 		expected_a -= actual_a = random_i32();
 		expected_r -= actual_r = random_i32();
 		expected_g -= actual_g = random_i32();
@@ -206,10 +206,10 @@ TEST_CASE("check rgb", "[emu][video]")
 		rgb.sub(rgbaint_t(actual_a, actual_r, actual_g, actual_b));
 		check_expected();
 	}
-	
+
 	// test RGB subtraction (operator)
-	SECTION("rgbaint_t::operator-=") 
-	{	
+	{
+		INFO("rgbaint_t::operator-=");
 		expected_a -= actual_a = random_i32();
 		expected_r -= actual_r = random_i32();
 		expected_g -= actual_g = random_i32();
@@ -217,10 +217,10 @@ TEST_CASE("check rgb", "[emu][video]")
 		rgb -= rgbaint_t(actual_a, actual_r, actual_g, actual_b);
 		check_expected();
 	}
-	
+
 	// test offset subtraction
-	SECTION("rgbaint_t::sub_imm") 
-	{	
+	{
+		INFO("rgbaint_t::sub_imm");
 		imm = random_i32();
 		expected_a -= imm;
 		expected_r -= imm;
@@ -229,10 +229,10 @@ TEST_CASE("check rgb", "[emu][video]")
 		rgb.sub_imm(imm);
 		check_expected();
 	}
-	
+
 	// test immediate RGB subtraction
-	SECTION("rgbaint_t::sub_imm_rgba") 
-	{	
+	{
+		INFO("rgbaint_t::sub_imm_rgba");
 		expected_a -= actual_a = random_i32();
 		expected_r -= actual_r = random_i32();
 		expected_g -= actual_g = random_i32();
@@ -240,10 +240,10 @@ TEST_CASE("check rgb", "[emu][video]")
 		rgb.sub_imm_rgba(actual_a, actual_r, actual_g, actual_b);
 		check_expected();
 	}
-	
+
 	// test reversed RGB subtraction
-	SECTION("rgbaint_t::subr") 
-	{	
+	{
+		INFO("rgbaint_t::subr");
 		expected_a = (actual_a = random_i32()) - expected_a;
 		expected_r = (actual_r = random_i32()) - expected_r;
 		expected_g = (actual_g = random_i32()) - expected_g;
@@ -251,10 +251,10 @@ TEST_CASE("check rgb", "[emu][video]")
 		rgb.subr(rgbaint_t(actual_a, actual_r, actual_g, actual_b));
 		check_expected();
 	}
-	
+
 	// test reversed offset subtraction
-	SECTION("rgbaint_t::subr_imm") 
-	{	
+	{
+		INFO("rgbaint_t::subr_imm");
 		imm = random_i32();
 		expected_a = imm - expected_a;
 		expected_r = imm - expected_r;
@@ -263,10 +263,10 @@ TEST_CASE("check rgb", "[emu][video]")
 		rgb.subr_imm(imm);
 		check_expected();
 	}
-	
+
 	// test reversed immediate RGB subtraction
-	SECTION("rgbaint_t::subr_imm_rgba") 
-	{	
+	{
+		INFO("rgbaint_t::subr_imm_rgba");
 		expected_a = (actual_a = random_i32()) - expected_a;
 		expected_r = (actual_r = random_i32()) - expected_r;
 		expected_g = (actual_g = random_i32()) - expected_g;
@@ -276,8 +276,8 @@ TEST_CASE("check rgb", "[emu][video]")
 	}
 
 	// test RGB multiplication (method)
-	SECTION("rgbaint_t::mul") 
-	{	
+	{
+		INFO("rgbaint_t::mul");
 		expected_a *= actual_a = random_i32();
 		expected_r *= actual_r = random_i32();
 		expected_g *= actual_g = random_i32();
@@ -285,10 +285,10 @@ TEST_CASE("check rgb", "[emu][video]")
 		rgb.mul(rgbaint_t(actual_a, actual_r, actual_g, actual_b));
 		check_expected();
 	}
-	
+
 	// test RGB multiplication (operator)
-	SECTION("rgbaint_t::operator*=") 
-	{	
+	{
+		INFO("rgbaint_t::operator*=");
 		expected_a *= actual_a = random_i32();
 		expected_r *= actual_r = random_i32();
 		expected_g *= actual_g = random_i32();
@@ -298,8 +298,8 @@ TEST_CASE("check rgb", "[emu][video]")
 	}
 
 	// test factor multiplication (method)
-	SECTION("rgbaint_t::mul_imm") 
-	{	
+	{
+		INFO("rgbaint_t::mul_imm");
 		imm = random_i32();
 		expected_a *= imm;
 		expected_r *= imm;
@@ -310,8 +310,8 @@ TEST_CASE("check rgb", "[emu][video]")
 	}
 
 	// test factor multiplication (operator)
-	SECTION("rgbaint_t::operator*=") 
-	{	
+	{
+		INFO("rgbaint_t::operator*=");
 		imm = random_i32();
 		expected_a *= imm;
 		expected_r *= imm;
@@ -320,10 +320,10 @@ TEST_CASE("check rgb", "[emu][video]")
 		rgb *= imm;
 		check_expected();
 	}
-	
+
 	// test immediate RGB multiplication
-	SECTION("rgbaint_t::mul_imm_rgba") 
-	{	
+	{
+		INFO("rgbaint_t::mul_imm_rgba");
 		expected_a *= actual_a = random_i32();
 		expected_r *= actual_r = random_i32();
 		expected_g *= actual_g = random_i32();
@@ -333,8 +333,8 @@ TEST_CASE("check rgb", "[emu][video]")
 	}
 
 	// test RGB and not
-	SECTION("rgbaint_t::andnot_reg") 
-	{	
+	{
+		INFO("rgbaint_t::andnot_reg");
 		expected_a &= ~(actual_a = random_i32());
 		expected_r &= ~(actual_r = random_i32());
 		expected_g &= ~(actual_g = random_i32());
@@ -342,10 +342,10 @@ TEST_CASE("check rgb", "[emu][video]")
 		rgb.andnot_reg(rgbaint_t(actual_a, actual_r, actual_g, actual_b));
 		check_expected();
 	}
-	
+
 	// test RGB or
-	SECTION("rgbaint_t::or_reg") 
-	{	
+	{
+		INFO("rgbaint_t::or_reg");
 		expected_a |= actual_a = random_i32();
 		expected_r |= actual_r = random_i32();
 		expected_g |= actual_g = random_i32();
@@ -355,8 +355,8 @@ TEST_CASE("check rgb", "[emu][video]")
 	}
 
 	// test RGB and
-	SECTION("rgbaint_t::and_reg") 
-	{	
+	{
+		INFO("rgbaint_t::and_reg");
 		expected_a &= actual_a = random_i32();
 		expected_r &= actual_r = random_i32();
 		expected_g &= actual_g = random_i32();
@@ -366,8 +366,8 @@ TEST_CASE("check rgb", "[emu][video]")
 	}
 
 	// test RGB xor
-	SECTION("rgbaint_t::xor_reg") 
-	{	
+	{
+		INFO("rgbaint_t::xor_reg");
 		expected_a ^= actual_a = random_i32();
 		expected_r ^= actual_r = random_i32();
 		expected_g ^= actual_g = random_i32();
@@ -376,8 +376,8 @@ TEST_CASE("check rgb", "[emu][video]")
 		check_expected();
 	}
 	// test uniform or
-	SECTION("rgbaint_t::or_imm") 
-	{	
+	{
+		INFO("rgbaint_t::or_imm");
 		imm = random_i32();
 		expected_a |= imm;
 		expected_r |= imm;
@@ -386,10 +386,10 @@ TEST_CASE("check rgb", "[emu][video]")
 		rgb.or_imm(imm);
 		check_expected();
 	}
-	
+
 	// test uniform and
-	SECTION("rgbaint_t::and_imm") 
-	{	
+	{
+		INFO("rgbaint_t::and_imm");
 		imm = random_i32();
 		expected_a &= imm;
 		expected_r &= imm;
@@ -398,10 +398,10 @@ TEST_CASE("check rgb", "[emu][video]")
 		rgb.and_imm(imm);
 		check_expected();
 	}
-	
+
 	// test uniform xor
-	SECTION("rgbaint_t::xor_imm") 
-	{	
+	{
+		INFO("rgbaint_t::xor_imm");
 		imm = random_i32();
 		expected_a ^= imm;
 		expected_r ^= imm;
@@ -412,8 +412,8 @@ TEST_CASE("check rgb", "[emu][video]")
 	}
 
 	// test immediate RGB or
-	SECTION("rgbaint_t::or_imm_rgba") 
-	{	
+	{
+		INFO("rgbaint_t::or_imm_rgba");
 		expected_a |= actual_a = random_i32();
 		expected_r |= actual_r = random_i32();
 		expected_g |= actual_g = random_i32();
@@ -421,10 +421,10 @@ TEST_CASE("check rgb", "[emu][video]")
 		rgb.or_imm_rgba(actual_a, actual_r, actual_g, actual_b);
 		check_expected();
 	}
-	
+
 	// test immediate RGB and
-	SECTION("rgbaint_t::and_imm_rgba") 
-	{	
+	{
+		INFO("rgbaint_t::and_imm_rgba");
 		expected_a &= actual_a = random_i32();
 		expected_r &= actual_r = random_i32();
 		expected_g &= actual_g = random_i32();
@@ -432,10 +432,10 @@ TEST_CASE("check rgb", "[emu][video]")
 		rgb.and_imm_rgba(actual_a, actual_r, actual_g, actual_b);
 		check_expected();
 	}
-	
+
 	// test immediate RGB xor
-	SECTION("rgbaint_t::xor_imm_rgba") 
-	{	
+	{
+		INFO("rgbaint_t::xor_imm_rgba");
 		expected_a ^= actual_a = random_i32();
 		expected_r ^= actual_r = random_i32();
 		expected_g ^= actual_g = random_i32();
@@ -445,8 +445,8 @@ TEST_CASE("check rgb", "[emu][video]")
 	}
 
 	// test 8-bit get
-	SECTION("8-bit get") 
-	{	
+	{
+		INFO("8-bit get");
 		expected_a = s32(u32(expected_a) & 0x00ff);
 		expected_r = s32(u32(expected_r) & 0x00ff);
 		expected_g = s32(u32(expected_g) & 0x00ff);
@@ -462,8 +462,8 @@ TEST_CASE("check rgb", "[emu][video]")
 	}
 
 	// test set from packed RGBA
-	SECTION("rgbaint_t::set(u32)") 
-	{	
+	{
+		INFO("rgbaint_t::set(u32)");
 		imm = random_i32();
 		expected_a = s32((u32(imm) >> 24) & 0x00ff);
 		expected_r = s32((u32(imm) >> 16) & 0x00ff);
@@ -472,17 +472,17 @@ TEST_CASE("check rgb", "[emu][video]")
 		rgb.set(u32(imm));
 		check_expected();
 	}
-	
+
 	// while we have a value loaded that we know doesn't exceed 8-bit range, check the non-clamping convert-to-rgba
-	SECTION("non-clamping convert-to-rgba") 
-	{	
+	{
+		INFO("non-clamping convert-to-rgba");
 		packed = rgb.to_rgba();
 		REQUIRE(u32(imm) == u32(packed));
 	}
-	
+
 	// test construct from packed RGBA and assign
-	SECTION("rgbaint_t(u32)") 
-	{	
+	{
+		INFO("rgbaint_t(u32)");
 		imm = random_i32();
 		expected_a = s32((u32(imm) >> 24) & 0x00ff);
 		expected_r = s32((u32(imm) >> 16) & 0x00ff);
@@ -491,17 +491,17 @@ TEST_CASE("check rgb", "[emu][video]")
 		rgb = rgbaint_t(u32(imm));
 		check_expected();
 	}
-	
+
 	// while we have a value loaded that we know doesn't exceed 8-bit range, check the non-clamping convert-to-rgba
-	SECTION("non-clamping convert-to-rgba") 
-	{	
+	{
+		INFO("non-clamping convert-to-rgba");
 		packed = rgb.to_rgba();
 		REQUIRE(u32(imm) == u32(packed));
 	}
-	
+
 	// test set with rgb_t
-	SECTION("rgbaint_t::set(rgba_t)") 
-	{	
+	{
+		INFO("rgbaint_t::set(rgba_t)");
 		packed = random_u32();
 		expected_a = s32(u32(packed.a()));
 		expected_r = s32(u32(packed.r()));
@@ -512,8 +512,8 @@ TEST_CASE("check rgb", "[emu][video]")
 	}
 
 	// test construct with rgb_t
-	SECTION("construct rgb_t") 
-	{	
+	{
+		INFO("construct rgb_t");
 		packed = random_u32();
 		expected_a = s32(u32(packed.a()));
 		expected_r = s32(u32(packed.r()));
@@ -522,10 +522,10 @@ TEST_CASE("check rgb", "[emu][video]")
 		rgb = rgbaint_t(packed);
 		check_expected();
 	}
-	
+
 	// test clamping convert-to-rgba with hand-crafted values to catch edge cases
-	SECTION("clamping convert-to-rgba with hand-crafted values to catch edge cases") 
-	{	
+	{
+		INFO("clamping convert-to-rgba with hand-crafted values to catch edge cases");
 		rgb.set(std::numeric_limits<s32>::min(), -1, 0, 1);
 		packed = rgb.to_rgba_clamp();
 		REQUIRE(u32(0x00000001) == u32(packed));
@@ -542,10 +542,10 @@ TEST_CASE("check rgb", "[emu][video]")
 		packed = rgb.to_rgba_clamp();
 		REQUIRE(u32(0x00ff01fe) == u32(packed));
 	}
-	
+
 	// test in-place clamping with hand-crafted values to catch edge cases
-	SECTION("rgbaint_t::clamp_to_uint8") 
-	{	
+	{
+		INFO("rgbaint_t::clamp_to_uint8");
 		expected_a = 0;
 		expected_r = 0;
 		expected_g = 0;
@@ -578,10 +578,10 @@ TEST_CASE("check rgb", "[emu][video]")
 		rgb.clamp_to_uint8();
 		check_expected();
 	}
-	
+
 	// test shift left
-	SECTION("rgbaint_t::shl") 
-	{	
+	{
+		INFO("rgbaint_t::shl");
 		expected_a = (actual_a = random_i32()) << 19;
 		expected_r = (actual_r = random_i32()) << 3;
 		expected_g = (actual_g = random_i32()) << 21;
@@ -590,10 +590,10 @@ TEST_CASE("check rgb", "[emu][video]")
 		rgb.shl(rgbaint_t(19, 3, 21, 6));
 		check_expected();
 	}
-	
+
 	// test shift left immediate
-	SECTION("rgbaint_t::shl_imm") 
-	{	
+	{
+		INFO("rgbaint_t::shl_imm");
 		expected_a = (actual_a = random_i32()) << 7;
 		expected_r = (actual_r = random_i32()) << 7;
 		expected_g = (actual_g = random_i32()) << 7;
@@ -602,10 +602,10 @@ TEST_CASE("check rgb", "[emu][video]")
 		rgb.shl_imm(7);
 		check_expected();
 	}
-	
+
 	// test logical shift right
-	SECTION("rgbaint_t::shr") 
-	{	
+	{
+		INFO("rgbaint_t::shr");
 		expected_a = s32(u32(actual_a = random_i32()) >> 8);
 		expected_r = s32(u32(actual_r = random_i32()) >> 18);
 		expected_g = s32(u32(actual_g = random_i32()) >> 26);
@@ -614,10 +614,10 @@ TEST_CASE("check rgb", "[emu][video]")
 		rgb.shr(rgbaint_t(8, 18, 26, 4));
 		check_expected();
 	}
-	
+
 	// test logical shift right with opposite signs
-	SECTION("rgbaint_t::shrwith opposite signs") 
-	{	
+	{
+		INFO("rgbaint_t::shrwith opposite signs");
 		expected_a = s32(u32(actual_a = -actual_a) >> 21);
 		expected_r = s32(u32(actual_r = -actual_r) >> 13);
 		expected_g = s32(u32(actual_g = -actual_g) >> 11);
@@ -626,10 +626,10 @@ TEST_CASE("check rgb", "[emu][video]")
 		rgb.shr(rgbaint_t(21, 13, 11, 17));
 		check_expected();
 	}
-	
+
 	// test logical shift right immediate
-	SECTION("rgbaint_t::shr_imm") 
-	{	
+	{
+		INFO("rgbaint_t::shr_imm");
 		expected_a = s32(u32(actual_a = random_i32()) >> 5);
 		expected_r = s32(u32(actual_r = random_i32()) >> 5);
 		expected_g = s32(u32(actual_g = random_i32()) >> 5);
@@ -638,10 +638,10 @@ TEST_CASE("check rgb", "[emu][video]")
 		rgb.shr_imm(5);
 		check_expected();
 	}
-	
+
 	// test logical shift right immediate with opposite signs
-	SECTION("rgbaint_t::shr_imm with opposite signs") 
-	{	
+	{
+		INFO("rgbaint_t::shr_imm with opposite signs");
 		expected_a = s32(u32(actual_a = -actual_a) >> 15);
 		expected_r = s32(u32(actual_r = -actual_r) >> 15);
 		expected_g = s32(u32(actual_g = -actual_g) >> 15);
@@ -652,8 +652,8 @@ TEST_CASE("check rgb", "[emu][video]")
 	}
 
 	// test arithmetic shift right
-	SECTION("rgbaint_t::sra") 
-	{	
+	{
+		INFO("rgbaint_t::sra");
 		expected_a = (actual_a = random_i32()) >> 16;
 		expected_r = (actual_r = random_i32()) >> 20;
 		expected_g = (actual_g = random_i32()) >> 14;
@@ -664,8 +664,8 @@ TEST_CASE("check rgb", "[emu][video]")
 	}
 
 	// test arithmetic shift right with opposite signs
-	SECTION("rgbaint_t::sra with opposite signs") 
-	{	
+	{
+		INFO("rgbaint_t::sra with opposite signs");
 		expected_a = (actual_a = -actual_a) >> 1;
 		expected_r = (actual_r = -actual_r) >> 29;
 		expected_g = (actual_g = -actual_g) >> 10;
@@ -674,10 +674,10 @@ TEST_CASE("check rgb", "[emu][video]")
 		rgb.sra(rgbaint_t(1, 29, 10, 22));
 		check_expected();
 	}
-	
+
 	// test arithmetic shift right immediate (method)
-	SECTION("rgbaint_t::sra_imm")
-	{	
+	{
+		INFO("rgbaint_t::sra_imm");
 		expected_a = (actual_a = random_i32()) >> 12;
 		expected_r = (actual_r = random_i32()) >> 12;
 		expected_g = (actual_g = random_i32()) >> 12;
@@ -686,10 +686,10 @@ TEST_CASE("check rgb", "[emu][video]")
 		rgb.sra_imm(12);
 		check_expected();
 	}
-	
+
 	// test arithmetic shift right immediate with opposite signs (method)
-	SECTION("rgbaint_t::sra_imm with opposite signs") 
-	{	
+	{
+		INFO("rgbaint_t::sra_imm with opposite signs");
 		expected_a = (actual_a = -actual_a) >> 9;
 		expected_r = (actual_r = -actual_r) >> 9;
 		expected_g = (actual_g = -actual_g) >> 9;
@@ -700,8 +700,8 @@ TEST_CASE("check rgb", "[emu][video]")
 	}
 
 	// test arithmetic shift right immediate (operator)
-	SECTION("rgbaint_t::operator>>=") 
-	{	
+	{
+		INFO("rgbaint_t::operator>>=");
 		expected_a = (actual_a = random_i32()) >> 7;
 		expected_r = (actual_r = random_i32()) >> 7;
 		expected_g = (actual_g = random_i32()) >> 7;
@@ -710,10 +710,10 @@ TEST_CASE("check rgb", "[emu][video]")
 		rgb >>= 7;
 		check_expected();
 	}
-	
+
 	// test arithmetic shift right immediate with opposite signs (operator)
-	SECTION("rgbaint_t::operator>>= with opposite signs") 
-	{	
+	{
+		INFO("rgbaint_t::operator>>= with opposite signs");
 		expected_a = (actual_a = -actual_a) >> 11;
 		expected_r = (actual_r = -actual_r) >> 11;
 		expected_g = (actual_g = -actual_g) >> 11;
@@ -724,8 +724,8 @@ TEST_CASE("check rgb", "[emu][video]")
 	}
 
 	// test RGB equality comparison
-	SECTION("rgbaint_t::cmpeq RGB equality comparison") 
-	{	
+	{
+		INFO("rgbaint_t::cmpeq RGB equality comparison");
 		actual_a = random_i32_nolimit();
 		actual_r = random_i32_nolimit();
 		actual_g = random_i32_nolimit();
@@ -747,8 +747,8 @@ TEST_CASE("check rgb", "[emu][video]")
 	}
 
 	// test immediate equality comparison
-	SECTION("rgbaint_t::cmpeq_imm immediate equality comparison") 
-	{	
+	{
+		INFO("rgbaint_t::cmpeq_imm immediate equality comparison");
 		actual_a = random_i32_nolimit();
 		actual_r = random_i32_nolimit();
 		actual_g = random_i32_nolimit();
@@ -805,8 +805,8 @@ TEST_CASE("check rgb", "[emu][video]")
 	}
 
 	// test immediate RGB equality comparison
-	SECTION("rgbaint_t::cmpeq_imm_rgba immediate RGB equality comparison") 
-	{	
+	{
+		INFO("rgbaint_t::cmpeq_imm_rgba immediate RGB equality comparison");
 		actual_a = random_i32_nolimit();
 		actual_r = random_i32_nolimit();
 		actual_g = random_i32_nolimit();
@@ -828,8 +828,8 @@ TEST_CASE("check rgb", "[emu][video]")
 	}
 
 	// test RGB greater than comparison
-	SECTION("rgbaint_t::cmpgt RGB greater than comparison") 
-	{	
+	{
+		INFO("rgbaint_t::cmpgt RGB greater than comparison");
 		actual_a = random_i32_nolimit();
 		actual_r = random_i32_nolimit();
 		actual_g = random_i32_nolimit();
@@ -849,10 +849,10 @@ TEST_CASE("check rgb", "[emu][video]")
 		rgb.cmpgt(rgbaint_t(std::numeric_limits<s32>::max(), actual_r, actual_g - 1, actual_b + 1));
 		check_expected();
 	}
-	
+
 	// test immediate greater than comparison
-	SECTION("rgbaint_t::cmpgt_imm immediate greater than comparison") 
-	{	
+	{
+		INFO("rgbaint_t::cmpgt_imm immediate greater than comparison");
 		actual_a = random_i32_nolimit();
 		actual_r = random_i32_nolimit();
 		actual_g = random_i32_nolimit();
@@ -909,8 +909,8 @@ TEST_CASE("check rgb", "[emu][video]")
 	}
 
 	// test immediate RGB greater than comparison
-	SECTION("rgbaint_t::cmpgt_imm_rgba immediate RGB greater than comparison") 
-	{	
+	{
+		INFO("rgbaint_t::cmpgt_imm_rgba immediate RGB greater than comparison");
 		actual_a = random_i32_nolimit();
 		actual_r = random_i32_nolimit();
 		actual_g = random_i32_nolimit();
@@ -931,8 +931,8 @@ TEST_CASE("check rgb", "[emu][video]")
 		check_expected();
 	}
 	// test RGB less than comparison
-	SECTION("rgbaint_t::cmplt RGB less than comparison") 
-	{	
+	{
+		INFO("rgbaint_t::cmplt RGB less than comparison");
 		actual_a = random_i32_nolimit();
 		actual_r = random_i32_nolimit();
 		actual_g = random_i32_nolimit();
@@ -954,8 +954,8 @@ TEST_CASE("check rgb", "[emu][video]")
 	}
 
 	// test immediate less than comparison
-	SECTION("rgbaint_t::cmplt_imm immediate less than comparison") 
-	{	
+	{
+		INFO("rgbaint_t::cmplt_imm immediate less than comparison");
 		actual_a = random_i32_nolimit();
 		actual_r = random_i32_nolimit();
 		actual_g = random_i32_nolimit();
@@ -1010,10 +1010,10 @@ TEST_CASE("check rgb", "[emu][video]")
 		rgb.cmplt_imm(std::numeric_limits<s32>::max());
 		check_expected();
 	}
-	
+
 	// test immediate RGB less than comparison
-	SECTION("rgbaint_t::cmplt_imm_rgba immediate RGB less than comparison") 
-	{	
+	{
+		INFO("rgbaint_t::cmplt_imm_rgba immediate RGB less than comparison");
 		actual_a = random_i32_nolimit();
 		actual_r = random_i32_nolimit();
 		actual_g = random_i32_nolimit();

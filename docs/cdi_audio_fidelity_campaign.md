@@ -13,9 +13,11 @@ Base branch/commit:
 - `cdi-dvc-modernization`
 - `f0d78dfbda5c7fbbdb11c3fc1ba25a58e731146f`
 
-Dedicated work branch:
+Active work branch:
 
-- `audio/cdi-fidelity-100-campaign-20260905`
+- `cdi-unified` (all available project branches consolidated; see
+  [merge record](cdi_branch_consolidation_20260906.md)).
+- Historical campaign branch: `audio/cdi-fidelity-100-campaign-20260905`.
 
 ## Current baseline
 
