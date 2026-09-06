@@ -6,6 +6,9 @@
 #include "cdidvc_fidelity.h"
 #include "cdidvc_utils.h"
 
+#include <array>
+#include <cstdint>
+
 TEST_CASE("CD-i DVC anchored MPEG clock advances from 45 kHz DCLK", "[emu][philips][dvc]")
 {
 	REQUIRE(cdi_dvc::mpeg_clock_from_dclk(0, 0, 0) == 0);
@@ -166,6 +169,78 @@ TEST_CASE("CD-i DVC audio sample clock compares directly with SCR PTS and DCLK",
 
 	REQUIRE(cdi_dvc::audio_sample_clock90(anchor90, 1234, 0) ==
 		cdi_dvc::mpeg_timestamp_normalize(anchor90));
+}
+
+TEST_CASE("CD-i DVC 30-minute A/V clock campaign has no monotonic arithmetic drift", "[emu][philips][dvc][audio][avsync][longrun]")
+{
+	// Full Motion audio is 44.1 kHz.  Check every second of a 30-minute run,
+	// not merely the final endpoint, against independent SCR/PTS/DCLK values.
+	constexpr uint32_t rate = 44'100;
+	constexpr uint64_t anchor90 = 1'234'567;
+	constexpr unsigned seconds = 30U * 60U;
+
+	int64_t previous_scr_delta = 0;
+	for (unsigned second = 0; second <= seconds; ++second)
+	{
+		uint64_t const frames = uint64_t(rate) * second;
+		uint64_t const reference90 = cdi_dvc::mpeg_timestamp_normalize(
+			anchor90 + uint64_t(cdi_dvc::MPEG_SYSTEM_CLOCK_HZ) * second);
+		auto const observed = cdi_dvc::observe_audio_clock(
+			anchor90, frames, rate,
+			reference90, reference90,
+			uint32_t((reference90 >> 1) & 0xffffffffU));
+
+		INFO("second=" << second);
+		REQUIRE(observed.sample_minus_scr90 == 0);
+		REQUIRE(observed.sample_minus_pts90 == 0);
+		REQUIRE(observed.sample_minus_dclk45 == 0);
+		REQUIRE(observed.sample_minus_scr90 == previous_scr_delta);
+		previous_scr_delta = observed.sample_minus_scr90;
+	}
+}
+
+TEST_CASE("CD-i DVC scene discontinuities re-anchor rather than accumulate clock error", "[emu][philips][dvc][audio][avsync][transition]")
+{
+	constexpr uint32_t rate = 44'100;
+	constexpr std::array<uint32_t, 12> segment_frames {
+		1, 1'151, 8'821, 44'099, 3, 22'051,
+		7'777, 44'100, 17, 13'337, 40'001, 997
+	};
+
+	uint64_t authoritative_anchor90 = 7'654'321;
+	uint64_t total_frames = 0;
+
+	// Model reset/seek/pause-continue/branch boundaries as timing discontinuities
+	// that acquire a new authoritative SCR/PTS/DCLK anchor.  Each segment may end
+	// at a fractional 90 kHz sample position; the integer timestamp domain allows
+	// at most one tick of quantization at the observation boundary.  Crucially,
+	// that error must not be fed forward as the next anchor.
+	for (unsigned pass = 0; pass < 128; ++pass)
+	{
+		for (uint32_t const frames : segment_frames)
+		{
+			uint64_t const numerator = uint64_t(frames) * cdi_dvc::MPEG_SYSTEM_CLOCK_HZ;
+			uint64_t const rounded_ticks = (numerator + rate / 2U) / rate;
+			uint64_t const authoritative_end90 = cdi_dvc::mpeg_timestamp_normalize(
+				authoritative_anchor90 + rounded_ticks);
+			auto const observed = cdi_dvc::observe_audio_clock(
+				authoritative_anchor90, frames, rate,
+				authoritative_end90, authoritative_end90,
+				uint32_t((authoritative_end90 >> 1) & 0xffffffffU));
+
+			INFO("pass=" << pass << " frames=" << frames);
+			REQUIRE(observed.sample_minus_scr90 == 0);
+			REQUIRE(observed.sample_minus_pts90 == 0);
+			REQUIRE(observed.sample_minus_dclk45 == 0);
+
+			total_frames += frames;
+			// A real discontinuity obtains its next anchor from the MPEG/DCLK timing
+			// domain, not by extrapolating an old sample clock through the gap.
+			authoritative_anchor90 = authoritative_end90;
+		}
+	}
+
+	REQUIRE(total_frames > uint64_t(rate) * 60U);
 }
 
 TEST_CASE("CD-i DVC Full Motion picture-rate codes expose exact rational rates", "[emu][philips][dvc]")
