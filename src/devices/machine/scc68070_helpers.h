@@ -14,6 +14,132 @@ namespace scc68070
 {
 
 constexpr std::uint32_t DMA_ADDRESS_MASK = 0x00ffffff;
+constexpr std::uint32_t MMU_ADDRESS_MASK = 0x00ffffff;
+constexpr std::uint32_t MMU_BLOCK_SHIFT = 10;
+constexpr std::uint32_t MMU_BLOCK_SIZE = 1U << MMU_BLOCK_SHIFT;
+constexpr std::uint32_t MMU_BLOCK_OFFSET_MASK = MMU_BLOCK_SIZE - 1;
+constexpr std::uint8_t MMU_CONTROL_ENABLE = 0x80;
+constexpr std::uint8_t MMU_CONTROL_SEGMENT_NUMBER = 0x40;
+constexpr std::uint8_t MMU_DESCRIPTOR_FLUSH_VALID = 0x80;
+constexpr std::uint8_t MMU_DESCRIPTOR_SEGMENT_MASK = 0x7f;
+
+struct mmu_descriptor
+{
+	std::uint16_t attr = 0;
+	std::uint16_t length = 0;
+	std::uint8_t segment = 0;
+	std::uint16_t base = 0;
+};
+
+enum class mmu_translation_status : std::uint8_t
+{
+	disabled,
+	translated,
+	not_present,
+	length_violation,
+	multiple_match
+};
+
+struct mmu_translation_result
+{
+	mmu_translation_status status = mmu_translation_status::not_present;
+	std::uint32_t physical_address = 0;
+	std::uint8_t descriptor = 0xff;
+	std::uint8_t logical_segment = 0;
+	std::uint16_t displacement = 0;
+};
+
+constexpr bool mmu_enabled(std::uint8_t control)
+{
+	return (control & MMU_CONTROL_ENABLE) != 0;
+}
+
+constexpr bool mmu_mode2(std::uint8_t control)
+{
+	return (control & MMU_CONTROL_SEGMENT_NUMBER) != 0;
+}
+
+constexpr std::uint8_t mmu_logical_segment(std::uint8_t control, std::uint32_t address)
+{
+	address &= MMU_ADDRESS_MASK;
+	return mmu_mode2(control)
+		? std::uint8_t((address >> 17) & 0x7f)
+		: std::uint8_t((address >> 21) & 0x07);
+}
+
+constexpr std::uint16_t mmu_logical_displacement(std::uint8_t control, std::uint32_t address)
+{
+	address &= MMU_ADDRESS_MASK;
+	return mmu_mode2(control)
+		? std::uint16_t((address >> MMU_BLOCK_SHIFT) & 0x007f)
+		: std::uint16_t((address >> MMU_BLOCK_SHIFT) & 0x07ff);
+}
+
+constexpr std::uint16_t mmu_effective_segment_length(std::uint8_t control, std::uint16_t length)
+{
+	length &= 0x07ff;
+	return mmu_mode2(control) ? std::uint16_t(length >> 4) : length;
+}
+
+constexpr bool mmu_descriptor_valid(const mmu_descriptor &desc)
+{
+	return (desc.segment & MMU_DESCRIPTOR_FLUSH_VALID) != 0;
+}
+
+constexpr std::uint8_t mmu_descriptor_segment(std::uint8_t control, const mmu_descriptor &desc)
+{
+	return mmu_mode2(control)
+		? std::uint8_t(desc.segment & MMU_DESCRIPTOR_SEGMENT_MASK)
+		: std::uint8_t(desc.segment & 0x07);
+}
+
+constexpr std::uint32_t mmu_physical_address(const mmu_descriptor &desc, std::uint16_t displacement, std::uint32_t address)
+{
+	const std::uint32_t physical_block = (std::uint32_t(desc.base & 0x3fff) + displacement) & 0x3fff;
+	return ((physical_block << MMU_BLOCK_SHIFT) | (address & MMU_BLOCK_OFFSET_MASK)) & MMU_ADDRESS_MASK;
+}
+
+template <std::size_t Count>
+constexpr mmu_translation_result mmu_translate(
+		std::uint8_t control,
+		const std::array<mmu_descriptor, Count> &descriptors,
+		std::uint32_t logical_address)
+{
+	logical_address &= MMU_ADDRESS_MASK;
+	const std::uint8_t logical_segment = mmu_logical_segment(control, logical_address);
+	const std::uint16_t displacement = mmu_logical_displacement(control, logical_address);
+
+	if (!mmu_enabled(control))
+		return { mmu_translation_status::disabled, logical_address, 0xff, logical_segment, displacement };
+
+	std::uint8_t match = 0xff;
+	for (std::size_t index = 0; index < Count; ++index)
+	{
+		const mmu_descriptor &desc = descriptors[index];
+		if (!mmu_descriptor_valid(desc) || mmu_descriptor_segment(control, desc) != logical_segment)
+			continue;
+
+		if (match != 0xff)
+			return { mmu_translation_status::multiple_match, logical_address, 0xff, logical_segment, displacement };
+
+		match = std::uint8_t(index);
+	}
+
+	if (match == 0xff)
+		return { mmu_translation_status::not_present, logical_address, 0xff, logical_segment, displacement };
+
+	const mmu_descriptor &desc = descriptors[match];
+	if (displacement > mmu_effective_segment_length(control, desc.length))
+		return { mmu_translation_status::length_violation, logical_address, match, logical_segment, displacement };
+
+	return {
+		mmu_translation_status::translated,
+		mmu_physical_address(desc, displacement, logical_address),
+		match,
+		logical_segment,
+		displacement
+	};
+}
 
 enum class interrupt_source : std::uint8_t
 {
