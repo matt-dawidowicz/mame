@@ -10,5 +10,6 @@
 #define PLM_NO_STDIO
 #define PL_MPEG_IMPLEMENTATION
 #include "../../../3rdparty/pl_mpeg/pl_mpeg.h"
+#undef PL_MPEG_IMPLEMENTATION
 
 #include "cdidvc.cpp"
