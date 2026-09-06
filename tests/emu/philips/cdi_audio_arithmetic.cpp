@@ -12,6 +12,7 @@
 #include "catch.hpp"
 
 #include "cdiaudio.h"
+#include "cdiaudio_dsp56001.h"
 #include "cdicdic_state.h"
 #include "cdidvc_utils.h"
 
@@ -72,6 +73,52 @@ TEST_CASE("CD-i attenuation candidate coefficient grids expose high-range discri
 	REQUIRE(maximum_q23_error_db < 0.000014);
 
 	REQUIRE_FALSE(cdi_audio::quantize_nominal_attenuation_gain(0, 53).valid);
+}
+
+TEST_CASE("VMPEG DSP56001 documented arithmetic geometry and rounding are explicit", "[emu][philips][audio][dvc][dsp56001][rounding][saturation]")
+{
+	REQUIRE(cdi_audio::DSP56001_WORD_BITS == 24);
+	REQUIRE(cdi_audio::DSP56001_PRODUCT_BITS == 48);
+	REQUIRE(cdi_audio::DSP56001_ACCUMULATOR_BITS == 56);
+	REQUIRE(cdi_audio::DSP56001_ACCUMULATOR_EXTENSION_BITS == 8);
+	REQUIRE(cdi_audio::DSP56001_WORD_MIN == -8388608);
+	REQUIRE(cdi_audio::DSP56001_WORD_MAX == 8388607);
+
+	// Convergent rounding is nearest-even, including exact half-way values on
+	// both signs.  These vectors deliberately distinguish it from the host PCM
+	// nearest-away policy and the XA predictor's +128/arithmetic-shift model.
+	REQUIRE(cdi_audio::round_shift_nearest_even(1, 1) == 0);
+	REQUIRE(cdi_audio::round_shift_nearest_even(3, 1) == 2);
+	REQUIRE(cdi_audio::round_shift_nearest_even(5, 1) == 2);
+	REQUIRE(cdi_audio::round_shift_nearest_even(7, 1) == 4);
+	REQUIRE(cdi_audio::round_shift_nearest_even(-1, 1) == 0);
+	REQUIRE(cdi_audio::round_shift_nearest_even(-3, 1) == -2);
+	REQUIRE(cdi_audio::round_shift_nearest_even(-5, 1) == -2);
+	REQUIRE(cdi_audio::round_shift_nearest_even(-7, 1) == -4);
+
+	constexpr int64_t even_msp = 0x123456;
+	constexpr int64_t odd_msp = 0x123457;
+	constexpr int64_t half_lsp = int64_t(1) << 23;
+	REQUIRE(cdi_audio::dsp56001_round_unscaled_accumulator_to_word(
+		(even_msp << 24) + half_lsp) == even_msp);
+	REQUIRE(cdi_audio::dsp56001_round_unscaled_accumulator_to_word(
+		(odd_msp << 24) + half_lsp) == odd_msp + 1);
+	REQUIRE(cdi_audio::dsp56001_round_unscaled_accumulator_to_word(
+		-((even_msp << 24) + half_lsp)) == -even_msp);
+	REQUIRE(cdi_audio::dsp56001_round_unscaled_accumulator_to_word(
+		-((odd_msp << 24) + half_lsp)) == -(odd_msp + 1));
+
+	REQUIRE(cdi_audio::dsp56001_limit_word(-8388609) == -8388608);
+	REQUIRE(cdi_audio::dsp56001_limit_word(-8388608) == -8388608);
+	REQUIRE(cdi_audio::dsp56001_limit_word(8388607) == 8388607);
+	REQUIRE(cdi_audio::dsp56001_limit_word(8388608) == 8388607);
+
+	// The generic helper has defined behavior at the host integer extremes too;
+	// the real DSP accumulator is only 56 bits, so these are portability guards,
+	// not claims about reachable VMPEG firmware states.
+	REQUIRE(cdi_audio::round_shift_nearest_even(std::numeric_limits<int64_t>::min(), 63) == -1);
+	REQUIRE(cdi_audio::round_shift_nearest_even(std::numeric_limits<int64_t>::max(), 63) == 1);
+	REQUIRE(cdi_audio::round_shift_nearest_even(std::numeric_limits<int64_t>::min(), 64) == 0);
 }
 
 TEST_CASE("CD-i host PCM saturation and half-way rounding are explicit", "[emu][philips][audio][rounding][saturation]")
