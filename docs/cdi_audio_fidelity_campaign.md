@@ -231,28 +231,37 @@ long-run measurements remain open, so this area is not 100%.
 ### 10. Attenuation and quantization
 
 - [x] Identify authoritative attenuation register semantics.
-- [ ] Derive the exact transfer function or lookup table.
-- [ ] Verify every register step with hardware measurements or a documented formula.
+- [x] Derive the exact VMPEG FMA digital transfer lookup table.
+- [x] Verify every VMPEG FMA register step against recovered firmware data and the nominal documented formula.
 - [x] Add exhaustive amplitude test vectors.
-- [ ] Verify channel independence and transition behavior.
+- [x] Verify VMPEG FMA channel independence.
+- [ ] Verify physical transition behavior and Mono-I CDIC coefficient quantization.
 
 Green Book IV.6.3 fixes the four public paths (LL, LR, RR, RL), bit-7 mute,
-and the seven-bit nominal one-decibel setting.  MAME now has a shared nominal
-transfer/matrix helper and exhaustive coverage of all 256 byte values plus all
-four paths at every non-mute setting.  The FMA DSP indirect transaction is no
-longer telemetry-only: a retained `madriv` trace fixes mode `$80`, target `$93`,
-and wire order RR, LR, RL, LL.  Its state is saved, partial transfers resume
-exactly, and each active path write advances the sound stream before changing gain.
+and the seven-bit nominal one-decibel setting.  The FMA DSP indirect transaction is
+no longer telemetry-only: a retained `madriv` trace fixes mode `$80`, target `$93`,
+and wire order RR, LR, RL, LL.  Its state is saved, partial transfers resume exactly,
+and each active path write advances the sound stream before changing gain.
 
-A retained physical 210/05+VMPEG recording verifies all four routes and steps
-0-29.  The measured DVC slope is within 0.0019 dB of an ideal one-decibel line;
-the concurrent CDIC measurement remains within 0.30 dB.  This does not establish
-the unrecorded high-range coefficient table, exact transition waveform, DSP
-accumulator/rounding, or analogue floor.  Philips also documents different ADPCM
-attenuator anomalies by player generation.  Those hardware-specific gaps keep
-the combined attenuation/quantization area below 100%; the nominal semantics and
-known DVC register-path defect are closed without disguising the remaining evidence
-limit.
+The retained genuine VMPEG DSP data image resolves the FMA digital quantizer.  Its
+complete 0-127 dB coefficient run matches `round(2^22 * 10^(-dB/20))` with zero
+mismatches: unity is `$400000`, 20 dB is `$066666`, 80 dB is `$0001a3`, and
+127 dB remains `$000002`; bit 7 is exact mute.  MAME now stores that 128-entry Q22
+table literally, performs the two-input FMA matrix in signed integer arithmetic,
+and reduces once at the PCM boundary.  Regressions exhaust all 128 coefficients,
+all mute encodings, every path/register step, routing, high-range behavior, and
+positive/negative output limits.  The ideal Green Book curve remains tested
+separately so firmware quantization does not replace the public specification.
+
+A retained physical 210/05+VMPEG recording independently verifies all four routes
+and analogue steps 0-29; the measured DVC slope is within 0.0019 dB of an ideal
+one-decibel line, while the concurrent CDIC measurement remains within 0.30 dB.
+That physical recording still does not establish the high-range analogue floor or
+the exact transition waveform.  Mono-I CDIC is a separate implementation and does
+not inherit VMPEG DSP Q22 arithmetic without CDIC-specific evidence.  VMPEG FMA
+digital attenuation/quantization is therefore closed; the combined section remains
+below a physical-hardware 100% claim only for those explicitly isolated transition
+and CDIC evidence limits.
 
 ### 11. AUDCTL fidelity
 
@@ -280,18 +289,30 @@ gate; DAC queue/flush behavior controlled through it remains separately open bel
 
 - [x] Identify accumulator/intermediate widths where documentation permits.
 - [x] Build adversarial overflow/underflow vectors.
-- [ ] Compare candidate rounding/saturation models against hardware/reference captures.
+- [x] Bound the VMPEG FMA accumulator and final PCM saturation against the recovered Q22 coefficients and documented DSP56001 geometry.
+- [ ] Recover the exact Philips FMA rounded/unrounded instruction sequence, scaling mode, and limiter use, or obtain an equivalent reference capture.
+- [ ] Resolve Mono-I CDIC silicon rounding/saturation.
 - [x] Centralize arithmetic behavior in testable helpers instead of scattered casts/clamps.
 
 The Motorola/NXP DSP56000 family documentation establishes the VMPEG DSP56001 core's
 24-bit data words, 48-bit multiplier product, and 56-bit accumulators with eight
 extension bits.  It also documents convergent rounding and the 24-bit data-bus
-limiter.  Those architecture facts are now encoded in a pure helper and adversarial
-regression vectors.  They satisfy the documentation-permits width gate for the known
-DSP56001 core, but do not identify Philips' FMA attenuation coefficient format,
-scaling mode, instruction sequence, or exact use of rounding/limiting.  CDIC
-accumulator widths remain unknown.  The hardware/reference-capture comparison gate
-therefore stays open, as do MPEG synthesis and exact attenuation arithmetic.
+limiter.  The recovered FMA coefficient table establishes a Q22 scale.  With two
+signed-16-bit decoded inputs and coefficients no greater than unity, the exact worst
+pre-reduction magnitude is `2^38`, so a 56-bit accumulator cannot overflow in this
+HLE matrix.  Applying a fabricated intermediate 24-bit clamp would therefore be
+less defensible than retaining the documented full accumulator and saturating the
+observable signed-16-bit PCM boundary.
+
+The production FMA reduction now uses the DSP56001 architecture's convergent
+nearest-even rule, and adversarial tests pin positive and negative half-way cases,
+full-scale two-input sums, and both output saturation directions.  This is an
+architecture-constrained execution model: the retained loader/data evidence does
+not yet expose the exact Philips instruction path proving whether it selected
+`RND`, `MPYR`, `MACR`, an unrounded operation, a scaling-mode adjustment, or a
+full-accumulator move through the 24-bit limiter.  The new DSP evidence probe can
+classify those instructions immediately when an extracted P-program disassembly is
+available.  CDIC accumulator widths and rounding remain independently unknown.
 
 ### 14. De-emphasis
 
