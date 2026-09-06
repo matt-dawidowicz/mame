@@ -19,6 +19,7 @@ TODO:
 
 #include "emu.h"
 #include "mcd212.h"
+#include "mcd212_control_stream.h"
 #include "mcd212_video.h"
 #include "screen.h"
 
@@ -392,54 +393,58 @@ void mcd212_device::process_ica()
 	uint16_t *ica = Path ? m_planeb.target() : m_planea.target();
 	const int max_to_process = m_ica_lines * 120;
 	// LCT depends on the current frame parity
-	uint32_t addr = mcd212_video::ica_pointer_word_offset(BIT(m_csrr[0], CSR1R_PA_BIT));
+	uint32_t addr = mcd212_control::word_index(
+		mcd212_video::ica_pointer_word_offset(BIT(m_csrr[0], CSR1R_PA_BIT)));
 
 	for (int i = 0; i < max_to_process; i++)
 	{
-		uint32_t cmd = ica[addr++] << 16;
-		cmd |= ica[addr++];
+		auto const fetch = mcd212_control::command_words(addr);
+		uint32_t const command_addr = fetch.first_word;
+		uint32_t cmd = uint32_t(ica[fetch.first_word]) << 16;
+		cmd |= ica[fetch.second_word];
+		addr = fetch.next_word;
 		switch ((cmd & 0xff000000) >> 24)
 		{
 			case 0x00: case 0x01: case 0x02: case 0x03: case 0x04: case 0x05: case 0x06: case 0x07: // STOP
 			case 0x08: case 0x09: case 0x0a: case 0x0b: case 0x0c: case 0x0d: case 0x0e: case 0x0f:
-				LOGMASKED(LOG_ICA, "%08x: %08x: ICA %d: STOP\n", (addr - 2) * 2 + Path * 0x200000, cmd, Path);
+				LOGMASKED(LOG_ICA, "%08x: %08x: ICA %d: STOP\n", command_addr * 2 + Path * 0x200000, cmd, Path);
 				return;
 			case 0x10: case 0x11: case 0x12: case 0x13: case 0x14: case 0x15: case 0x16: case 0x17: // NOP
 			case 0x18: case 0x19: case 0x1a: case 0x1b: case 0x1c: case 0x1d: case 0x1e: case 0x1f:
-				LOGMASKED(LOG_ICA, "%08x: %08x: ICA %d: NOP\n", (addr - 2) * 2 + Path * 0x200000, cmd, Path);
+				LOGMASKED(LOG_ICA, "%08x: %08x: ICA %d: NOP\n", command_addr * 2 + Path * 0x200000, cmd, Path);
 				break;
 			case 0x20: case 0x21: case 0x22: case 0x23: case 0x24: case 0x25: case 0x26: case 0x27: // RELOAD DCP
 			case 0x28: case 0x29: case 0x2a: case 0x2b: case 0x2c: case 0x2d: case 0x2e: case 0x2f:
-				LOGMASKED(LOG_ICA, "%08x: %08x: ICA %d: RELOAD DCP: %06x\n", (addr - 2) * 2 + Path * 0x200000, cmd, Path, cmd & 0x003fffff);
+				LOGMASKED(LOG_ICA, "%08x: %08x: ICA %d: RELOAD DCP: %06x\n", command_addr * 2 + Path * 0x200000, cmd, Path, cmd & 0x003fffff);
 				set_dcp<Path>(cmd & 0x003ffffc);
 				break;
 			case 0x30: case 0x31: case 0x32: case 0x33: case 0x34: case 0x35: case 0x36: case 0x37: // RELOAD DCP and STOP
 			case 0x38: case 0x39: case 0x3a: case 0x3b: case 0x3c: case 0x3d: case 0x3e: case 0x3f:
-				LOGMASKED(LOG_ICA, "%08x: %08x: ICA %d: RELOAD DCP and STOP: %06x\n", (addr - 2) * 2 + Path * 0x200000, cmd, Path, cmd & 0x003fffff);
+				LOGMASKED(LOG_ICA, "%08x: %08x: ICA %d: RELOAD DCP and STOP: %06x\n", command_addr * 2 + Path * 0x200000, cmd, Path, cmd & 0x003fffff);
 				set_dcp<Path>(cmd & 0x003ffffc);
 				return;
 			case 0x40: case 0x41: case 0x42: case 0x43: case 0x44: case 0x45: case 0x46: case 0x47: // RELOAD VSR (ICA)
 			case 0x48: case 0x49: case 0x4a: case 0x4b: case 0x4c: case 0x4d: case 0x4e: case 0x4f:
-				LOGMASKED(LOG_ICA, "%08x: %08x: ICA %d: RELOAD VSR: %06x\n", (addr - 2) * 2 + Path * 0x200000, cmd, Path, cmd & 0x003fffff);
-				addr = (cmd & 0x0007ffff) / 2;
+				LOGMASKED(LOG_ICA, "%08x: %08x: ICA %d: RELOAD VSR: %06x\n", command_addr * 2 + Path * 0x200000, cmd, Path, cmd & 0x003fffff);
+				addr = mcd212_control::word_address_from_byte(cmd & 0x0007ffff);
 				break;
 			case 0x50: case 0x51: case 0x52: case 0x53: case 0x54: case 0x55: case 0x56: case 0x57: // RELOAD VSR and STOP
 			case 0x58: case 0x59: case 0x5a: case 0x5b: case 0x5c: case 0x5d: case 0x5e: case 0x5f:
-				LOGMASKED(LOG_ICA, "%08x: %08x: ICA %d: RELOAD VSR and STOP: VSR = %05x\n", (addr - 2) * 2 + Path * 0x200000, cmd, Path, cmd & 0x003fffff);
+				LOGMASKED(LOG_ICA, "%08x: %08x: ICA %d: RELOAD VSR and STOP: VSR = %05x\n", command_addr * 2 + Path * 0x200000, cmd, Path, cmd & 0x003fffff);
 				set_vsr<Path>(cmd & 0x003fffff);
 				return;
 			case 0x60: case 0x61: case 0x62: case 0x63: case 0x64: case 0x65: case 0x66: case 0x67: // INTERRUPT
 			case 0x68: case 0x69: case 0x6a: case 0x6b: case 0x6c: case 0x6d: case 0x6e: case 0x6f:
-				LOGMASKED(LOG_ICA, "%08x: %08x: ICA %d: INTERRUPT\n", (addr - 2) * 2 + Path * 0x200000, cmd, Path);
+				LOGMASKED(LOG_ICA, "%08x: %08x: ICA %d: INTERRUPT\n", command_addr * 2 + Path * 0x200000, cmd, Path);
 				m_csrr[1] |= 1 << (2 - Path);
 				update_interrupt_state();
 				break;
 			case 0x78: case 0x79: case 0x7a: case 0x7b: case 0x7c: case 0x7d: case 0x7e: case 0x7f: // RELOAD DISPLAY PARAMETERS
-				LOGMASKED(LOG_ICA, "%08x: %08x: ICA %d: RELOAD DISPLAY PARAMETERS\n", (addr - 2) * 2 + Path * 0x200000, cmd, Path);
+				LOGMASKED(LOG_ICA, "%08x: %08x: ICA %d: RELOAD DISPLAY PARAMETERS\n", command_addr * 2 + Path * 0x200000, cmd, Path);
 				set_display_parameters<Path>(cmd & 0x1f);
 				break;
 			default:
-				LOGMASKED(LOG_ICA, "%08x: %08x: ICA %d: SET REGISTER %02x = %06x\n", (addr - 2) * 2 + Path * 0x200000, cmd, Path, cmd >> 24, cmd & 0x00ffffff);
+				LOGMASKED(LOG_ICA, "%08x: %08x: ICA %d: SET REGISTER %02x = %06x\n", command_addr * 2 + Path * 0x200000, cmd, Path, cmd >> 24, cmd & 0x00ffffff);
 				set_register<Path>(cmd >> 24, cmd & 0x00ffffff);
 				break;
 		}
@@ -450,60 +455,62 @@ template <int Path>
 void mcd212_device::process_dca()
 {
 	uint16_t *dca = Path ? m_planeb.target() : m_planea.target();
-	uint32_t addr = (m_dca[Path] & 0x0007ffff) / 2;
+	uint32_t addr = mcd212_control::word_address_from_byte(m_dca[Path] & 0x0007ffff);
 	uint32_t cmd = 0;
 	uint32_t count = 0;
 	const uint32_t max = mcd212_video::dca_bytes_per_line(BIT(m_dcr[0], DCR_CF_BIT));
-	bool addr_changed = false;
 	bool processing = true;
 
 	LOGMASKED(LOG_DCA, "Scanline %d: Processing DCA %d\n", screen().vpos(), Path);
 
 	while (processing && count < max)
 	{
-		cmd = dca[addr++] << 16;
-		cmd |= dca[addr++];
+		auto const fetch = mcd212_control::command_words(addr);
+		uint32_t const command_addr = fetch.first_word;
+		cmd = uint32_t(dca[fetch.first_word]) << 16;
+		cmd |= dca[fetch.second_word];
+		addr = fetch.next_word;
 		count += 4;
 		switch ((cmd & 0xff000000) >> 24)
 		{
 			case 0x00: case 0x01: case 0x02: case 0x03: case 0x04: case 0x05: case 0x06: case 0x07: // STOP
 			case 0x08: case 0x09: case 0x0a: case 0x0b: case 0x0c: case 0x0d: case 0x0e: case 0x0f:
-				LOGMASKED(LOG_DCA, "%08x: %08x: DCA %d: STOP\n", (addr - 2) * 2 + Path * 0x200000, cmd, Path);
+				LOGMASKED(LOG_DCA, "%08x: %08x: DCA %d: STOP\n", command_addr * 2 + Path * 0x200000, cmd, Path);
 				processing = false;
 				break;
 			case 0x10: case 0x11: case 0x12: case 0x13: case 0x14: case 0x15: case 0x16: case 0x17: // NOP
 			case 0x18: case 0x19: case 0x1a: case 0x1b: case 0x1c: case 0x1d: case 0x1e: case 0x1f:
-				LOGMASKED(LOG_DCA, "%08x: %08x: DCA %d: NOP\n", (addr - 2) * 2 + Path * 0x200000, cmd, Path);
+				LOGMASKED(LOG_DCA, "%08x: %08x: DCA %d: NOP\n", command_addr * 2 + Path * 0x200000, cmd, Path);
 				break;
 			case 0x20: case 0x21: case 0x22: case 0x23: case 0x24: case 0x25: case 0x26: case 0x27: // RELOAD DCP
 			case 0x28: case 0x29: case 0x2a: case 0x2b: case 0x2c: case 0x2d: case 0x2e: case 0x2f:
-				LOGMASKED(LOG_DCA, "%08x: %08x: DCA %d: RELOAD DCP (NOP)\n", (addr - 2) * 2 + Path * 0x200000, cmd, Path);
+				LOGMASKED(LOG_DCA, "%08x: %08x: DCA %d: RELOAD DCP (NOP)\n", command_addr * 2 + Path * 0x200000, cmd, Path);
 				break;
 			case 0x30: case 0x31: case 0x32: case 0x33: case 0x34: case 0x35: case 0x36: case 0x37: // RELOAD DCP and STOP
 			case 0x38: case 0x39: case 0x3a: case 0x3b: case 0x3c: case 0x3d: case 0x3e: case 0x3f:
-				LOGMASKED(LOG_DCA, "%08x: %08x: DCA %d: RELOAD DCP and STOP\n", (addr - 2) * 2 + Path * 0x200000, cmd, Path);
+				LOGMASKED(LOG_DCA, "%08x: %08x: DCA %d: RELOAD DCP and STOP\n", command_addr * 2 + Path * 0x200000, cmd, Path);
 				set_dcp<Path>(cmd & 0x003ffffc);
 				m_dca[Path] = cmd & 0x0007fffc;
 				return;
 			case 0x40: case 0x41: case 0x42: case 0x43: case 0x44: case 0x45: case 0x46: case 0x47: // RELOAD VSR
 			case 0x48: case 0x49: case 0x4a: case 0x4b: case 0x4c: case 0x4d: case 0x4e: case 0x4f:
-				LOGMASKED(LOG_DCA, "%08x: %08x: DCA %d: RELOAD VSR: %06x\n", (addr - 2) * 2 + Path * 0x200000, cmd, Path, cmd & 0x001fffff);
+				LOGMASKED(LOG_DCA, "%08x: %08x: DCA %d: RELOAD VSR: %06x\n", command_addr * 2 + Path * 0x200000, cmd, Path, cmd & 0x001fffff);
 				set_vsr<Path>(cmd & 0x003fffff);
 				break;
 			case 0x50: case 0x51: case 0x52: case 0x53: case 0x54: case 0x55: case 0x56: case 0x57: // RELOAD VSR and STOP
 			case 0x58: case 0x59: case 0x5a: case 0x5b: case 0x5c: case 0x5d: case 0x5e: case 0x5f:
-				LOGMASKED(LOG_DCA, "%08x: %08x: DCA %d: RELOAD VSR and STOP: %06x\n", (addr - 2) * 2 + Path * 0x200000, cmd, Path, cmd & 0x001fffff);
+				LOGMASKED(LOG_DCA, "%08x: %08x: DCA %d: RELOAD VSR and STOP: %06x\n", command_addr * 2 + Path * 0x200000, cmd, Path, cmd & 0x001fffff);
 				set_vsr<Path>(cmd & 0x003fffff);
 				processing = false;
 				break;
 			case 0x60: case 0x61: case 0x62: case 0x63: case 0x64: case 0x65: case 0x66: case 0x67: // INTERRUPT
 			case 0x68: case 0x69: case 0x6a: case 0x6b: case 0x6c: case 0x6d: case 0x6e: case 0x6f:
-				LOGMASKED(LOG_DCA, "%08x: %08x: DCA %d: INTERRUPT\n", (addr - 2) * 2 + Path * 0x200000, cmd, Path);
+				LOGMASKED(LOG_DCA, "%08x: %08x: DCA %d: INTERRUPT\n", command_addr * 2 + Path * 0x200000, cmd, Path);
 				m_csrr[1] |= 1 << (2 - Path);
 				update_interrupt_state();
 				break;
 			case 0x78: case 0x79: case 0x7a: case 0x7b: case 0x7c: case 0x7d: case 0x7e: case 0x7f: // RELOAD DISPLAY PARAMETERS
-				LOGMASKED(LOG_DCA, "%08x: %08x: DCA %d: RELOAD DISPLAY PARAMETERS\n", (addr - 2) * 2 + Path * 0x200000, cmd, Path);
+				LOGMASKED(LOG_DCA, "%08x: %08x: DCA %d: RELOAD DISPLAY PARAMETERS\n", command_addr * 2 + Path * 0x200000, cmd, Path);
 				set_display_parameters<Path>(cmd & 0x1f);
 				break;
 			default:
@@ -512,10 +519,7 @@ void mcd212_device::process_dca()
 		}
 	}
 
-	if (!addr_changed)
-	{
-		addr += (max - count) >> 1;
-	}
+	addr = mcd212_control::advance_word(addr, (max - count) >> 1);
 
 	m_dca[Path] = addr * 2;
 }

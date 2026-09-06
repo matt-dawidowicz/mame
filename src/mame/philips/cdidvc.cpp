@@ -2453,17 +2453,19 @@ void cdi_dvc_device::mpeg_schedule_packet(unsigned target)
 		? m_mpeg_packet_decode_ts[target]
 		: m_mpeg_packet_pts[target];
 
-	m_mpeg_schedule_play_delta90[target] = cdi_dvc::mpeg_timestamp_delta(play_ts, m_mpeg_clock90);
-	m_mpeg_schedule_decode_delta90[target] = cdi_dvc::mpeg_timestamp_delta(decode_ts, m_mpeg_clock90);
-	m_mpeg_schedule_play_delta45[target] = cdi_dvc::mpeg_dclk_delta(play_ts, m_mpeg_clock90);
-	m_mpeg_schedule_decode_delta45[target] = cdi_dvc::mpeg_dclk_delta(decode_ts, m_mpeg_clock90);
+	uint64_t const clock90 = current_mpeg_clock90(target);
+	auto const schedule = cdi_dvc::measure_packet_schedule(play_ts, decode_ts, clock90);
+	m_mpeg_schedule_play_delta90[target] = schedule.play90;
+	m_mpeg_schedule_decode_delta90[target] = schedule.decode90;
+	m_mpeg_schedule_play_delta45[target] = schedule.play45;
+	m_mpeg_schedule_decode_delta45[target] = schedule.decode45;
 	m_mpeg_schedule_valid[target] = true;
 	++m_mpeg_schedule_events[target];
 
 	LOGMASKED(LOG_MPEG,
-			"%s: DVC MPEG SCHED %s scr=%llu pts=%llu dts=%llu explicit_dts=%u play90=%lld decode90=%lld play45=%d decode45=%d event=%u\n",
+			"%s: DVC MPEG SCHED %s clock=%llu pts=%llu dts=%llu explicit_dts=%u play90=%lld decode90=%lld play45=%d decode45=%d event=%u\n",
 			machine().describe_context(), target == MPEG_FMA ? "FMA" : "FMV",
-			(unsigned long long)m_mpeg_clock90,
+			(unsigned long long)clock90,
 			(unsigned long long)m_mpeg_packet_pts[target],
 			(unsigned long long)m_mpeg_packet_dts[target],
 			m_mpeg_packet_have_dts[target] ? 1U : 0U,

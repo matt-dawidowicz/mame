@@ -21,6 +21,7 @@ TODO:
 #include "emu.h"
 #include "cdicdic.h"
 #include "cdiaudio.h"
+#include "cdicdic_memory.h"
 
 #include "cdrom.h"
 #include "sound/cdda.h"
@@ -916,25 +917,34 @@ void cdicdic_device::process_sector_data(const uint8_t *buffer, const uint8_t *s
 	m_data_buffer = completion.data_buffer;
 	m_next_data_buffer = completion.next_data_buffer;
 	m_next_audio_buffer = completion.next_audio_buffer;
-	uint16_t *dev_buffer = reinterpret_cast<uint16_t *>(&m_ram[completion.byte_offset]);
+	uint32_t dev_buffer = completion.byte_offset;
 
 	if (!cdic_hle::stores_sector_payload_in_ram(cdic_hle::disc_operation(m_disc_mode)))
 	{
 		// Mono-I captures show that CD-DA PCM bypasses CDIC RAM.  Only its
 		// subcode is written at byte offset $924 in the alternating buffers.
-		dev_buffer += cdic_hle::CDIC_SUBCODE_BYTE_OFFSET / 2;
+		dev_buffer += cdic_hle::CDIC_SUBCODE_BYTE_OFFSET;
 	}
 	else
 	{
 		for (int i = SECTOR_HEADER; i < SECTOR_FILE2; i += 2)
-			*dev_buffer++ = ((uint16_t)buffer[i] << 8) | buffer[i + 1];
+		{
+			cdic_hle::write_ram_word(&m_ram[dev_buffer], uint16_t((uint16_t(buffer[i]) << 8) | buffer[i + 1]));
+			dev_buffer += 2;
+		}
 
 		for (int i = SECTOR_FILE2; i < SECTOR_SIZE; i += 2)
-			*dev_buffer++ = ((uint16_t)buffer[i] << 8) | buffer[i + 1];
+		{
+			cdic_hle::write_ram_word(&m_ram[dev_buffer], uint16_t((uint16_t(buffer[i]) << 8) | buffer[i + 1]));
+			dev_buffer += 2;
+		}
 	}
 
 	for (int i = SUBCODE_Q_CONTROL; i <= SUBCODE_Q_CRC1; i++)
-		*dev_buffer++ = subcode_buffer[i];
+	{
+		cdic_hle::write_ram_word(&m_ram[dev_buffer], subcode_buffer[i]);
+		dev_buffer += 2;
+	}
 
 	m_x_buffer |= 0x8000;
 	update_interrupt_state();
@@ -1105,18 +1115,19 @@ void cdicdic_device::regs_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 			COMBINE_DATA(&m_dma_control);
 
 			uint32_t device_index = (m_dma_control & 0x3fff) >> 1;
-			uint16_t *ram = (uint16_t *)m_ram.get();
 
 			// SCC68070 channel 1 owns the memory-side DMA cycle.
 			// CDIC supplies or consumes only the device-side operand.
 			while (m_scc->dma_channel1_active())
 			{
-				uint16_t operand = ram[device_index];
+				uint8_t *const ram_word = &m_ram[device_index << 1];
+				uint16_t operand = cdic_hle::read_ram_word(ram_word);
 
 				if (!m_scc->dma_channel1_transfer(operand))
 					break;
 
-				ram[device_index++] = operand;
+				cdic_hle::write_ram_word(ram_word, operand);
+				++device_index;
 			}
 			break;
 		}
@@ -1462,12 +1473,12 @@ void cdicdic_device::device_reset()
 void cdicdic_device::ram_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 {
 	LOGMASKED(LOG_RAM, "%s: ram_w: %04x = %04x & %04x\n", machine().describe_context(), offset << 1, data, mem_mask);
-	COMBINE_DATA((uint16_t *)&m_ram[offset << 1]);
+	cdic_hle::combine_ram_word(&m_ram[offset << 1], data, mem_mask);
 }
 
 uint16_t cdicdic_device::ram_r(offs_t offset, uint16_t mem_mask)
 {
-	const uint16_t data = ((uint16_t)m_ram[(offset << 1) + 1] << 8) | m_ram[offset << 1];
+	const uint16_t data = cdic_hle::read_ram_word(&m_ram[offset << 1]);
 	LOGMASKED(LOG_RAM, "%s: ram_r: %04x : %04x & %04x\n", machine().describe_context(), offset << 1, data, mem_mask);
 	return data;
 }
