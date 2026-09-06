@@ -54,7 +54,9 @@ jobs:
             libfontconfig-dev \
             libasound2-dev \
             libxinerama-dev \
-            libxi-dev
+            libxi-dev \
+            qt6-base-dev \
+            qt6-base-dev-tools
 
       - name: Restore compiler cache
         uses: actions/cache/restore@v4
