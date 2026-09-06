@@ -141,6 +141,8 @@ TEST_CASE(
 	{
 		uint16_t const requested = uint16_t((index * 13U + 7U) & 0x1fU);
 		live = cdi_dvc::request_mpeg_audio_stream(live, requested).state;
+		if (have_snapshot)
+			restored = cdi_dvc::request_mpeg_audio_stream(restored, requested).state;
 
 		if (index == snapshot_at)
 		{
@@ -154,16 +156,16 @@ TEST_CASE(
 		if ((index % 97U) == 96U)
 		{
 			live = cdi_dvc::end_mpeg_audio_program(live);
-			if (have_snapshot && index >= snapshot_at)
+			if (have_snapshot)
 				restored = cdi_dvc::end_mpeg_audio_program(restored);
 
 			uint16_t const after_end = uint16_t((requested + 5U) & 0x1fU);
 			live = cdi_dvc::request_mpeg_audio_stream(live, after_end).state;
-			if (have_snapshot && index >= snapshot_at)
+			if (have_snapshot)
 				restored = cdi_dvc::request_mpeg_audio_stream(restored, after_end).state;
 
 			live = cdi_dvc::abort_mpeg_audio_program(live);
-			if (have_snapshot && index >= snapshot_at)
+			if (have_snapshot)
 				restored = cdi_dvc::abort_mpeg_audio_program(restored);
 		}
 
@@ -171,7 +173,7 @@ TEST_CASE(
 		live = cdi_dvc::commit_mpeg_audio_stream(live, selected_id).state;
 		live_hash = hash_control_state(live_hash, live);
 
-		if (have_snapshot && index >= snapshot_at)
+		if (have_snapshot)
 		{
 			uint8_t const restored_id = uint8_t(0xc0 | restored.requested_stream);
 			restored = cdi_dvc::commit_mpeg_audio_stream(restored, restored_id).state;
