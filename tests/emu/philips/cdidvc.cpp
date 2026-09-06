@@ -11,7 +11,6 @@
 #include "cdidvc_utils.h"
 
 #define PLM_NO_STDIO
-#define PL_MPEG_IMPLEMENTATION
 #include "../../../3rdparty/pl_mpeg/pl_mpeg.h"
 
 TEST_CASE("CD-i DVC MPEG timestamp deltas wrap at 33 bits", "[emu][philips][dvc]")

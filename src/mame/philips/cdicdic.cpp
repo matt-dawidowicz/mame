@@ -36,7 +36,8 @@ TODO:
 #define LOG_WRITES      (1U << 7)
 #define LOG_UNKNOWNS    (1U << 8)
 #define LOG_RAM         (1U << 9)
-#define LOG_ALL         (LOG_DECODES | LOG_SAMPLES | LOG_COMMANDS | LOG_SECTORS | LOG_IRQS | LOG_READS | LOG_WRITES | LOG_UNKNOWNS | LOG_RAM)
+#define LOG_TRACE       (1U << 10)
+#define LOG_ALL         (LOG_DECODES | LOG_SAMPLES | LOG_COMMANDS | LOG_SECTORS | LOG_IRQS | LOG_READS | LOG_WRITES | LOG_UNKNOWNS | LOG_RAM | LOG_TRACE)
 
 #define VERBOSE         (0)
 #include "logmacro.h"
@@ -278,8 +279,6 @@ void cdicdic_device::play_cdda_sector(const uint8_t *data, bool emphasis)
 {
 	m_dmadac[0]->set_frequency(44100);
 	m_dmadac[1]->set_frequency(44100);
-	m_dmadac[0]->set_volume(0x100);
-	m_dmadac[1]->set_volume(0x100);
 
 	const uint16_t NUM_SAMPLES = SECTOR_SIZE / 4;
 	for (uint16_t i = 0; i < NUM_SAMPLES; i++)
@@ -313,8 +312,6 @@ void cdicdic_device::play_audio_sector(const uint8_t coding, const uint8_t *data
 
 	m_dmadac[0]->set_frequency(sample_frequency);
 	m_dmadac[1]->set_frequency(sample_frequency);
-	m_dmadac[0]->set_volume(0x100);
-	m_dmadac[1]->set_volume(0x100);
 
 	const uint16_t num_samples = cdic_hle::xa_samples_per_sector_per_channel(coding_info) / (18 * 28);
 
@@ -325,14 +322,15 @@ void cdicdic_device::play_audio_sector(const uint8_t coding, const uint8_t *data
 		offset += 28 * num_samples;
 	}
 
-	int16_t sampleL = 0, sampleR = 0, outL = 0, outR = 0;
+	int16_t sampleL = 0, sampleR = 0;
 	// Green Book nominal curve.  Board-family quantization and the documented
 	// ADPCM high-attenuation anomaly remain outside this compatibility model.
 	const double scaleLL = cdi_audio::nominal_attenuation_gain(m_atten[0]);
 	const double scaleLR = cdi_audio::nominal_attenuation_gain(m_atten[1]);
 	const double scaleRR = cdi_audio::nominal_attenuation_gain(m_atten[2]);
 	const double scaleRL = cdi_audio::nominal_attenuation_gain(m_atten[3]);
-	for (uint16_t i = 0; i < 18 * 28 * num_samples; i++)
+	const uint16_t total_samples = 18 * 28 * num_samples;
+	for (uint16_t i = 0; i < total_samples; i++)
 	{
 		sampleL = m_samples[0][i];
 		sampleR = m_samples[coding_info.channels - 1][i];
@@ -341,11 +339,12 @@ void cdicdic_device::play_audio_sector(const uint8_t coding, const uint8_t *data
 		double const filteredR = cdi_audio::apply_50_15_deemphasis(
 			m_deemphasis[1], sampleR, sample_frequency, coding_info.emphasis);
 
-		outL = (filteredL * scaleLL + filteredR * scaleRL) * 0.25;
-		outR = (filteredL * scaleLR + filteredR * scaleRR) * 0.25;
-		m_dmadac[0]->transfer(0, 1, 1, 1, &outL);
-		m_dmadac[1]->transfer(0, 1, 1, 1, &outR);
+		m_samples[0][i] = int16_t((filteredL * scaleLL + filteredR * scaleRL) * 0.25);
+		m_samples[1][i] = int16_t((filteredL * scaleLR + filteredR * scaleRR) * 0.25);
 	}
+
+	m_dmadac[0]->transfer(0, 1, 1, total_samples, m_samples[0].get());
+	m_dmadac[1]->transfer(0, 1, 1, total_samples, m_samples[1].get());
 }
 
 void cdicdic_device::receive_cdda_sector(const uint8_t *data, bool emphasis)
@@ -629,7 +628,7 @@ void cdicdic_device::process_disc_sector()
 			m_cdrom->read_data(
 					m_curr_lba, buffer, cdrom_file::CD_TRACK_RAW_DONTCARE);
 
-	logerror(
+	LOGMASKED(LOG_TRACE,
 			"CDIC_TRACE sector disc_cmd=%02x live_cmd=%04x mode=%u "
 			"lba=%u real_lba=%u msf=%02x:%02x:%02x read_ok=%u "
 			"hdr=%02x%02x%02x%02x sector_mode=%02x file=%02x "
@@ -1022,7 +1021,7 @@ uint16_t cdicdic_device::regs_r(offs_t offset, uint16_t mem_mask)
 			return m_interrupt_vector;
 
 		case 0x3ffe/2:
-			logerror(
+			LOGMASKED(LOG_TRACE,
 					"CDIC_DBUF_TRACE read value=%04x mask=%04x "
 					"cmd=%04x disc_cmd=%02x mode=%u lba=%u ctx=%s\\n",
 					unsigned(m_data_buffer), unsigned(mem_mask),
@@ -1161,7 +1160,7 @@ void cdicdic_device::regs_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 			LOGMASKED(LOG_WRITES, "%s: cdic_w: Data Buffer Register = %04x & %04x\n", machine().describe_context(), data, mem_mask);
 			COMBINE_DATA(&m_data_buffer);
 
-			logerror(
+			LOGMASKED(LOG_TRACE,
 					"CDIC_DBUF_TRACE write data=%04x mask=%04x old=%04x "
 					"combined=%04x cmd=%04x disc_cmd=%02x mode=%u "
 					"lba=%u ctx=%s\\n",
@@ -1188,7 +1187,7 @@ void cdicdic_device::regs_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 			}
 			update_interrupt_state();
 
-			logerror(
+			LOGMASKED(LOG_TRACE,
 					"CDIC_DBUF_TRACE write-complete value=%04x "
 					"cmd=%04x disc_cmd=%02x mode=%u lba=%u ctx=%s\\n",
 					unsigned(m_data_buffer), unsigned(m_command),
@@ -1229,7 +1228,7 @@ void cdicdic_device::init_disc_read(uint8_t disc_mode)
 		update_mode2_filters(cdic_hle::mode2_filter_boundary::new_read);
 	else if (disc_mode == DISC_CDDA)
 		m_cdda_pending = false;
-	logerror(
+	LOGMASKED(LOG_TRACE,
 			"CDIC_TRACE begin cmd=%04x mode=%u time=%08x lba=%u "
 			"file=%04x channel=%08x audio=%04x dsel=%04x data=%04x ctx=%s\n",
 			unsigned(m_command), unsigned(disc_mode), unsigned(m_time),
@@ -1243,7 +1242,7 @@ void cdicdic_device::init_disc_read(uint8_t disc_mode)
 
 void cdicdic_device::cancel_disc_read()
 {
-	logerror(
+	LOGMASKED(LOG_TRACE,
 			"CDIC_TRACE cancel disc_cmd=%02x live_cmd=%04x mode=%u "
 			"time=%08x lba=%u ctx=%s\n",
 			unsigned(m_disc_command), unsigned(m_command),
@@ -1258,7 +1257,7 @@ void cdicdic_device::cancel_disc_read()
 
 void cdicdic_device::handle_cdic_command()
 {
-	logerror(
+	LOGMASKED(LOG_TRACE,
 			"CDIC_TRACE command cmd=%04x time=%08x disc_cmd=%02x "
 			"mode=%u lba=%u file=%04x channel=%08x audio=%04x "
 			"dsel=%04x data=%04x ctx=%s\n",

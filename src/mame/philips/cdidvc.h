@@ -298,8 +298,6 @@ private:
 	bool m_audio_backend_ended = false;
 
 	// MPEG video decode and MAME video presentation.
-	std::vector<uint8_t> m_video_rgb24;
-
 	// CURRENT IMPLEMENTATION MODEL, NOT HARDWARE SPECIFICATION:
 	// retain decoded pictures until their presentation time is examined.
 	struct queued_video_frame

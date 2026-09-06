@@ -120,15 +120,31 @@ TEST_CASE("CDIC XA arithmetic floor shifts are explicit over their signed domain
 		return int32_t(quotient);
 	};
 
-	for (unsigned shift = 0; shift <= 15; ++shift)
+	bool domain_mismatch = false;
+	int32_t mismatch_value = 0;
+	unsigned mismatch_shift = 0;
+	int32_t mismatch_actual = 0;
+	int32_t mismatch_expected = 0;
+	for (unsigned shift = 0; shift <= 15 && !domain_mismatch; ++shift)
 	{
 		for (int32_t value = -32768; value <= 32767; ++value)
 		{
-			INFO("value=" << value << " shift=" << shift);
-			REQUIRE(cdic_hle::floor_shift_right(value, uint8_t(shift)) ==
-				reference_floor_shift(value, uint8_t(shift)));
+			int32_t const actual = cdic_hle::floor_shift_right(value, uint8_t(shift));
+			int32_t const expected = reference_floor_shift(value, uint8_t(shift));
+			if (actual != expected)
+			{
+				domain_mismatch = true;
+				mismatch_value = value;
+				mismatch_shift = shift;
+				mismatch_actual = actual;
+				mismatch_expected = expected;
+				break;
+			}
 		}
 	}
+	INFO("value=" << mismatch_value << " shift=" << mismatch_shift
+		<< " actual=" << mismatch_actual << " expected=" << mismatch_expected);
+	REQUIRE_FALSE(domain_mismatch);
 
 	constexpr std::array<int32_t, 11> boundaries =
 	{

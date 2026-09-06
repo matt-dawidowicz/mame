@@ -69,6 +69,7 @@ project("mametests")
 		MAME_DIR .. "tests/emu/philips/cdicdic_memory.cpp",
 		MAME_DIR .. "tests/emu/philips/mcd212_video.cpp",
 		MAME_DIR .. "tests/emu/philips/cdidvc.cpp",
+		MAME_DIR .. "tests/emu/philips/cdidvc_plmpeg.cpp",
 		MAME_DIR .. "tests/emu/philips/cdidvc_timing.cpp",
 		MAME_DIR .. "tests/emu/philips/cdidvc_invariants.cpp",
 		MAME_DIR .. "tests/emu/philips/cdidvc_audio_format.cpp",

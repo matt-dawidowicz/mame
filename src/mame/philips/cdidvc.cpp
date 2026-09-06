@@ -27,7 +27,6 @@
 #include "cdidvc_utils.h"
 
 #define PLM_NO_STDIO
-#define PL_MPEG_IMPLEMENTATION
 #include "../../../3rdparty/pl_mpeg/pl_mpeg.h"
 
 #define LOG_REGISTERS    (1U << 1)
@@ -709,7 +708,6 @@ void cdi_dvc_device::save_state_postload()
 			m_save_picture_events.begin(),
 			m_save_picture_events.begin() + m_save_picture_event_count);
 	m_video_picture_event_read = 0;
-	m_video_rgb24.clear();
 
 	bool const audio_ok = save_state_rebuild_audio_decoder();
 	bool const video_ok = save_state_rebuild_video_decoder();
@@ -1278,13 +1276,17 @@ void cdi_dvc_device::sound_stream_update(sound_stream &stream)
 						unsigned(output.pending_frames_before));
 			}
 
+#if (VERBOSE & LOG_AUDIO)
 			m_audio_output_hash = cdi_dvc::hash_pcm16_sample(
 					m_audio_output_hash, output.left);
 			m_audio_output_hash = cdi_dvc::hash_pcm16_sample(
 					m_audio_output_hash, output.right);
+#endif
 			++m_audio_output_frames;
+#if (VERBOSE & LOG_AUDIO)
 			if (output.left != 0 || output.right != 0)
 				++m_audio_output_nonzero;
+#endif
 		}
 		else if (m_audio_output_started)
 		{
@@ -1508,7 +1510,9 @@ void cdi_dvc_device::audio_decoder_pump()
 			break;
 
 		m_audio_emphasis = uint8_t(plm_audio_get_emphasis(m_audio_decoder));
+#if (VERBOSE & LOG_AUDIO)
 		uint32_t hash = 2166136261U;
+#endif
 		size_t const values = size_t(samples->count) * 2;
 		m_audio_pcm_queue.reserve(m_audio_pcm_queue.size() + values);
 		bool const deemphasis = cdi_audio::cdi_mpeg_deemphasis_enabled(
@@ -1520,7 +1524,9 @@ void cdi_dvc_device::audio_decoder_pump()
 				m_audio_deemphasis[channel], samples->interleaved[i],
 				m_audio_samplerate, deemphasis);
 			int16_t const pcm = cdi_dvc::quantize_plm_audio_sample(float(filtered));
+#if (VERBOSE & LOG_AUDIO)
 			hash = cdi_dvc::hash_pcm16_sample(hash, pcm);
+#endif
 			m_audio_pcm_queue.push_back(pcm);
 		}
 
@@ -1531,10 +1537,12 @@ void cdi_dvc_device::audio_decoder_pump()
 		m_fma_interrupt_status |= cdi_dvc::FMA_IRQ_FRAME_DECODED;
 		update_interrupt_state();
 		m_audio_backend_status |= 0x04;
+#if (VERBOSE & LOG_AUDIO)
 		LOGMASKED(LOG_AUDIO, "%s: DVC AUDIO decoded frames=%u frame_samples=%u total_samples=%u event=%u status=%02x fnv=%08x\n",
 				machine().describe_context(), m_audio_decoded_frames, samples->count,
 				m_audio_decoded_samples, m_audio_decode_events,
 				m_audio_backend_status, hash);
+#endif
 	}
 	m_audio_backend_ended = plm_audio_has_ended(m_audio_decoder) != 0;
 
@@ -1588,7 +1596,6 @@ void cdi_dvc_device::video_overlay_reset()
 
 void cdi_dvc_device::video_frame_clear()
 {
-	m_video_rgb24.clear();
 	m_scheduler_flush_dropped += m_video_queue.size();
 	m_video_queue.clear();
 	m_video_pts_anchor90 = 0;
@@ -1641,19 +1648,19 @@ void cdi_dvc_device::video_latch_frame()
 			&& m_video_queue.front().timestamp_valid
 			&& m_mpeg_have_scr[MPEG_FMV])
 	{
-		std::vector<uint64_t> timestamps90;
-		timestamps90.reserve(m_video_queue.size());
-		for (queued_video_frame const &queued : m_video_queue)
-		{
-			if (!queued.timestamp_valid)
-				break;
-			timestamps90.push_back(queued.timestamp90);
-		}
-
 		clock90 = current_mpeg_clock90(MPEG_FMV);
-		cdi_dvc::presentation_selection const selection =
-			cdi_dvc::select_latest_due_presentation(
-				timestamps90.data(), timestamps90.size(), clock90);
+		cdi_dvc::presentation_selection selection { 0, 0, false };
+		for (std::size_t index = 0; index < m_video_queue.size(); ++index)
+		{
+			queued_video_frame const &queued = m_video_queue[index];
+			if (!queued.timestamp_valid
+					|| !cdi_dvc::mpeg_presentation_due(queued.timestamp90, clock90))
+				break;
+
+			selection.selected_index = index;
+			selection.consume_count = index + 1;
+			selection.valid = true;
+		}
 		if (!selection.valid)
 		{
 			++m_scheduler_wait_vblanks;
@@ -1827,6 +1834,7 @@ void cdi_dvc_device::video_overlay_scanline(uint32_t *pixels, unsigned pixel_cou
 				continue;
 
 			pixels[out_x] = color;
+#if (VERBOSE & LOG_VIDEO)
 			uint8_t const r = uint8_t(color >> 16);
 			uint8_t const g = uint8_t(color >> 8);
 			uint8_t const b = uint8_t(color);
@@ -1837,12 +1845,14 @@ void cdi_dvc_device::video_overlay_scanline(uint32_t *pixels, unsigned pixel_cou
 			m_video_overlay_hash ^= b;
 			m_video_overlay_hash *= 16777619U;
 			++m_video_overlay_pixels;
+#endif
 			++m_video_overlay_total_pixels;
 			if (physical_y >= visible_top && physical_y < visible_top + 64)
 				++m_video_overlay_top64_pixels;
 		}
 	}
 
+#if (VERBOSE & LOG_VIDEO)
 	if (!m_video_overlay_complete && physical_y == dst_y + int(geometry.output_height) - 1 && m_video_overlay_pixels)
 	{
 		m_video_overlay_complete = true;
@@ -1851,6 +1861,7 @@ void cdi_dvc_device::video_overlay_scanline(uint32_t *pixels, unsigned pixel_cou
 				m_video_crop_x, m_video_crop_y, window_w, window_h,
 				dst_x, dst_y, m_video_overlay_pixels, m_video_overlay_hash);
 	}
+#endif
 }
 
 void cdi_dvc_device::video_decoder_destroy()
@@ -2078,6 +2089,7 @@ void cdi_dvc_device::video_decoder_pump(bool end_signalled)
 		++m_scheduler_decoded_frames;
 		++m_video_decoded_frames;
 
+#if (VERBOSE & LOG_VIDEO)
 		uint32_t frame_hash = 2166136261U;
 		auto hash_plane = [&frame_hash](plm_plane_t const &plane)
 		{
@@ -2095,6 +2107,7 @@ void cdi_dvc_device::video_decoder_pump(bool end_signalled)
 		LOGMASKED(LOG_VIDEO, "%s: DVC VIDEO decoded frames=%u size=%ux%u time=%f fnv=%08x\n",
 				machine().describe_context(),
 				m_video_decoded_frames, frame->width, frame->height, frame->time, frame_hash);
+#endif
 
 		queued_video_frame queued;
 		queued.width = uint16_t(frame->width);
@@ -2129,17 +2142,14 @@ void cdi_dvc_device::video_decoder_pump(bool end_signalled)
 			queued.timestamp_valid = true;
 		}
 
-		m_video_rgb24.resize(size_t(frame->width) * size_t(frame->height) * 3);
-		plm_frame_to_rgb(frame, m_video_rgb24.data(), frame->width * 3);
-		queued.pixels.resize(size_t(frame->width) * size_t(frame->height));
-		for (size_t i = 0; i < queued.pixels.size(); ++i)
-		{
-			size_t const off = i * 3;
-			queued.pixels[i] = 0xff000000U
-					| (uint32_t(m_video_rgb24[off + 0]) << 16)
-					| (uint32_t(m_video_rgb24[off + 1]) << 8)
-					| uint32_t(m_video_rgb24[off + 2]);
-		}
+		queued.pixels.assign(size_t(frame->width) * size_t(frame->height), 0xff000000U);
+#ifdef LSB_FIRST
+		// uint32_t 0xAARRGGBB is laid out B,G,R,A on little-endian hosts.
+		plm_frame_to_bgra(frame, reinterpret_cast<uint8_t *>(queued.pixels.data()), frame->width * 4);
+#else
+		// On big-endian hosts the same value is laid out A,R,G,B.
+		plm_frame_to_argb(frame, reinterpret_cast<uint8_t *>(queued.pixels.data()), frame->width * 4);
+#endif
 
 		uint32_t const generation = queued.generation;
 		uint64_t const timestamp90 = queued.timestamp90;
