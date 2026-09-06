@@ -1,5 +1,7 @@
 # CD-i Audio Fidelity Campaign
 
+> Fresh completion estimates and code/test findings: [CDI_MASTER_STATUS.md](CDI_MASTER_STATUS.md) and [verified audit](cdi_verified_status_20260906.md). The pre-campaign numbers below are historical. CDIC DMA bounds/Q generation and actual decoded A/V verification remain software work.
+
 ## Goal
 
 Bring the CD-i audio implementation from high functional completeness to a defensible 100% completion state, where every remaining audio area is either directly validated against authoritative documentation, real hardware, or trusted reference captures, or explicitly documented as an implementation model when hardware attribution cannot yet be proven.
@@ -143,7 +145,8 @@ the exact VMPEG DAC edge and underflow interrupt timing remain open.
 - [x] Add snapshots at frame boundary, partial frame, starvation, and backend flush/end-marker boundaries.
 - [x] Preserve pending/current/end stream-control state across a deterministic snapshot.
 - [x] Add full program-sequence-end and stream-switch device snapshots.
-- [x] Add active simultaneous A/V save/load runtime regression.
+- [x] Add live save/load of queued audio plus a video sequence header.
+- [ ] Add simultaneous decoded-picture/PCM presentation save/load continuation.
 - [x] Validate long post-load continuation hashes/timestamps.
 
 The save image records both PL_MPEG's input-end marker and whether its opaque
@@ -152,7 +155,7 @@ replay and recreates the terminal failed decode only when it occurred live.  Hel
 tests cover a three-byte pre-header, exact frame boundary, partial following frame,
 starvation/refill, observed end, unobserved signalled end, and reopening after end.
 
-The full-machine fixture now closes the device-level part of this row.  It saves a
+The full-machine fixture closes the register/backend-header snapshot portion of this row. Decoded-video picture and PCM presentation continuation remains open; the fixture suspends the CPU and does not decode video pictures.  It saves a
 pending requested/current stream split, mutates the live device, restores it, and
 requires the restored next legal Layer II header to commit the pending stream and
 raise the CSU/frame events.  A second snapshot preserves the ISO program-end latch
@@ -247,13 +250,15 @@ long-run measurements remain open, so this area is not 100%.
 ### 9. A/V synchronization and decoder clock
 
 - [x] Instrument audio sample clock against SCR/PTS/DCLK.
-- [x] Run at least a 30-minute continuous MPEG A/V fixture/title with drift telemetry.
-- [x] Run repeated interactive FMV scene transitions.
+- [x] Check 30-minute MPEG-rate clock arithmetic with deterministic helper fixtures.
+- [ ] Run at least a 30-minute decoded/presented MPEG A/V fixture/title with drift telemetry.
+- [x] Run repeated re-anchoring and device command transitions.
+- [ ] Run repeated meaningful branching MPEG scene transitions.
 - [x] Establish an acceptable drift threshold from the MPEG/CD-i timing model rather than visual judgment.
-- [x] Prove no monotonic drift accumulation across resets, seeks, pause/continue, and stream changes.
+- [x] Prove no monotonic drift accumulation in the helper model across resets, seeks, pause/continue, and stream changes.
 
-The software clock-domain gate is now closed without defining sync by visual
-judgment.  `audio_sample_clock90()` converts cumulative PCM frames into the MPEG
+The helper arithmetic gate is closed without defining sync by visual judgment.
+The decoded/presented continuous and branching MPEG gates remain open.  `audio_sample_clock90()` converts cumulative PCM frames into the MPEG
 90 kHz domain using quotient/remainder arithmetic, so rounding is performed from
 the complete rational position instead of accumulated sample increments.
 `observe_audio_clock()` reports the same sample instant against SCR, audio PTS, and

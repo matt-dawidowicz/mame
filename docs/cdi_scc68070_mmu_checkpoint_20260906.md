@@ -1,6 +1,6 @@
 # SCC68070 MMU translation checkpoint — 2026-09-06
 
-This checkpoint closes the architecturally defensible SCC68070 MMU implementation gates that can be derived from the Philips SCC68070 documentation and exercised in the current MAME core. It does **not** claim cycle-exact MMU silicon. Exact bus-error timing, duplicate-CAM electrical behavior, and hardware-observed stack-boundary timing remain evidence gaps.
+This checkpoint records the original MMU milestone. The [fresh source/test audit](cdi_verified_status_20260906.md#f2--scc-mmu-restartable-fault-path-is-not-enabled-audio-branch) reopens broad architectural certification: translation and query/save fixtures pass, but the restartable fault path is not enabled and executed-CPU fault tests are missing. Exact silicon timing remains a separate evidence gap.
 
 ## Certification
 
@@ -24,7 +24,7 @@ Two test-harness corrections were required while reaching the certified run. Nei
 1. The full-machine MMU fixture originally called `m_maincpu->memory().translate(...)`, which is ambiguous because `scc68070_device` exposes `memory()` through both `device_t` and `device_memory_interface`. The fixture now binds the CPU explicitly to `device_memory_interface` before calling `translate()`.
 2. An existing DVC DMA edge regression sampled the SCC68070 IPL line in the same scheduler callback that asserted or cleared it. The observed line transition becomes visible on the following scheduler turn, so the fixture now samples the assertion and acknowledgement edges after synchronization rather than treating the scheduler propagation delay as a controller failure.
 
-No further MMU code changes are planned unless a concrete regression, new authoritative documentation, or physical-hardware evidence invalidates a certified behavior below.
+The fresh audit identifies a concrete source defect and an executed-CPU verification gap. Repair and validate fault delivery before treating this milestone as architecturally complete.
 
 ## Evidence basis
 
@@ -42,7 +42,7 @@ The implementation is constrained by the Philips SCC68070 hardware documentation
 - The eight on-chip descriptors form a fully associative CAM. The documentation describes simultaneous comparison and does not define priority for duplicate active segment numbers, so the software model reports duplicate matches as `multiple_match` rather than inventing a winner.
 - MMU violations generate a CPU bus error and expose fault class / descriptor attributes through the MMU Status Register (MSR).
 
-## Closed architectural gates
+## Architectural implementation and verification scope
 
 ### 1. MMU disabled / external addressing
 
@@ -100,7 +100,7 @@ The existing MSR/MCR word-lane behavior remains intact.
 
 A live MMU violation does not fall through to the untranslated physical address. The SCC68070 records the logical fault address, read/write state, and current function code through Musashi's `set_buserror_details(..., rerun=true)` external-MMU path.
 
-The `rerun=true` path already schedules the restartable bus-error behavior expected for an external MMU fault. It is intentionally **not** combined with a separate `M68K_LINE_BUSERROR` pulse; Musashi explicitly documents that doing both would double-inject the exception.
+The original claim that this schedules a restartable fault was too broad. Musashi only raises its pending MMU fault when `m_can_instruction_restart` is true. The reviewed SCC68070 path never calls `set_emmu_enable`, and initialization/reset leave restart disabled. The metadata call alone does not activate the required exception route. This is source-traced; a full executed-CPU reproduction is still required. Do not add a second bus-error pulse blindly: the intended enabled path explicitly forbids double injection.
 
 Exact SCC68070 bus-error cycle timing and stack-frame timing remain hardware-evidence questions rather than claims of this checkpoint.
 
@@ -173,4 +173,4 @@ These are deliberately **not** closed by inference:
 - hardware capture of stack-segment boundary/wrap corner cases;
 - any undocumented interaction between MMU faults and concurrent external bus arbitration.
 
-These remaining items are hardware-fidelity questions, not missing basic MMU functionality.
+The items in this section are hardware-fidelity questions. They are additional to the open software fault-delivery and executed-CPU validation work described in section 7 and the fresh audit; they are not the complete remaining-work list.

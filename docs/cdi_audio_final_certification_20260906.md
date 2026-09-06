@@ -1,5 +1,7 @@
 # CD-i Audio Fidelity Campaign — Final Certification Report
 
+> Verification update: the [fresh audit](cdi_verified_status_20260906.md) supersedes broad MMU closure and decoded-A/V coverage claims. It records CDIC DMA/Q defects and the actual tolerant PCM-reference scope. Historical passing test results below remain valid within their exercised boundaries; current estimates are in [CDI_MASTER_STATUS.md](CDI_MASTER_STATUS.md).
+
 Date: 2026-09-06
 
 ## Certification baseline

@@ -1,5 +1,7 @@
 # CD-i Audio Fidelity Evidence Ledger
 
+> Verification update: the [fresh audit](cdi_verified_status_20260906.md) supersedes broad MMU closure and decoded-A/V coverage claims. It records CDIC DMA/Q defects and the actual tolerant PCM-reference scope. Historical passing test results below remain valid within their exercised boundaries; current estimates are in [CDI_MASTER_STATUS.md](CDI_MASTER_STATUS.md).
+
 This document records what the audio campaign can claim, why it can claim it,
 and where the evidence stops.  The completion matrix and definition of 100%
 remain in `docs/cdi_audio_fidelity_campaign.md`.

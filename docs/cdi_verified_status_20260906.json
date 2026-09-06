@@ -1,0 +1,1686 @@
+{
+  "schema_version": 1,
+  "audit_date": "2026-09-06",
+  "canonical_baseline": "da9a81c5bdf7c6d24a67b1b608575075ae469c33",
+  "audio_baseline": "21ef9f8fb08a640ed177cf9830f344a947da7344",
+  "canonical_code_baseline": "f0d78dfbda5c7fbbdb11c3fc1ba25a58e731146f",
+  "audio_code_baseline": "442e5050846e680ed653fc1297b66df588b314e2",
+  "rubric": {
+    "0": "Absent or no qualifying evidence for this obligation",
+    "1": "Placeholder, limited implementation, or blocking functional defect",
+    "2": "Working implementation/model with substantial gaps or thin verification",
+    "3": "Implemented and meaningfully tested; important scope/evidence gaps remain",
+    "4": "Closed for the explicitly bounded obligation with no known remaining work"
+  },
+  "formula": "sum(weight * grade / 4); weights sum to 100 per row; round to nearest 5 percentage points (ties upward)",
+  "limitations": "Engineering prioritization estimates, not measured hardware fidelity, compatibility rates, test coverage or effort remaining. Medium confidence roughly +/-5 points; Low roughly +/-10 or more. Old percentages use a different undefined denominator and are not comparable deltas.",
+  "subsystems": [
+    {
+      "id": "scc",
+      "subsystem": "SCC68070 CPU and internal peripherals",
+      "confidence": "Medium",
+      "evidence": [
+        "CPU",
+        "MMU",
+        "DMA",
+        "IRQ"
+      ],
+      "next_action": "Fix and execute-test MMU fault delivery; then timer/UART/I2C gaps.",
+      "packages": [
+        {
+          "scope": "CPU access integration",
+          "weight": 15,
+          "canonical_grade": 2,
+          "audio_grade": 2,
+          "rationale": "Musashi access callbacks exist; SCC-specific execution/fault corpus is missing."
+        },
+        {
+          "scope": "Timers",
+          "weight": 10,
+          "canonical_grade": 2,
+          "audio_grade": 2,
+          "rationale": "Timer 0 modeled; Timer 1/2 counters lack functional scheduling."
+        },
+        {
+          "scope": "DMA controller",
+          "weight": 15,
+          "canonical_grade": 2,
+          "audio_grade": 2,
+          "rationale": "Basic transfer engine; CDIC boundary defect and advanced modes remain."
+        },
+        {
+          "scope": "Interrupt controller",
+          "weight": 10,
+          "canonical_grade": 3,
+          "audio_grade": 3,
+          "rationale": "Priority helpers and acknowledgements; physical IACK incomplete."
+        },
+        {
+          "scope": "UART",
+          "weight": 10,
+          "canonical_grade": 2,
+          "audio_grade": 2,
+          "rationale": "Data/clock/side effects exist; forced TXEMT, fixed ten-bit timing and break stubs."
+        },
+        {
+          "scope": "I2C",
+          "weight": 10,
+          "canonical_grade": 2,
+          "audio_grade": 2,
+          "rationale": "Master state machine exists; slave and multi-master incomplete."
+        },
+        {
+          "scope": "MMU integration",
+          "weight": 20,
+          "canonical_grade": 1,
+          "audio_grade": 2,
+          "rationale": "Canonical stores registers; audio translates but restart enable is missing."
+        },
+        {
+          "scope": "Reset and persistent state",
+          "weight": 10,
+          "canonical_grade": 3,
+          "audio_grade": 3,
+          "rationale": "Registered state and deterministic reset; active peripheral round trips incomplete."
+        }
+      ],
+      "canonical_raw_percent": 50.0,
+      "canonical_percent": 50,
+      "audio_raw_percent": 55.0,
+      "audio_percent": 55
+    },
+    {
+      "id": "mmu",
+      "subsystem": "SCC68070 MMU",
+      "confidence": "Medium",
+      "evidence": [
+        "MMU"
+      ],
+      "next_action": "Enable the correct fault path and test executed fetch/read/write faults and RTE.",
+      "packages": [
+        {
+          "scope": "Register interface",
+          "weight": 15,
+          "canonical_grade": 3,
+          "audio_grade": 4,
+          "rationale": "Masked descriptor/control state has helpers and live register round trip."
+        },
+        {
+          "scope": "Translation and CAM",
+          "weight": 25,
+          "canonical_grade": 0,
+          "audio_grade": 3,
+          "rationale": "Audio has descriptor translation; instruction execution is not integration-tested."
+        },
+        {
+          "scope": "Permissions and operand boundaries",
+          "weight": 20,
+          "canonical_grade": 0,
+          "audio_grade": 3,
+          "rationale": "Helper permissions/preflight exist; live protected writes are not exercised."
+        },
+        {
+          "scope": "Exception and restart",
+          "weight": 25,
+          "canonical_grade": 0,
+          "audio_grade": 1,
+          "rationale": "Fault metadata call exists but m_can_instruction_restart stays false on this path."
+        },
+        {
+          "scope": "Save/load",
+          "weight": 10,
+          "canonical_grade": 2,
+          "audio_grade": 3,
+          "rationale": "Audio ram_state round trip tests translation queries with the CPU suspended."
+        },
+        {
+          "scope": "Silicon timing and ambiguous CAM edges",
+          "weight": 5,
+          "canonical_grade": 0,
+          "audio_grade": 0,
+          "rationale": "No distinguishing physical oracle."
+        }
+      ],
+      "canonical_raw_percent": 16.25,
+      "canonical_percent": 15,
+      "audio_raw_percent": 62.5,
+      "audio_percent": 65
+    },
+    {
+      "id": "cdic",
+      "subsystem": "CDIC",
+      "confidence": "Medium",
+      "evidence": [
+        "CDIC",
+        "XA",
+        "CDDA",
+        "DMA"
+      ],
+      "next_action": "Repair the channel-1 SRAM boundary before more audio-fidelity work.",
+      "packages": [
+        {
+          "scope": "Commands and transport",
+          "weight": 15,
+          "canonical_grade": 2,
+          "audio_grade": 2,
+          "rationale": "Read/stop state exists; seek-only completion and errors remain modeled."
+        },
+        {
+          "scope": "Mode-2 routing and coding",
+          "weight": 15,
+          "canonical_grade": 2,
+          "audio_grade": 4,
+          "rationale": "Audio exhausts standards routing, coding and selected parameter policy."
+        },
+        {
+          "scope": "Buffers and delivery",
+          "weight": 15,
+          "canonical_grade": 2,
+          "audio_grade": 3,
+          "rationale": "Measured double-buffer behavior; no full disc-device campaign."
+        },
+        {
+          "scope": "Audio control and handoff",
+          "weight": 15,
+          "canonical_grade": 1,
+          "audio_grade": 3,
+          "rationale": "Audio fixes AUDCTL/playback/sector ownership; physical edges remain."
+        },
+        {
+          "scope": "DMA SRAM boundaries",
+          "weight": 15,
+          "canonical_grade": 1,
+          "audio_grade": 1,
+          "rationale": "Unbounded device_index can leave the 16 KiB allocation on both branches."
+        },
+        {
+          "scope": "TOC and subcode",
+          "weight": 15,
+          "canonical_grade": 1,
+          "audio_grade": 1,
+          "rationale": "Hard-coded position fields and partial TOC synthesis."
+        },
+        {
+          "scope": "Error/status fidelity",
+          "weight": 5,
+          "canonical_grade": 1,
+          "audio_grade": 1,
+          "rationale": "Read failure is bounded; hardware error response incomplete."
+        },
+        {
+          "scope": "Active save/load",
+          "weight": 5,
+          "canonical_grade": 2,
+          "audio_grade": 2,
+          "rationale": "Fields are registered; CDIC live transport snapshot fixture missing."
+        }
+      ],
+      "canonical_raw_percent": 37.5,
+      "canonical_percent": 40,
+      "audio_raw_percent": 56.25,
+      "audio_percent": 55
+    },
+    {
+      "id": "mcd",
+      "subsystem": "MCD212 display",
+      "confidence": "Medium",
+      "evidence": [
+        "MCD"
+      ],
+      "next_action": "Add complete register-to-pixel and live overlay fixtures, then hardware captures.",
+      "packages": [
+        {
+          "scope": "Display modes",
+          "weight": 20,
+          "canonical_grade": 3,
+          "audio_grade": 3,
+          "rationale": "CLUT/RLE/DYUV/RGB/QHY implementation; complete pixel-reference corpus absent."
+        },
+        {
+          "scope": "ICA/DCA and memory bounds",
+          "weight": 20,
+          "canonical_grade": 2,
+          "audio_grade": 3,
+          "rationale": "Audio adds wrapped control fetches; whole live command engine not exhaustive."
+        },
+        {
+          "scope": "Field timing",
+          "weight": 15,
+          "canonical_grade": 3,
+          "audio_grade": 3,
+          "rationale": "Audio increases control-space testing; physical field edges remain."
+        },
+        {
+          "scope": "QHY reconstruction",
+          "weight": 15,
+          "canonical_grade": 3,
+          "audio_grade": 3,
+          "rationale": "Token/FIR/quantizer vectors; cold field and odd-sum silicon remain."
+        },
+        {
+          "scope": "Matte/cursor/mosaic/weight",
+          "weight": 15,
+          "canonical_grade": 2,
+          "audio_grade": 2,
+          "rationale": "Production pixel paths exist; limited independent image oracles."
+        },
+        {
+          "scope": "External overlay",
+          "weight": 5,
+          "canonical_grade": 2,
+          "audio_grade": 2,
+          "rationale": "Eligibility helper tested; combined-device frame not tested."
+        },
+        {
+          "scope": "Save state",
+          "weight": 5,
+          "canonical_grade": 2,
+          "audio_grade": 2,
+          "rationale": "Fields saved; active frame reconstruction corpus missing."
+        },
+        {
+          "scope": "Physical output certification",
+          "weight": 5,
+          "canonical_grade": 0,
+          "audio_grade": 0,
+          "rationale": "No current full-frame hardware match."
+        }
+      ],
+      "canonical_raw_percent": 60.0,
+      "canonical_percent": 60,
+      "audio_raw_percent": 65.0,
+      "audio_percent": 65
+    },
+    {
+      "id": "dvc",
+      "subsystem": "DVC overall",
+      "confidence": "Medium",
+      "evidence": [
+        "DVC",
+        "AV",
+        "SAVE"
+      ],
+      "next_action": "Prioritize actual branching MPEG presentation and live output evidence.",
+      "packages": [
+        {
+          "scope": "Ingress and parser",
+          "weight": 15,
+          "canonical_grade": 2,
+          "audio_grade": 4,
+          "rationale": "Audio header/access/PES paths have broad deterministic coverage."
+        },
+        {
+          "scope": "Registers/status/commands",
+          "weight": 15,
+          "canonical_grade": 2,
+          "audio_grade": 3,
+          "rationale": "Stream/CSU and optional presence tested; private event edges unresolved."
+        },
+        {
+          "scope": "Audio decode/output",
+          "weight": 20,
+          "canonical_grade": 2,
+          "audio_grade": 3,
+          "rationale": "Reference-tested audio; physical arithmetic/output limits remain."
+        },
+        {
+          "scope": "Video decode/output",
+          "weight": 20,
+          "canonical_grade": 2,
+          "audio_grade": 2,
+          "rationale": "Backend exists; independent I/P/B decode corpus absent."
+        },
+        {
+          "scope": "Presentation scheduling",
+          "weight": 10,
+          "canonical_grade": 2,
+          "audio_grade": 2,
+          "rationale": "26-frame temporary decode-ahead and first-PTS anchoring are models."
+        },
+        {
+          "scope": "DVC DMA boundary",
+          "weight": 10,
+          "canonical_grade": 2,
+          "audio_grade": 4,
+          "rationale": "Audio live normal/edge/complete Layer II ingress fixtures close that software scope."
+        },
+        {
+          "scope": "Save reconstruction",
+          "weight": 5,
+          "canonical_grade": 2,
+          "audio_grade": 3,
+          "rationale": "Live state/queued audio/video header tested, no real decoded A/V continuation."
+        },
+        {
+          "scope": "Physical board fidelity",
+          "weight": 5,
+          "canonical_grade": 0,
+          "audio_grade": 0,
+          "rationale": "No full VMPEG timing/analogue certification."
+        }
+      ],
+      "canonical_raw_percent": 47.5,
+      "canonical_percent": 50,
+      "audio_raw_percent": 70.0,
+      "audio_percent": 70
+    },
+    {
+      "id": "mpeg_video",
+      "subsystem": "MPEG video decode and presentation",
+      "confidence": "Low",
+      "evidence": [
+        "DVC",
+        "MCD",
+        "AV"
+      ],
+      "next_action": "Retain an independent decoded I/P/B reference stream and presentation hashes.",
+      "packages": [
+        {
+          "scope": "Backend decode",
+          "weight": 20,
+          "canonical_grade": 2,
+          "audio_grade": 2,
+          "rationale": "PL_MPEG runs; test tree does not retain an independent full video decode oracle."
+        },
+        {
+          "scope": "Packet/header handling",
+          "weight": 20,
+          "canonical_grade": 3,
+          "audio_grade": 3,
+          "rationale": "PES and sequence/header helpers covered."
+        },
+        {
+          "scope": "Picture event/reordering",
+          "weight": 15,
+          "canonical_grade": 3,
+          "audio_grade": 3,
+          "rationale": "All picture-type/marker helper combinations, not complete picture decode."
+        },
+        {
+          "scope": "Color conversion",
+          "weight": 10,
+          "canonical_grade": 2,
+          "audio_grade": 3,
+          "rationale": "Audio compares PL_MPEG RGB/BGRA/ARGB paths; internal consistency only."
+        },
+        {
+          "scope": "Presentation/queue timing",
+          "weight": 15,
+          "canonical_grade": 2,
+          "audio_grade": 2,
+          "rationale": "Approximate backend queue and timestamp policy remain."
+        },
+        {
+          "scope": "MCD212 composition",
+          "weight": 10,
+          "canonical_grade": 2,
+          "audio_grade": 2,
+          "rationale": "Production handoff exists; no combined-device pixel fixture."
+        },
+        {
+          "scope": "Independent frame/title certification",
+          "weight": 10,
+          "canonical_grade": 0,
+          "audio_grade": 0,
+          "rationale": "No retained present-frame or retail-runtime corpus in reviewed scope."
+        }
+      ],
+      "canonical_raw_percent": 53.75,
+      "canonical_percent": 55,
+      "audio_raw_percent": 56.25,
+      "audio_percent": 55
+    },
+    {
+      "id": "dvc_audio",
+      "subsystem": "DVC audio",
+      "confidence": "Medium",
+      "evidence": [
+        "DVC",
+        "ARITH",
+        "AV",
+        "SAVE"
+      ],
+      "next_action": "Add meaningful branching/output fixtures; do not relabel bounded PCM error as bit-exact.",
+      "packages": [
+        {
+          "scope": "Parser/access/selection",
+          "weight": 15,
+          "canonical_grade": 2,
+          "audio_grade": 4,
+          "rationale": "Exhaustive legal syntax/profile, stream IDs and access forms."
+        },
+        {
+          "scope": "Layer II PCM decode",
+          "weight": 20,
+          "canonical_grade": 2,
+          "audio_grade": 3,
+          "rationale": "Three repeated frames/reference sampling; tolerances up to 1500 PCM counts."
+        },
+        {
+          "scope": "PCM queue",
+          "weight": 15,
+          "canonical_grade": 2,
+          "audio_grade": 3,
+          "rationale": "Deterministic pair/zero/refill; physical DAC rule missing."
+        },
+        {
+          "scope": "Live DMA ingress",
+          "weight": 10,
+          "canonical_grade": 2,
+          "audio_grade": 4,
+          "rationale": "Legal frame traverses actual SCC/DVC device boundary in existing CI."
+        },
+        {
+          "scope": "FMA digital gain",
+          "weight": 10,
+          "canonical_grade": 1,
+          "audio_grade": 4,
+          "rationale": "Literal recovered Q22 curve, routes and mute tested."
+        },
+        {
+          "scope": "De-emphasis response",
+          "weight": 10,
+          "canonical_grade": 0,
+          "audio_grade": 3,
+          "rationale": "Standards shelf response tested; physical transition unknown."
+        },
+        {
+          "scope": "Termination and switching",
+          "weight": 10,
+          "canonical_grade": 2,
+          "audio_grade": 3,
+          "rationale": "Program end/requested-current state tested; interactive PTS branches absent."
+        },
+        {
+          "scope": "Audio save/load",
+          "weight": 5,
+          "canonical_grade": 2,
+          "audio_grade": 3,
+          "rationale": "Replay and device state tested; real full A/V continuation absent."
+        },
+        {
+          "scope": "Physical DSP/DAC attribution",
+          "weight": 5,
+          "canonical_grade": 0,
+          "audio_grade": 0,
+          "rationale": "Exact instruction/limiter and waveform remain unavailable."
+        }
+      ],
+      "canonical_raw_percent": 40.0,
+      "canonical_percent": 40,
+      "audio_raw_percent": 80.0,
+      "audio_percent": 80
+    },
+    {
+      "id": "xa",
+      "subsystem": "XA routing and ADPCM",
+      "confidence": "Medium",
+      "evidence": [
+        "XA",
+        "ARITH"
+      ],
+      "next_action": "Keep core reference gates; acquire silicon arithmetic and retail-scene evidence.",
+      "packages": [
+        {
+          "scope": "Sector routing",
+          "weight": 15,
+          "canonical_grade": 2,
+          "audio_grade": 4,
+          "rationale": "Exhaustive routing decisions use a defined media scope."
+        },
+        {
+          "scope": "Coding classification",
+          "weight": 10,
+          "canonical_grade": 3,
+          "audio_grade": 4,
+          "rationale": "All coding values and reserved classifications tested."
+        },
+        {
+          "scope": "Predictor/residual math",
+          "weight": 25,
+          "canonical_grade": 3,
+          "audio_grade": 3,
+          "rationale": "Broad helper oracle; retained exact FFmpeg fixture covers 4-bit stereo only."
+        },
+        {
+          "scope": "Group/layout/parameters",
+          "weight": 20,
+          "canonical_grade": 2,
+          "audio_grade": 3,
+          "rationale": "Both widths/channels and measured copy selection; selected-invalid signaling unknown."
+        },
+        {
+          "scope": "History/cadence",
+          "weight": 15,
+          "canonical_grade": 2,
+          "audio_grade": 3,
+          "rationale": "Groups/refill/30-minute arithmetic; live DAC/predictor reset not established."
+        },
+        {
+          "scope": "Emphasis",
+          "weight": 5,
+          "canonical_grade": 0,
+          "audio_grade": 3,
+          "rationale": "Audio has response tests; switch waveform unknown."
+        },
+        {
+          "scope": "Silicon and retail path",
+          "weight": 10,
+          "canonical_grade": 0,
+          "audio_grade": 0,
+          "rationale": "No one-LSB silicon or media-audited title pass."
+        }
+      ],
+      "canonical_raw_percent": 51.25,
+      "canonical_percent": 50,
+      "audio_raw_percent": 73.75,
+      "audio_percent": 75
+    },
+    {
+      "id": "cdda",
+      "subsystem": "CD-DA playback and transport",
+      "confidence": "Low",
+      "evidence": [
+        "CDDA",
+        "ARITH"
+      ],
+      "next_action": "Fix position metadata with a synthetic mixed-mode reference disc.",
+      "packages": [
+        {
+          "scope": "Transport command state",
+          "weight": 15,
+          "canonical_grade": 2,
+          "audio_grade": 2,
+          "rationale": "Start/stop/read model; no complete pause/seek reference campaign."
+        },
+        {
+          "scope": "PCM sector handoff",
+          "weight": 20,
+          "canonical_grade": 2,
+          "audio_grade": 3,
+          "rationale": "Audio 588-frame sector model and pre-start buffer; no live output sample capture."
+        },
+        {
+          "scope": "Playback gating/cadence",
+          "weight": 15,
+          "canonical_grade": 1,
+          "audio_grade": 3,
+          "rationale": "Audio fixes AUDCTL and 75 Hz events."
+        },
+        {
+          "scope": "Track/index transitions",
+          "weight": 15,
+          "canonical_grade": 1,
+          "audio_grade": 1,
+          "rationale": "Current Q track/index stay 01 regardless of later track."
+        },
+        {
+          "scope": "Position/subcode",
+          "weight": 15,
+          "canonical_grade": 1,
+          "audio_grade": 1,
+          "rationale": "Relative fields reuse absolute MSF; no position oracle."
+        },
+        {
+          "scope": "Pre-emphasis",
+          "weight": 10,
+          "canonical_grade": 0,
+          "audio_grade": 3,
+          "rationale": "Image flags and response tested."
+        },
+        {
+          "scope": "Mixed-mode runtime",
+          "weight": 5,
+          "canonical_grade": 0,
+          "audio_grade": 0,
+          "rationale": "No retained fixture."
+        },
+        {
+          "scope": "Physical alignment/servo",
+          "weight": 5,
+          "canonical_grade": 0,
+          "audio_grade": 0,
+          "rationale": "Unmeasured."
+        }
+      ],
+      "canonical_raw_percent": 28.75,
+      "canonical_percent": 30,
+      "audio_raw_percent": 48.75,
+      "audio_percent": 50
+    },
+    {
+      "id": "q",
+      "subsystem": "CD-DA Q and other subcode",
+      "confidence": "Low",
+      "evidence": [
+        "CDDA"
+      ],
+      "next_action": "Implement correct track/index/relative time and independently check CRC/lead packets.",
+      "packages": [
+        {
+          "scope": "Control/ADR",
+          "weight": 10,
+          "canonical_grade": 1,
+          "audio_grade": 4,
+          "rationale": "Audio preserves all encoded control/ADR combinations."
+        },
+        {
+          "scope": "Location/cadence",
+          "weight": 15,
+          "canonical_grade": 1,
+          "audio_grade": 4,
+          "rationale": "Measured trailer offset and 75 Hz model reflected in production."
+        },
+        {
+          "scope": "Track/index/relative position",
+          "weight": 25,
+          "canonical_grade": 1,
+          "audio_grade": 1,
+          "rationale": "Hard-coded 01 fields and absolute MSF in relative slots."
+        },
+        {
+          "scope": "TOC/lead packets",
+          "weight": 20,
+          "canonical_grade": 1,
+          "audio_grade": 1,
+          "rationale": "Synthesis remains partial; audio frames are omitted from frames accumulator."
+        },
+        {
+          "scope": "CRC oracle",
+          "weight": 10,
+          "canonical_grade": 1,
+          "audio_grade": 1,
+          "rationale": "Existing CRC loop includes twelve bytes; independent packet oracle absent."
+        },
+        {
+          "scope": "P/R-W/multisession",
+          "weight": 10,
+          "canonical_grade": 0,
+          "audio_grade": 0,
+          "rationale": "Not implemented as faithful delivery."
+        },
+        {
+          "scope": "Disc reference campaign",
+          "weight": 10,
+          "canonical_grade": 0,
+          "audio_grade": 0,
+          "rationale": "Missing."
+        }
+      ],
+      "canonical_raw_percent": 20.0,
+      "canonical_percent": 20,
+      "audio_raw_percent": 38.75,
+      "audio_percent": 40
+    },
+    {
+      "id": "dma",
+      "subsystem": "DMA integration",
+      "confidence": "Medium",
+      "evidence": [
+        "DMA",
+        "CDIC"
+      ],
+      "next_action": "Add CDIC end-of-SRAM transfer regression and resolve bounded behavior.",
+      "packages": [
+        {
+          "scope": "Controller registers",
+          "weight": 20,
+          "canonical_grade": 3,
+          "audio_grade": 3,
+          "rationale": "Masks/start/abort/COC implemented; remaining register ambiguity."
+        },
+        {
+          "scope": "Address/count sequencing",
+          "weight": 15,
+          "canonical_grade": 3,
+          "audio_grade": 3,
+          "rationale": "Pure modes/wrap tested; device-specific coverage incomplete."
+        },
+        {
+          "scope": "DVC channel 2",
+          "weight": 25,
+          "canonical_grade": 2,
+          "audio_grade": 4,
+          "rationale": "Audio has normal/abort/restart/Layer II live gate."
+        },
+        {
+          "scope": "CDIC channel 1",
+          "weight": 20,
+          "canonical_grade": 1,
+          "audio_grade": 1,
+          "rationale": "Synchronous unbounded SRAM loop; guest can cross allocation."
+        },
+        {
+          "scope": "Advanced request/error modes",
+          "weight": 10,
+          "canonical_grade": 1,
+          "audio_grade": 1,
+          "rationale": "Burst/chain/NDT/full bus errors incomplete."
+        },
+        {
+          "scope": "Bus timing",
+          "weight": 10,
+          "canonical_grade": 0,
+          "audio_grade": 0,
+          "rationale": "No cycle-exact arbitration/IACK/DREQ proof."
+        }
+      ],
+      "canonical_raw_percent": 46.25,
+      "canonical_percent": 45,
+      "audio_raw_percent": 58.75,
+      "audio_percent": 60
+    },
+    {
+      "id": "irq",
+      "subsystem": "Interrupts",
+      "confidence": "Medium",
+      "evidence": [
+        "IRQ",
+        "DMA"
+      ],
+      "next_action": "Add live error-source assertions alongside each new transfer/fault fixture.",
+      "packages": [
+        {
+          "scope": "SCC arbitration/ack",
+          "weight": 25,
+          "canonical_grade": 3,
+          "audio_grade": 3,
+          "rationale": "Priority/source helpers and register implementation."
+        },
+        {
+          "scope": "CDIC source control",
+          "weight": 20,
+          "canonical_grade": 2,
+          "audio_grade": 3,
+          "rationale": "Audio measured AUDCTL/XBUF/ABUF gating."
+        },
+        {
+          "scope": "SLAVE response IRQ",
+          "weight": 20,
+          "canonical_grade": 3,
+          "audio_grade": 3,
+          "rationale": "Readiness/replacement helpers; mailbox timing still a model."
+        },
+        {
+          "scope": "DVC status/IRQ",
+          "weight": 20,
+          "canonical_grade": 2,
+          "audio_grade": 3,
+          "rationale": "Audio integration sees synchronized completion/CSU."
+        },
+        {
+          "scope": "All fault/error sources",
+          "weight": 10,
+          "canonical_grade": 1,
+          "audio_grade": 1,
+          "rationale": "MMU exception delivery and broader error sources incomplete."
+        },
+        {
+          "scope": "Physical IACK edge timing",
+          "weight": 5,
+          "canonical_grade": 0,
+          "audio_grade": 0,
+          "rationale": "No trace-derived closure."
+        }
+      ],
+      "canonical_raw_percent": 56.25,
+      "canonical_percent": 55,
+      "audio_raw_percent": 66.25,
+      "audio_percent": 65
+    },
+    {
+      "id": "timing",
+      "subsystem": "Device timing",
+      "confidence": "Medium",
+      "evidence": [
+        "CPU",
+        "CDIC",
+        "MCD",
+        "AV"
+      ],
+      "next_action": "Separate timer/sector arithmetic from actual bus and presentation timing.",
+      "packages": [
+        {
+          "scope": "Video raster model",
+          "weight": 25,
+          "canonical_grade": 3,
+          "audio_grade": 3,
+          "rationale": "Table-derived profiles; pin waveforms unavailable."
+        },
+        {
+          "scope": "CDIC sector/sample cadence",
+          "weight": 25,
+          "canonical_grade": 2,
+          "audio_grade": 3,
+          "rationale": "Audio long-run helper identity and captured buffer cadence."
+        },
+        {
+          "scope": "DVC clocks/scheduling",
+          "weight": 25,
+          "canonical_grade": 2,
+          "audio_grade": 3,
+          "rationale": "Advanced DCLK and rational helper tests; actual sequence output absent."
+        },
+        {
+          "scope": "CPU/bus service timing",
+          "weight": 15,
+          "canonical_grade": 1,
+          "audio_grade": 1,
+          "rationale": "SCC/DMA/DTACK timing incomplete."
+        },
+        {
+          "scope": "Physical cross-device calibration",
+          "weight": 10,
+          "canonical_grade": 0,
+          "audio_grade": 0,
+          "rationale": "No full calibration corpus."
+        }
+      ],
+      "canonical_raw_percent": 47.5,
+      "canonical_percent": 50,
+      "audio_raw_percent": 60.0,
+      "audio_percent": 60
+    },
+    {
+      "id": "av",
+      "subsystem": "A/V synchronization",
+      "confidence": "Medium",
+      "evidence": [
+        "AV",
+        "DVC"
+      ],
+      "next_action": "Run a meaningful decoded/presented 30-minute A/V fixture and repeated branches.",
+      "packages": [
+        {
+          "scope": "Clock-domain arithmetic",
+          "weight": 20,
+          "canonical_grade": 2,
+          "audio_grade": 4,
+          "rationale": "Audio long-run rational helper tests close arithmetic accumulation scope."
+        },
+        {
+          "scope": "Packet scheduling",
+          "weight": 20,
+          "canonical_grade": 2,
+          "audio_grade": 3,
+          "rationale": "DCLK-advanced scheduling exists; device presentation not fully validated."
+        },
+        {
+          "scope": "Discontinuities",
+          "weight": 15,
+          "canonical_grade": 2,
+          "audio_grade": 3,
+          "rationale": "Re-anchoring and command cycles covered; branching MPEG absent."
+        },
+        {
+          "scope": "Decoded/presented continuous A/V",
+          "weight": 20,
+          "canonical_grade": 0,
+          "audio_grade": 0,
+          "rationale": "30-minute tests calculate timestamps; they do not decode/render a movie."
+        },
+        {
+          "scope": "Host output drift",
+          "weight": 15,
+          "canonical_grade": 0,
+          "audio_grade": 0,
+          "rationale": "Not measured."
+        },
+        {
+          "scope": "Physical clock/branch latency",
+          "weight": 10,
+          "canonical_grade": 0,
+          "audio_grade": 0,
+          "rationale": "Not measured."
+        }
+      ],
+      "canonical_raw_percent": 27.5,
+      "canonical_percent": 30,
+      "audio_raw_percent": 46.25,
+      "audio_percent": 45
+    },
+    {
+      "id": "save",
+      "subsystem": "Save states",
+      "confidence": "Medium",
+      "evidence": [
+        "SAVE",
+        "MMU",
+        "CDIC"
+      ],
+      "next_action": "Test real decoded A/V plus active CDIC/UART/I2C/SLAVE continuations.",
+      "packages": [
+        {
+          "scope": "DVC audio replay/device state",
+          "weight": 25,
+          "canonical_grade": 2,
+          "audio_grade": 3,
+          "rationale": "Audio adds end/stream/live ram_state paths."
+        },
+        {
+          "scope": "Decoded video continuation",
+          "weight": 20,
+          "canonical_grade": 2,
+          "audio_grade": 2,
+          "rationale": "Queues mirrored; live fixture holds sequence header without decoded pictures."
+        },
+        {
+          "scope": "MMU state",
+          "weight": 15,
+          "canonical_grade": 1,
+          "audio_grade": 3,
+          "rationale": "Audio query/descriptor ram_state round trip; no faulted CPU continuation."
+        },
+        {
+          "scope": "CDIC active transport",
+          "weight": 15,
+          "canonical_grade": 2,
+          "audio_grade": 2,
+          "rationale": "Registered fields but no full device transport snapshot fixture."
+        },
+        {
+          "scope": "SLAVE partial commands",
+          "weight": 10,
+          "canonical_grade": 2,
+          "audio_grade": 2,
+          "rationale": "Registered parser/response state; partial-command round trip missing."
+        },
+        {
+          "scope": "Active UART/I2C/DMA",
+          "weight": 10,
+          "canonical_grade": 1,
+          "audio_grade": 1,
+          "rationale": "Fields exist; end-to-end snapshots missing."
+        },
+        {
+          "scope": "Capacity/error policy",
+          "weight": 5,
+          "canonical_grade": 2,
+          "audio_grade": 2,
+          "rationale": "8 MiB/32 MiB replay caps can invalidate snapshots; recovery modeled."
+        }
+      ],
+      "canonical_raw_percent": 43.75,
+      "canonical_percent": 45,
+      "audio_raw_percent": 57.5,
+      "audio_percent": 60
+    },
+    {
+      "id": "slave",
+      "subsystem": "SLAVE HLE",
+      "confidence": "Medium",
+      "evidence": [
+        "SLAVE"
+      ],
+      "next_action": "Add partial-command snapshots and evidence-backed missing commands.",
+      "packages": [
+        {
+          "scope": "Parser/command assembly",
+          "weight": 20,
+          "canonical_grade": 3,
+          "audio_grade": 3,
+          "rationale": "Bounded exhaustive command descriptors; actual mailbox wiring uncertain."
+        },
+        {
+          "scope": "Response/readiness",
+          "weight": 20,
+          "canonical_grade": 3,
+          "audio_grade": 3,
+          "rationale": "Helper timing/replacement tests; fixed HLE delays remain."
+        },
+        {
+          "scope": "Pointer path",
+          "weight": 15,
+          "canonical_grade": 3,
+          "audio_grade": 3,
+          "rationale": "Wrapping/clamping and packets covered."
+        },
+        {
+          "scope": "Audio/reset/LCD control",
+          "weight": 10,
+          "canonical_grade": 2,
+          "audio_grade": 2,
+          "rationale": "Production side effects; physical transition/reset behavior not verified."
+        },
+        {
+          "scope": "Remaining protocols",
+          "weight": 20,
+          "canonical_grade": 1,
+          "audio_grade": 1,
+          "rationale": "Keyboard flag, memory set/clear, disc base, developer/X-bus are stubs."
+        },
+        {
+          "scope": "Save/reset",
+          "weight": 10,
+          "canonical_grade": 2,
+          "audio_grade": 2,
+          "rationale": "Registered state without active partial-command proof."
+        },
+        {
+          "scope": "Physical mailbox",
+          "weight": 5,
+          "canonical_grade": 0,
+          "audio_grade": 0,
+          "rationale": "Async DTACK/depth/timing not verified."
+        }
+      ],
+      "canonical_raw_percent": 56.25,
+      "canonical_percent": 55,
+      "audio_raw_percent": 56.25,
+      "audio_percent": 55
+    },
+    {
+      "id": "input",
+      "subsystem": "Input and peripherals",
+      "confidence": "Medium",
+      "evidence": [
+        "SLAVE",
+        "BOARD"
+      ],
+      "next_action": "Validate controller variants; implement keyboard only from protocol evidence.",
+      "packages": [
+        {
+          "scope": "Pointer coordinates/packets",
+          "weight": 35,
+          "canonical_grade": 3,
+          "audio_grade": 3,
+          "rationale": "Production callbacks and helper vectors."
+        },
+        {
+          "scope": "Buttons/host input",
+          "weight": 20,
+          "canonical_grade": 2,
+          "audio_grade": 2,
+          "rationale": "Machine ports exist; controller hardware/runtime breadth limited."
+        },
+        {
+          "scope": "Keyboard events",
+          "weight": 20,
+          "canonical_grade": 0,
+          "audio_grade": 0,
+          "rationale": "Enable command stores flag; no event source."
+        },
+        {
+          "scope": "Discovery/type",
+          "weight": 10,
+          "canonical_grade": 1,
+          "audio_grade": 1,
+          "rationale": "Fixed pointer type reply."
+        },
+        {
+          "scope": "LCD/test plug",
+          "weight": 10,
+          "canonical_grade": 2,
+          "audio_grade": 2,
+          "rationale": "Mono-I paths exist; MCU-based panels blank."
+        },
+        {
+          "scope": "Serial timing",
+          "weight": 5,
+          "canonical_grade": 0,
+          "audio_grade": 0,
+          "rationale": "Host polling is not serial waveform emulation."
+        }
+      ],
+      "canonical_raw_percent": 43.75,
+      "canonical_percent": 45,
+      "audio_raw_percent": 43.75,
+      "audio_percent": 45
+    },
+    {
+      "id": "servo",
+      "subsystem": "SERVO and MCU integration",
+      "confidence": "Low",
+      "evidence": [
+        "BOARD",
+        "SLAVE"
+      ],
+      "next_action": "Establish SPI/DTACK/host interfaces before claiming servo runtime.",
+      "packages": [
+        {
+          "scope": "Board topology",
+          "weight": 15,
+          "canonical_grade": 2,
+          "audio_grade": 2,
+          "rationale": "Documented MCU devices/maps."
+        },
+        {
+          "scope": "MCU integration",
+          "weight": 20,
+          "canonical_grade": 1,
+          "audio_grade": 1,
+          "rationale": "CPU devices exist; system links incomplete."
+        },
+        {
+          "scope": "Command protocol",
+          "weight": 25,
+          "canonical_grade": 0,
+          "audio_grade": 0,
+          "rationale": "No complete live SERVO/SLAVE command exchange."
+        },
+        {
+          "scope": "Transport feedback",
+          "weight": 20,
+          "canonical_grade": 0,
+          "audio_grade": 0,
+          "rationale": "HLE fixed seek has no physical feedback model."
+        },
+        {
+          "scope": "Timing",
+          "weight": 10,
+          "canonical_grade": 0,
+          "audio_grade": 0,
+          "rationale": "No calibrated MCU/drive communication."
+        },
+        {
+          "scope": "Runtime proof",
+          "weight": 10,
+          "canonical_grade": 0,
+          "audio_grade": 0,
+          "rationale": "No retained integrated servo firmware pass."
+        }
+      ],
+      "canonical_raw_percent": 12.5,
+      "canonical_percent": 15,
+      "audio_raw_percent": 12.5,
+      "audio_percent": 15
+    },
+    {
+      "id": "disc",
+      "subsystem": "Disc handling",
+      "confidence": "Low",
+      "evidence": [
+        "CDIC",
+        "CDDA",
+        "BOARD"
+      ],
+      "next_action": "Repair CDIC boundaries and build reference-disc transport tests.",
+      "packages": [
+        {
+          "scope": "Sector ingress",
+          "weight": 25,
+          "canonical_grade": 2,
+          "audio_grade": 3,
+          "rationale": "Audio distinguishes CD-DA/header validation and endian word paths."
+        },
+        {
+          "scope": "Data/audio filtering",
+          "weight": 20,
+          "canonical_grade": 2,
+          "audio_grade": 3,
+          "rationale": "Audio has exhaustive routing helper; complete device/media proof pending."
+        },
+        {
+          "scope": "Command transport",
+          "weight": 20,
+          "canonical_grade": 2,
+          "audio_grade": 2,
+          "rationale": "Read/stop model; seek-only behavior unresolved."
+        },
+        {
+          "scope": "TOC/subcode",
+          "weight": 15,
+          "canonical_grade": 1,
+          "audio_grade": 1,
+          "rationale": "Partial synthesis and concrete position defects."
+        },
+        {
+          "scope": "Error recovery",
+          "weight": 10,
+          "canonical_grade": 1,
+          "audio_grade": 1,
+          "rationale": "Bounded failed reads without accurate error/status machinery."
+        },
+        {
+          "scope": "Mixed-mode/multisession",
+          "weight": 10,
+          "canonical_grade": 0,
+          "audio_grade": 0,
+          "rationale": "No retained reference campaign."
+        }
+      ],
+      "canonical_raw_percent": 38.75,
+      "canonical_percent": 40,
+      "audio_raw_percent": 50.0,
+      "audio_percent": 50
+    },
+    {
+      "id": "glue",
+      "subsystem": "Mono-I/II board glue",
+      "confidence": "Low",
+      "evidence": [
+        "BOARD",
+        "DMA"
+      ],
+      "next_action": "Preserve Mono-I gates; scope asynchronous mailbox and SPI separately.",
+      "packages": [
+        {
+          "scope": "Mono-I maps/callbacks",
+          "weight": 25,
+          "canonical_grade": 3,
+          "audio_grade": 3,
+          "rationale": "Configured CPU/display/CDIC/SLAVE with limited runtime evidence."
+        },
+        {
+          "scope": "Optional DVC",
+          "weight": 15,
+          "canonical_grade": 2,
+          "audio_grade": 4,
+          "rationale": "Audio live fixture verifies actual presence/absence."
+        },
+        {
+          "scope": "Mono-II map",
+          "weight": 20,
+          "canonical_grade": 2,
+          "audio_grade": 2,
+          "rationale": "Structural map has deliberately unpopulated host ranges."
+        },
+        {
+          "scope": "MCU wiring",
+          "weight": 15,
+          "canonical_grade": 1,
+          "audio_grade": 1,
+          "rationale": "IRQ2 connected; SPI/DTACK absent."
+        },
+        {
+          "scope": "DSP/LEMM",
+          "weight": 15,
+          "canonical_grade": 0,
+          "audio_grade": 0,
+          "rationale": "Disabled DSP56001 execute stub; host/execution absent."
+        },
+        {
+          "scope": "Firmware/runtime breadth",
+          "weight": 10,
+          "canonical_grade": 1,
+          "audio_grade": 1,
+          "rationale": "Historical Mono-I smoke only; no Mono-II/CD playback pass."
+        }
+      ],
+      "canonical_raw_percent": 42.5,
+      "canonical_percent": 45,
+      "audio_raw_percent": 50.0,
+      "audio_percent": 50
+    },
+    {
+      "id": "mono2",
+      "subsystem": "Mono-II functional system",
+      "confidence": "Low",
+      "evidence": [
+        "BOARD"
+      ],
+      "next_action": "Implement necessary CPU-bus, MCU SPI and DSP foundations; runtime remains unproven.",
+      "packages": [
+        {
+          "scope": "Board map/configuration",
+          "weight": 25,
+          "canonical_grade": 2,
+          "audio_grade": 2,
+          "rationale": "Clocks/RAM/ROM/NVRAM/display structure present."
+        },
+        {
+          "scope": "IRQ/reset",
+          "weight": 10,
+          "canonical_grade": 3,
+          "audio_grade": 3,
+          "rationale": "Port-B IRQ2 translation tested."
+        },
+        {
+          "scope": "Host mailbox/DTACK",
+          "weight": 20,
+          "canonical_grade": 0,
+          "audio_grade": 0,
+          "rationale": "Blocked."
+        },
+        {
+          "scope": "SERVO-SLAVE SPI",
+          "weight": 15,
+          "canonical_grade": 0,
+          "audio_grade": 0,
+          "rationale": "Blocked."
+        },
+        {
+          "scope": "DSP/LEMM/audio",
+          "weight": 20,
+          "canonical_grade": 0,
+          "audio_grade": 0,
+          "rationale": "Disabled core without execution/host interface."
+        },
+        {
+          "scope": "Firmware/CD runtime",
+          "weight": 10,
+          "canonical_grade": 0,
+          "audio_grade": 0,
+          "rationale": "No retained matching-ROM boot."
+        }
+      ],
+      "canonical_raw_percent": 20.0,
+      "canonical_percent": 20,
+      "audio_raw_percent": 20.0,
+      "audio_percent": 20
+    },
+    {
+      "id": "all_audio",
+      "subsystem": "Cross-system audio",
+      "confidence": "Medium",
+      "evidence": [
+        "XA",
+        "DVC",
+        "CDDA",
+        "ARITH",
+        "AV"
+      ],
+      "next_action": "Fix source defects first, then reference-disc and real A/V output gaps.",
+      "packages": [
+        {
+          "scope": "XA compressed decode",
+          "weight": 20,
+          "canonical_grade": 2,
+          "audio_grade": 3,
+          "rationale": "Native decode broad; silicon arithmetic unproven."
+        },
+        {
+          "scope": "Layer II compressed decode",
+          "weight": 20,
+          "canonical_grade": 2,
+          "audio_grade": 3,
+          "rationale": "Software reference is tolerant, not bit-exact."
+        },
+        {
+          "scope": "Buffer/output delivery",
+          "weight": 20,
+          "canonical_grade": 2,
+          "audio_grade": 3,
+          "rationale": "Software queues/cadence tested; physical edges missing."
+        },
+        {
+          "scope": "CD-DA transport",
+          "weight": 15,
+          "canonical_grade": 1,
+          "audio_grade": 2,
+          "rationale": "Audio improves gating; track/subcode defects persist."
+        },
+        {
+          "scope": "Gain/emphasis/control",
+          "weight": 15,
+          "canonical_grade": 1,
+          "audio_grade": 3,
+          "rationale": "Q22 and filter tests; CDIC quantizer and switch unknown."
+        },
+        {
+          "scope": "Cross-stream/output continuity",
+          "weight": 10,
+          "canonical_grade": 1,
+          "audio_grade": 2,
+          "rationale": "Helpers/live commands; no true branching/movie/output capture."
+        }
+      ],
+      "canonical_raw_percent": 40.0,
+      "canonical_percent": 40,
+      "audio_raw_percent": 68.75,
+      "audio_percent": 70
+    },
+    {
+      "id": "all_video",
+      "subsystem": "Cross-system video",
+      "confidence": "Low",
+      "evidence": [
+        "MCD",
+        "DVC",
+        "AV"
+      ],
+      "next_action": "Add independent full-frame decode/composition/presentation evidence.",
+      "packages": [
+        {
+          "scope": "Native display",
+          "weight": 35,
+          "canonical_grade": 3,
+          "audio_grade": 3,
+          "rationale": "Documented MCD212 model; image corpus incomplete."
+        },
+        {
+          "scope": "MPEG decoded pictures",
+          "weight": 25,
+          "canonical_grade": 2,
+          "audio_grade": 2,
+          "rationale": "Backend implementation, no independent full decode corpus."
+        },
+        {
+          "scope": "Composition",
+          "weight": 20,
+          "canonical_grade": 2,
+          "audio_grade": 2,
+          "rationale": "Eligibility tests do not prove combined rendered pixels."
+        },
+        {
+          "scope": "Presentation",
+          "weight": 10,
+          "canonical_grade": 2,
+          "audio_grade": 2,
+          "rationale": "Scheduling model still requires runtime validation."
+        },
+        {
+          "scope": "Hardware/title captures",
+          "weight": 10,
+          "canonical_grade": 0,
+          "audio_grade": 0,
+          "rationale": "No retained current complete-frame certification."
+        }
+      ],
+      "canonical_raw_percent": 53.75,
+      "canonical_percent": 55,
+      "audio_raw_percent": 53.75,
+      "audio_percent": 55
+    }
+  ],
+  "evidence_registry": {
+    "CPU": {
+      "source": [
+        "src/devices/machine/scc68070.cpp",
+        "src/devices/cpu/m68000/scc68070.cpp"
+      ],
+      "tests": [
+        "tests/emu/machine/scc68070.cpp"
+      ],
+      "documentation": [
+        "docs/cdi_modernization_status.md"
+      ]
+    },
+    "MMU": {
+      "source": [
+        "src/devices/machine/scc68070.h",
+        "src/devices/machine/scc68070_helpers.h",
+        "src/devices/cpu/m68000/m68kcpu.cpp",
+        "src/devices/cpu/m68000/scc68070.cpp"
+      ],
+      "tests": [
+        "tests/emu/machine/scc68070.cpp",
+        "tests/emu/philips/cdi_mmu_integration.cpp"
+      ],
+      "documentation": [
+        "docs/cdi_scc68070_mmu_checkpoint_20260906.md"
+      ]
+    },
+    "DMA": {
+      "source": [
+        "src/devices/machine/scc68070.cpp",
+        "src/mame/philips/cdicdic.cpp",
+        "src/mame/philips/cdi.cpp"
+      ],
+      "tests": [
+        "tests/emu/philips/cdi_dvc_dma_integration.cpp",
+        "tests/emu/philips/cdi_dvc_edge_integration.cpp",
+        "tests/emu/philips/cdi_dvc_audio_dma_integration.cpp"
+      ],
+      "documentation": [
+        "docs/cdi_dma_av_optional_dvc_checkpoint_20260906.md"
+      ]
+    },
+    "IRQ": {
+      "source": [
+        "src/devices/machine/scc68070.cpp",
+        "src/mame/philips/cdicdic.cpp",
+        "src/mame/philips/cdidvc.cpp",
+        "src/mame/philips/cdislavehle.cpp"
+      ],
+      "tests": [
+        "tests/emu/machine/scc68070.cpp",
+        "tests/emu/philips/cdicdic.cpp",
+        "tests/emu/philips/cdislavehle_response_ready.cpp"
+      ],
+      "documentation": [
+        "docs/cdi_modernization_status.md"
+      ]
+    },
+    "CDIC": {
+      "source": [
+        "src/mame/philips/cdicdic.cpp",
+        "src/mame/philips/cdicdic_state.h",
+        "src/mame/philips/cdicdic_memory.h"
+      ],
+      "tests": [
+        "tests/emu/philips/cdicdic.cpp",
+        "tests/emu/philips/cdicdic_memory.cpp"
+      ],
+      "documentation": [
+        "docs/cdi_audio_fidelity_campaign.md"
+      ]
+    },
+    "XA": {
+      "source": [
+        "src/mame/philips/cdicdic_state.h",
+        "src/mame/philips/cdicdic.cpp"
+      ],
+      "tests": [
+        "tests/emu/philips/cdicdic.cpp"
+      ],
+      "documentation": [
+        "docs/cdi_audio_fidelity.md"
+      ]
+    },
+    "CDDA": {
+      "source": [
+        "src/mame/philips/cdicdic.cpp",
+        "src/mame/philips/cdicdic_state.h"
+      ],
+      "tests": [
+        "tests/emu/philips/cdicdic.cpp"
+      ],
+      "documentation": [
+        "docs/cdi_audio_final_certification_20260906.md",
+        "docs/cdi_audio_compatibility_matrix_20260906.md"
+      ]
+    },
+    "ARITH": {
+      "source": [
+        "src/mame/philips/cdiaudio.h",
+        "src/mame/philips/cdiaudio_dsp56001.h",
+        "src/mame/philips/cdidvc.cpp"
+      ],
+      "tests": [
+        "tests/emu/philips/cdi_audio_arithmetic.cpp",
+        "tests/emu/philips/cdi_fma_attenuation.cpp",
+        "tests/emu/philips/cdidvc_audio_reference.cpp"
+      ],
+      "documentation": [
+        "docs/cdi_audio_arithmetic_checkpoint.md",
+        "docs/cdi_audio_fidelity.md"
+      ]
+    },
+    "MCD": {
+      "source": [
+        "src/mame/philips/mcd212.cpp",
+        "src/mame/philips/mcd212_video.h",
+        "src/mame/philips/mcd212_control_stream.h",
+        "src/mame/philips/cdi.cpp"
+      ],
+      "tests": [
+        "tests/emu/philips/mcd212_video.cpp",
+        "tests/emu/philips/mcd212_control_stream.cpp"
+      ],
+      "documentation": [
+        "docs/cdi_modernization_status.md"
+      ]
+    },
+    "DVC": {
+      "source": [
+        "src/mame/philips/cdidvc.cpp",
+        "src/mame/philips/cdidvc_mpeg_format.h",
+        "src/mame/philips/cdidvc_utils.h",
+        "3rdparty/pl_mpeg/pl_mpeg.h"
+      ],
+      "tests": [
+        "tests/emu/philips/cdidvc.cpp",
+        "tests/emu/philips/cdidvc_audio_format.cpp",
+        "tests/emu/philips/cdidvc_audio_reference.cpp",
+        "tests/emu/philips/cdidvc_video_conversion.cpp"
+      ],
+      "documentation": [
+        "docs/cdi_audio_fidelity_campaign.md"
+      ]
+    },
+    "AV": {
+      "source": [
+        "src/mame/philips/cdidvc.cpp",
+        "src/mame/philips/cdidvc_fidelity.h"
+      ],
+      "tests": [
+        "tests/emu/philips/cdidvc_timing.cpp",
+        "tests/emu/philips/cdidvc_avsync_threshold.cpp",
+        "tests/emu/philips/cdi_dvc_state_integration.cpp"
+      ],
+      "documentation": [
+        "docs/cdi_dma_av_optional_dvc_checkpoint_20260906.md",
+        "docs/cdi_audio_final_certification_20260906.md"
+      ]
+    },
+    "SAVE": {
+      "source": [
+        "src/mame/philips/cdidvc.cpp",
+        "src/mame/philips/cdidvc_save_state.h",
+        "src/mame/philips/cdicdic.cpp",
+        "src/mame/philips/cdislavehle.cpp"
+      ],
+      "tests": [
+        "tests/emu/philips/cdidvc_audio_replay.cpp",
+        "tests/emu/philips/cdidvc_state_transitions.cpp",
+        "tests/emu/philips/cdi_dvc_state_integration.cpp",
+        "tests/emu/philips/cdi_mmu_integration.cpp"
+      ],
+      "documentation": [
+        "docs/cdi_audio_fidelity_campaign.md"
+      ]
+    },
+    "SLAVE": {
+      "source": [
+        "src/mame/philips/cdislavehle.cpp",
+        "src/mame/philips/cdislavehle_state.h",
+        "src/mame/philips/cdi.cpp"
+      ],
+      "tests": [
+        "tests/emu/philips/cdislavehle_commands.cpp",
+        "tests/emu/philips/cdislavehle_pointer.cpp",
+        "tests/emu/philips/cdislavehle_transport.cpp",
+        "tests/emu/philips/cdislavehle_response_ready.cpp"
+      ],
+      "documentation": [
+        "docs/cdi_modernization_status.md"
+      ]
+    },
+    "BOARD": {
+      "source": [
+        "src/mame/philips/cdi.cpp",
+        "src/mame/philips/cdimono2.h",
+        "src/devices/cpu/dsp56000/dsp56000.cpp"
+      ],
+      "tests": [
+        "tests/emu/philips/cdimono2.cpp",
+        "tests/emu/philips/cdi_dvc_edge_integration.cpp"
+      ],
+      "documentation": [
+        "docs/cdi_modernization_status.md",
+        "docs/cdi_dma_av_optional_dvc_checkpoint_20260906.md"
+      ]
+    }
+  }
+}
