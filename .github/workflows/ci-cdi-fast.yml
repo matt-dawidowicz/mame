@@ -5,6 +5,11 @@ on:
   push:
     paths:
       - '.github/workflows/ci-cdi-fast.yml'
+      - 'makefile'
+      - 'scripts/src/**'
+      - 'src/emu/**'
+      - 'src/lib/util/**'
+      - 'src/frontend/mame/**'
       - '3rdparty/pl_mpeg/**'
       - 'scripts/src/tests.lua'
       - 'src/devices/cpu/m68000/scc68070*'
@@ -17,6 +22,11 @@ on:
   pull_request:
     paths:
       - '.github/workflows/ci-cdi-fast.yml'
+      - 'makefile'
+      - 'scripts/src/**'
+      - 'src/emu/**'
+      - 'src/lib/util/**'
+      - 'src/frontend/mame/**'
       - '3rdparty/pl_mpeg/**'
       - 'scripts/src/tests.lua'
       - 'src/devices/cpu/m68000/scc68070*'
