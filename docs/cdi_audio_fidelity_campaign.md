@@ -278,14 +278,20 @@ gate; DAC queue/flush behavior controlled through it remains separately open bel
 
 ### 13. DSP saturation and silicon rounding
 
-- [ ] Identify accumulator/intermediate widths where documentation permits.
+- [x] Identify accumulator/intermediate widths where documentation permits.
 - [x] Build adversarial overflow/underflow vectors.
 - [ ] Compare candidate rounding/saturation models against hardware/reference captures.
 - [x] Centralize arithmetic behavior in testable helpers instead of scattered casts/clamps.
 
-The checked lines currently cover the XA ADPCM path.  MPEG synthesis and attenuation
-arithmetic remain separate work, and no checked line implies that CDIC silicon widths
-or rounding have been measured.
+The Motorola/NXP DSP56000 family documentation establishes the VMPEG DSP56001 core's
+24-bit data words, 48-bit multiplier product, and 56-bit accumulators with eight
+extension bits.  It also documents convergent rounding and the 24-bit data-bus
+limiter.  Those architecture facts are now encoded in a pure helper and adversarial
+regression vectors.  They satisfy the documentation-permits width gate for the known
+DSP56001 core, but do not identify Philips' FMA attenuation coefficient format,
+scaling mode, instruction sequence, or exact use of rounding/limiting.  CDIC
+accumulator widths remain unknown.  The hardware/reference-capture comparison gate
+therefore stays open, as do MPEG synthesis and exact attenuation arithmetic.
 
 ### 14. De-emphasis
 
