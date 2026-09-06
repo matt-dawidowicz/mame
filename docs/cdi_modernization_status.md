@@ -1,7 +1,7 @@
 # Philips CD-i modernization status
 
 > Project entry point: [CDI_MASTER_STATUS.md](CDI_MASTER_STATUS.md). This file
-> retains historical checkpoint detail. Use the master index for current branch
+> retains historical checkpoint detail and percentages; the master contains the fresh recalculation. Use the master index for current branch
 > scope, certification references, superseded claims and next actions.
 
 Last reviewed: 2026-08-24
