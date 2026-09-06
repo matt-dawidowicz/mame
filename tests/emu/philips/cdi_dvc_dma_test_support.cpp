@@ -1,17 +1,21 @@
 // license:BSD-3-Clause
 // copyright-holders:Matt Jordan
 
-// Build the live fixture and its synthetic game driver in this translation
-// unit so the driver-list shim can reference the anonymous-namespace driver
-// without exporting test-only symbols from the fixture.
+// Build the live fixtures and their synthetic game drivers in this translation
+// unit so the driver-list shim can reference the anonymous-namespace drivers
+// without exporting test-only symbols from the fixtures.
 #include "cdi_dvc_dma_integration.cpp"
+#include "cdi_dvc_edge_integration.cpp"
 
 #include "drivenum.h"
 
-std::size_t const driver_list::s_driver_count = 1;
+std::size_t const driver_list::s_driver_count = 4;
 game_driver const * const driver_list::s_drivers_sorted[] =
 {
-	&GAME_NAME(cdidmaint)
+	&GAME_NAME(cdidmaedge),
+	&GAME_NAME(cdidmaint),
+	&GAME_NAME(cdihasdvct),
+	&GAME_NAME(cdinodvct)
 };
 
 const char *emulator_info::get_appname() { return "MAME"; }
