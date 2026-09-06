@@ -1,6 +1,7 @@
 name: CI (CD-i fast)
 
 on:
+  workflow_dispatch:
   push:
     paths:
       - '.github/workflows/ci-cdi-fast.yml'
@@ -29,8 +30,8 @@ permissions:
 
 jobs:
   cdi-fast:
-    if: github.event_name != 'push' || github.event.head_commit.message != 'ci: preempt obsolete workflow runs'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
 
     env:
       OVERRIDE_CC: gcc
@@ -41,14 +42,15 @@ jobs:
       TOOLS: 0
       OPTIMIZE: 0
       CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CDI_CCACHE_KEY: cdi-ccache-linux-v4
 
     steps:
       - uses: actions/checkout@v4
 
       - name: Install build dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
             ccache \
             libsdl2-dev \
             libsdl2-ttf-dev \
@@ -59,13 +61,16 @@ jobs:
             qt6-base-dev \
             qt6-base-dev-tools
 
+      # Seed this immutable cache once.  Subsequent exact hits restore it but do
+      # not spend time recompressing and uploading hundreds of MB after every run.
       - name: Restore compiler cache
-        uses: actions/cache/restore@v4
+        id: ccache-restore
+        uses: actions/cache@v4
         with:
           path: .ccache
-          key: cdi-ccache-${{ runner.os }}-${{ github.run_id }}
+          key: ${{ env.CDI_CCACHE_KEY }}
           restore-keys: |
-            cdi-ccache-${{ runner.os }}-
+            cdi-ccache-Linux-
 
       - name: Configure compiler cache
         run: |
@@ -73,7 +78,20 @@ jobs:
           ccache --set-config=max_size=750M
           ccache --zero-stats
 
+      # Project generation compresses thousands of layout files.  Cache those
+      # deterministic build-system products and regenerate only when the MAME
+      # build scripts themselves change.
+      - name: Restore generated CD-i build
+        id: generated-restore
+        uses: actions/cache@v4
+        with:
+          path: |
+            build/projects/sdl/mame/gmake-linux
+            build/generated
+          key: cdi-generated-linux-v4-${{ hashFiles('makefile', 'scripts/**/*.lua', 'scripts/**/*.py') }}
+
       - name: Generate CD-i build
+        if: steps.generated-restore.outputs.cache-hit != 'true'
         run: |
           make -j"$(nproc)" \
             generate \
@@ -109,10 +127,3 @@ jobs:
       - name: Compiler cache statistics
         if: always()
         run: ccache --show-stats
-
-      - name: Save compiler cache
-        if: always()
-        uses: actions/cache/save@v4
-        with:
-          path: .ccache
-          key: cdi-ccache-${{ runner.os }}-${{ github.run_id }}
