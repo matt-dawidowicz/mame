@@ -18,14 +18,17 @@ The 2026-09-06 upstream merge imports all 60 missing commits through
 `1fb001f9bfab5cf0148fdfe8755659c4a869831b`. See the
 [merge scope and validation record](cdi_upstream_sync_20260906.md).
 The CD-i implementation and tests are unchanged by upstream; shared runtime and
-file-I/O changes require a new integration build. Prior percentages remain scoped
+file-I/O changes passed the new integration build. Prior percentages remain scoped
 as below, without automatic increases. GitHub default-branch administration remains
 blocked in this workspace; `cdi-unified` is the active development branch regardless.
 
 ## Current unified verification
 
-- Branch: `cdi-unified`; verified code: `e2d6fffb0853e54fde1be1429c6f12b01f4045a5` (2026-09-06).
-- [CI run 34065213340](https://github.com/matt-dawidowicz/mame/actions/runs/34065213340): **PASS** — helper target
+- Branch: `cdi-unified`; verified code: `ade0f78abf4367f07c9d2fd3d383f448110c4cb2` (2026-09-06).
+- Upstream through `1fb001f9bfab5cf0148fdfe8755659c4a869831b` is merged.
+  CI tested PR merge `3f3acf4d9c42aa9d73db863106b733e9ff433a71`; its tree exactly
+  matches the published code merge. See the [synchronization record](cdi_upstream_sync_20260906.md).
+- [CI run 34066705811](https://github.com/matt-dawidowicz/mame/actions/runs/34066705811): **PASS** — helper target
   **17,393,781 assertions / 219 cases**; emulator-linked production build and
   integration target **21 assertions / 6 cases**. Local helpers and DMA liveness
   audit also pass.
