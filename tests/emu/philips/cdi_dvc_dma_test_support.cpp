@@ -6,13 +6,15 @@
 // without exporting test-only symbols from the fixtures.
 #include "cdi_dvc_dma_integration.cpp"
 #include "cdi_dvc_edge_integration.cpp"
+#include "cdi_dvc_state_integration.cpp"
 #include "cdi_mmu_integration.cpp"
 
 #include "drivenum.h"
 
-std::size_t const driver_list::s_driver_count = 5;
+std::size_t const driver_list::s_driver_count = 6;
 game_driver const * const driver_list::s_drivers_sorted[] =
 {
+	&GAME_NAME(cdiavsave),
 	&GAME_NAME(cdidmaedge),
 	&GAME_NAME(cdidmaint),
 	&GAME_NAME(cdihasdvct),
