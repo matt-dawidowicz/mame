@@ -27,6 +27,7 @@ TODO:
 #pragma once
 
 #include "cpu/m68000/scc68070.h"
+#include "scc68070_helpers.h"
 
 //**************************************************************************
 //  TYPE DEFINITIONS
@@ -208,6 +209,46 @@ protected:
 	virtual void device_start() override ATTR_COLD;
 	virtual void device_reset() override ATTR_COLD;
 	virtual void device_config_complete() override;
+
+	virtual bool translate_address(offs_t address, scc68070_access_type access, bool side_effects, offs_t &translated) override
+	{
+		// The on-chip peripheral aperture and interrupt acknowledge cycles bypass the
+		// MMU.  User-mode addresses with the same upper bits are external 24-bit
+		// accesses, matching the SCC68070's existing internal-address convention.
+		if (supervisor_mode() && (address >> 30) == 0x2)
+		{
+			translated = address;
+			return true;
+		}
+
+		const uint32_t logical = address & scc68070::MMU_ADDRESS_MASK;
+		if (!scc68070::mmu_enabled(m_mmu.control))
+		{
+			translated = logical;
+			return true;
+		}
+
+		const scc68070::mmu_access_type mmu_access =
+			(access == scc68070_access_type::execute) ? scc68070::mmu_access_type::execute :
+			(access == scc68070_access_type::write) ? scc68070::mmu_access_type::write :
+			scc68070::mmu_access_type::read;
+		const auto result = scc68070::mmu_translate_access(m_mmu.control, m_mmu.desc, logical, mmu_access, supervisor_mode());
+
+		if (scc68070::mmu_translation_succeeded(result))
+		{
+			translated = result.physical_address;
+			return true;
+		}
+
+		if (side_effects)
+		{
+			m_mmu.status = scc68070::mmu_status_for_fault(result);
+			set_buserror_details(logical, access != scc68070_access_type::write, get_fc(), true);
+			set_input_line(M68K_LINE_BUSERROR, ASSERT_LINE);
+			set_input_line(M68K_LINE_BUSERROR, CLEAR_LINE);
+		}
+		return false;
+	}
 
 	// device_execute_interface implementation
 	virtual u64 execute_clocks_to_cycles(u64 clocks) const noexcept override { return (clocks + 2 - 1) / 2; }
