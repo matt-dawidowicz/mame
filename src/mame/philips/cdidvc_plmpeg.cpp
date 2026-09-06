@@ -6,3 +6,11 @@
 #define PLM_NO_STDIO
 #define PL_MPEG_IMPLEMENTATION
 #include "../../../3rdparty/pl_mpeg/pl_mpeg.h"
+
+namespace cdi_dvc
+{
+bool plmpeg_video_has_reference_frame(plm_video_t const *decoder)
+{
+	return decoder && decoder->has_reference_frame;
+}
+}

@@ -29,6 +29,11 @@
 #define PLM_NO_STDIO
 #include "../../../3rdparty/pl_mpeg/pl_mpeg.h"
 
+namespace cdi_dvc
+{
+bool plmpeg_video_has_reference_frame(plm_video_t const *decoder);
+}
+
 #define LOG_REGISTERS    (1U << 1)
 #define LOG_DMA          (1U << 2)
 #define LOG_IRQ          (1U << 3)
@@ -1107,7 +1112,7 @@ uint16_t cdi_dvc_device::read(offs_t offset, uint16_t mem_mask)
 		 * VMPEG output-FIFO capacity.
 		 */
 		std::size_t const decoder_held_pictures =
-				(m_video_decoder && m_video_decoder->has_reference_frame)
+				cdi_dvc::plmpeg_video_has_reference_frame(m_video_decoder)
 						? 1U
 						: 0U;
 
