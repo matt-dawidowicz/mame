@@ -78,21 +78,29 @@ jobs:
             generate \
             build/projects/sdl/mame/gmake-linux/Makefile
 
-      - name: Build only CD-i test targets
+      - name: Build precompiled header
         run: |
           make -j"$(nproc)" \
             -C build/projects/sdl/mame/gmake-linux \
             config=release64 \
             precompile
 
+      - name: Build CD-i helper tests
+        run: |
           make -j"$(nproc)" \
             -C build/projects/sdl/mame/gmake-linux \
             config=release64 \
-            mametests \
-            cdiintegrationtests
+            cdihelpertests
 
-      - name: Run Philips helper tests
-        run: ./mametests '[philips]'
+      - name: Run CD-i helper tests
+        run: ./cdihelpertests
+
+      - name: Build CD-i integration tests
+        run: |
+          make -j"$(nproc)" \
+            -C build/projects/sdl/mame/gmake-linux \
+            config=release64 \
+            cdiintegrationtests
 
       - name: Run CD-i integration tests
         run: ./cdiintegrationtests

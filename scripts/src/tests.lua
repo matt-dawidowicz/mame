@@ -94,6 +94,77 @@ project("mametests")
 		MAME_DIR .. "tests/emu/video/rgbutil.cpp",
 	}
 
+-- The fast CD-i gate deliberately avoids building the complete mametests
+-- executable.  In particular, generic tests can expose compiler-version or
+-- optimization-level warnings that are unrelated to Philips/CD-i changes.
+-- Keep this target limited to the helper coverage required by the campaign.
+project("cdihelpertests")
+	uuid ("c5a8c402-5688-4cae-86ce-75acdd4961fb")
+	kind "ConsoleApp"
+
+	flags {
+		"Symbols",
+	}
+
+	if _OPTIONS["SEPARATE_BIN"]~="1" then
+		targetdir(MAME_DIR)
+	end
+
+	configuration { "Release" }
+		targetsuffix ""
+	configuration { "Debug" }
+		targetsuffix "d"
+	configuration { "mingw*" or "vs*" }
+		targetextension ".exe"
+	configuration { }
+
+	links {
+		"utils",
+		ext_lib("expat"),
+		ext_lib("zlib"),
+		ext_lib("utf8proc"),
+		"ocore_" .. _OPTIONS["osd"],
+	}
+
+	includedirs {
+		MAME_DIR .. "3rdparty/catch/single_include",
+		MAME_DIR .. "src/osd",
+		MAME_DIR .. "src/emu",
+		MAME_DIR .. "src/devices/machine",
+		MAME_DIR .. "src/lib/util",
+		MAME_DIR .. "src/mame/philips",
+		ext_includedir("expat"),
+		ext_includedir("zlib"),
+	}
+
+	files {
+		MAME_DIR .. "src/emu/video/rgbutil.cpp",
+		MAME_DIR .. "src/emu/video/rgbutil.h",
+		MAME_DIR .. "tests/main.cpp",
+		MAME_DIR .. "tests/emu/machine/scc68070.cpp",
+		MAME_DIR .. "tests/emu/philips/cdicdic.cpp",
+		MAME_DIR .. "tests/emu/philips/cdicdic_memory.cpp",
+		MAME_DIR .. "tests/emu/philips/mcd212_video.cpp",
+		MAME_DIR .. "tests/emu/philips/mcd212_control_stream.cpp",
+		MAME_DIR .. "tests/emu/philips/cdidvc_plmpeg.cpp",
+		MAME_DIR .. "tests/emu/philips/cdidvc_timing.cpp",
+		MAME_DIR .. "tests/emu/philips/cdidvc_invariants.cpp",
+		MAME_DIR .. "tests/emu/philips/cdidvc_audio_format.cpp",
+		MAME_DIR .. "tests/emu/philips/cdi_audio_arithmetic.cpp",
+		MAME_DIR .. "tests/emu/philips/cdidvc_audio_reference.cpp",
+		MAME_DIR .. "tests/emu/philips/cdidvc_audio_replay.cpp",
+		MAME_DIR .. "tests/emu/philips/cdidvc_video_conversion.cpp",
+		MAME_DIR .. "tests/emu/philips/cdislavehle_pointer.cpp",
+		MAME_DIR .. "tests/emu/philips/cdislavehle_commands.cpp",
+		MAME_DIR .. "tests/emu/philips/cdislavehle_transport.cpp",
+		MAME_DIR .. "tests/emu/philips/cdislavehle_response_ready.cpp",
+		MAME_DIR .. "tests/emu/philips/cdi_hardening.cpp",
+		MAME_DIR .. "tests/emu/philips/cdidvc_timestamp_format.cpp",
+		MAME_DIR .. "tests/emu/philips/cdidvc_pes_format.cpp",
+		MAME_DIR .. "tests/emu/philips/cdidvc_dclk_wrap.cpp",
+		MAME_DIR .. "tests/emu/philips/cdimono2.cpp",
+	}
+
 -- Full-machine integration fixtures use a separate executable.  Keeping them
 -- out of mametests preserves the lightweight helper-only suite and prevents
 -- helper translation units that embed third-party implementations (notably
