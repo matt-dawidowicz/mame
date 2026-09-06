@@ -177,3 +177,105 @@ TEST_CASE("MCD212 QHY quantization levels retain all eight bits and add independ
 	REQUIRE(mcd212_video::add_qhy_level(0x804020, 0x817f82) == 0x823e24);
 	REQUIRE(mcd212_video::add_qhy_level(0x1020f0, 0x00ff00) == 0x00ff00);
 }
+
+TEST_CASE("MCD212 timing profiles exhaust every control-bit combination", "[emu][philips][mcd212][timing][exhaustive]")
+{
+	for (unsigned crystal = 0; crystal < 2; ++crystal)
+	{
+		for (unsigned sixty_hz = 0; sixty_hz < 2; ++sixty_hz)
+		{
+			for (unsigned interlace = 0; interlace < 2; ++interlace)
+			{
+				for (unsigned standard = 0; standard < 2; ++standard)
+				{
+					auto const timing = mcd212_video::make_timing_profile(
+						bool(crystal), bool(sixty_hz), bool(interlace), bool(standard));
+					INFO("crystal=" << crystal << " 60Hz=" << sixty_hz
+						<< " interlace=" << interlace << " standard=" << standard);
+
+					int const expected_total = sixty_hz ? 262 : 312;
+					int const expected_active = sixty_hz || standard ? 240 : 280;
+					int const expected_start = sixty_hz ? 18 : standard ? 46 : 26;
+					REQUIRE(timing.horizontal_total == (crystal ? 960 : 896));
+					REQUIRE(timing.total_lines == expected_total);
+					REQUIRE(timing.total_half_lines == expected_total * 2 + int(interlace));
+					REQUIRE(timing.active_start_lines == expected_start);
+					REQUIRE(timing.active_lines == expected_active);
+					REQUIRE(timing.active_end_lines() == expected_start + expected_active);
+					REQUIRE(timing.blank_lines == expected_total - expected_active);
+					REQUIRE(timing.field_halfline_offset(true) == 0);
+					REQUIRE(timing.field_halfline_offset(false) == (interlace ? 1 : 0));
+				}
+			}
+		}
+	}
+}
+
+TEST_CASE("MCD212 interrupt arbitration exhausts status and disable combinations", "[emu][philips][mcd212][control][interrupt][exhaustive]")
+{
+	for (unsigned status = 0; status <= 0xff; ++status)
+	{
+		for (unsigned disable_1 = 0; disable_1 < 2; ++disable_1)
+		{
+			for (unsigned disable_2 = 0; disable_2 < 2; ++disable_2)
+			{
+				bool const expected =
+					((status & 0x04) && !disable_1) ||
+					((status & 0x02) && !disable_2);
+				INFO("status=" << status << " disable1=" << disable_1 << " disable2=" << disable_2);
+				REQUIRE(mcd212_video::interrupt_line_asserted(
+					uint8_t(status), bool(disable_1), bool(disable_2)) == expected);
+			}
+		}
+	}
+}
+
+TEST_CASE("MCD212 external-video gating exhausts plane and cursor states", "[emu][philips][mcd212][overlay][exhaustive]")
+{
+	for (unsigned enabled = 0; enabled < 2; ++enabled)
+	{
+		for (unsigned transparent_a = 0; transparent_a < 2; ++transparent_a)
+		{
+			for (unsigned transparent_b = 0; transparent_b < 2; ++transparent_b)
+			{
+				for (unsigned cursor = 0; cursor < 2; ++cursor)
+				{
+					bool const expected = enabled && transparent_a && transparent_b && !cursor;
+					REQUIRE(mcd212_video::external_video_eligible(
+						bool(enabled), bool(transparent_a), bool(transparent_b), bool(cursor)) == expected);
+				}
+			}
+		}
+	}
+}
+
+TEST_CASE("MCD212 QHY token decoder exhausts the complete byte encoding space", "[emu][philips][mcd212][qhy][exhaustive]")
+{
+	for (unsigned first = 0; first <= 0xff; ++first)
+	{
+		if (!(first & 0x80))
+		{
+			auto const token = mcd212_video::decode_qhy_token(uint8_t(first));
+			INFO("single first=" << first);
+			REQUIRE(token.first_code == ((first >> 4) & 7));
+			REQUIRE(token.second_code == (first & 7));
+			REQUIRE(token.pair_count == 1);
+			REQUIRE(token.byte_count == 1);
+			REQUIRE_FALSE(token.to_end_of_line);
+			REQUIRE(token.valid == bool(first & 0x08));
+			continue;
+		}
+
+		for (unsigned second = 0; second <= 0xff; ++second)
+		{
+			auto const token = mcd212_video::decode_qhy_token(uint8_t(first), uint8_t(second));
+			INFO("run first=" << first << " second=" << second);
+			REQUIRE(token.first_code == ((first >> 4) & 7));
+			REQUIRE(token.second_code == (first & 7));
+			REQUIRE(token.pair_count == second);
+			REQUIRE(token.byte_count == 2);
+			REQUIRE(token.to_end_of_line == (second == 0));
+			REQUIRE(token.valid == (!(first & 0x08) && second != 1));
+		}
+	}
+}
