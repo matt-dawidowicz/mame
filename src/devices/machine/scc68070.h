@@ -243,9 +243,10 @@ protected:
 		if (side_effects)
 		{
 			m_mmu.status = scc68070::mmu_status_for_fault(result);
+			// rerun=true is Musashi's external-MMU path: it records the bus-error
+			// frame and schedules instruction restart after RTE.  Do not also pulse
+			// M68K_LINE_BUSERROR; the core explicitly treats that as double injection.
 			set_buserror_details(logical, access != scc68070_access_type::write, get_fc(), true);
-			set_input_line(M68K_LINE_BUSERROR, ASSERT_LINE);
-			set_input_line(M68K_LINE_BUSERROR, CLEAR_LINE);
 		}
 		return false;
 	}
