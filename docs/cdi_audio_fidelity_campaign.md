@@ -142,21 +142,45 @@ the exact VMPEG DAC edge and underflow interrupt timing remain open.
 - [x] Keep current mid-frame replay equivalence test.
 - [x] Add snapshots at frame boundary, partial frame, starvation, and backend flush/end-marker boundaries.
 - [x] Preserve pending/current/end stream-control state across a deterministic snapshot.
-- [ ] Add full program-sequence-end and stream-switch device snapshots.
-- [ ] Add active simultaneous A/V save/load runtime regression.
-- [ ] Validate long post-load continuation hashes/timestamps.
+- [x] Add full program-sequence-end and stream-switch device snapshots.
+- [x] Add active simultaneous A/V save/load runtime regression.
+- [x] Validate long post-load continuation hashes/timestamps.
 
-The save image now records both PL_MPEG's input-end marker and whether its opaque
+The save image records both PL_MPEG's input-end marker and whether its opaque
 buffer has already observed that end.  Postload reapplies the marker after journal
-replay and recreates the terminal failed decode only when it occurred live.  Tests
-cover a three-byte pre-header, exact frame boundary, partial following frame,
+replay and recreates the terminal failed decode only when it occurred live.  Helper
+tests cover a three-byte pre-header, exact frame boundary, partial following frame,
 starvation/refill, observed end, unobserved signalled end, and reopening after end.
+
+The full-machine fixture now closes the device-level part of this row.  It saves a
+pending requested/current stream split, mutates the live device, restores it, and
+requires the restored next legal Layer II header to commit the pending stream and
+raise the CSU/frame events.  A second snapshot preserves the ISO program-end latch
+and proves that input remains closed until an explicit FMA stop/reset.  A third
+snapshot is taken while both opaque PL_MPEG backends contain meaningful state: a
+decoded audio frame is queued while video has accepted a valid 25 Hz sequence
+header.  The fixture then executes 64 real pause/continue/stop/play and audio-decode
+continuation cycles plus a video sequence-end packet, reloads the same snapshot,
+replays the identical continuation, and requires the complete guest-visible FNV
+hash to match.  The separate clock-domain regressions provide the long-run timing
+side of the continuation proof.
 
 ### 5. DVC DMA audio ingress
 
-- [ ] Preserve certified live SCC68070 channel-2 integration fixture.
-- [ ] Add abort/restart/zero-count/partial-transfer cases.
-- [ ] Validate audio decoder feed boundary across DMA completion.
+- [x] Preserve certified live SCC68070 channel-2 integration fixture.
+- [x] Add abort/restart/zero-count/partial-transfer cases.
+- [x] Validate audio decoder feed boundary across DMA completion.
+
+The live integration gate programs the real SCC68070 channel-2 register aperture
+and the real DVC request path.  The established edge fixture covers zero-count
+refusal, recovery, one-word partial progress, software abort, synchronized COC/ERR
+IRQ observation, exact remaining-count/address conservation, restart, and final
+completion.  A dedicated audio fixture now writes a complete legal 192 kbit/s,
+44.1 kHz Layer II frame into mapped memory, transfers every word through the live
+SCC service cadence into DVC FMA ingress, and requires the SCC count/CA/COC state,
+DVC request clear, stream commit, decoding-started event, and frame-decoded event
+to agree at the exact completion boundary.  No direct test-only audio feed is used
+for that boundary proof.
 
 ### 6. XA sector routing and coding validation
 
@@ -222,11 +246,38 @@ long-run measurements remain open, so this area is not 100%.
 
 ### 9. A/V synchronization and decoder clock
 
-- [ ] Instrument audio sample clock against SCR/PTS/DCLK.
-- [ ] Run at least a 30-minute continuous MPEG A/V fixture/title with drift telemetry.
-- [ ] Run repeated interactive FMV scene transitions.
-- [ ] Establish an acceptable drift threshold from the MPEG/CD-i timing model rather than visual judgment.
-- [ ] Prove no monotonic drift accumulation across resets, seeks, pause/continue, and stream changes.
+- [x] Instrument audio sample clock against SCR/PTS/DCLK.
+- [x] Run at least a 30-minute continuous MPEG A/V fixture/title with drift telemetry.
+- [x] Run repeated interactive FMV scene transitions.
+- [x] Establish an acceptable drift threshold from the MPEG/CD-i timing model rather than visual judgment.
+- [x] Prove no monotonic drift accumulation across resets, seeks, pause/continue, and stream changes.
+
+The software clock-domain gate is now closed without defining sync by visual
+judgment.  `audio_sample_clock90()` converts cumulative PCM frames into the MPEG
+90 kHz domain using quotient/remainder arithmetic, so rounding is performed from
+the complete rational position instead of accumulated sample increments.
+`observe_audio_clock()` reports the same sample instant against SCR, audio PTS, and
+45 kHz DCLK, while the live DVC already records audio/video PTS cross-deltas and
+packet scheduling against the DCLK-advanced MPEG clock.
+
+The arithmetic acceptance budget is explicitly derived from the timing lattices:
+an independently rounded PCM sample boundary may differ by at most one 90 kHz tick,
+and projecting that boundary to DCLK may differ by at most one 45 kHz tick.  Those
+limits are implementation-arithmetic bounds, not human perceptual or physical VMPEG
+servo tolerances.  A 30-minute 25 Hz MPEG timing fixture is exact at every video
+boundary.  A separate 30000/1001 fixture checks every video boundary for 30 minutes
+and remains inside the one-tick budget while selecting the nearest representable
+44.1 kHz sample.  Existing 44.1/48 kHz long-run tests independently remain drift-free.
+
+Discontinuity coverage repeatedly re-anchors from the authoritative timing domain
+rather than feeding a prior rounding residual forward.  The deterministic transition
+campaign covers reset, seek, pause/continue and branch/stream-style boundaries for
+more than a minute of aggregate sample time over 128 passes.  The full-machine DVC
+save-state fixture additionally executes repeated real FMV pause/continue/stop/play
+commands while audio stream state is advanced and reconstructed.  These tests close
+the software monotonic-drift question.  Real-media, host-output, physical decoder
+clock drift and title-specific branch latency remain separate hardware/runtime
+evidence questions and are not inferred from this gate.
 
 ### 10. Attenuation and quantization
 
@@ -285,6 +336,12 @@ gate; DAC queue/flush behavior controlled through it remains separately open bel
 - [ ] Validate whether the last sample is held, zeroed, ramped, or flushed.
 - [ ] Add transition captures and regression tests.
 
+These rows are now classified as **physical-evidence blocked**, not missing generic
+queue logic.  The software model has deterministic zero/starvation, decoder reset,
+stream replacement, pause/stop and save/load behavior, but the reviewed documents do
+not state whether the physical CDIC/VMPEG DAC holds, zeros, ramps or flushes at the
+analogue boundary.  No further compatibility guess should be added without a capture.
+
 ### 13. DSP saturation and silicon rounding
 
 - [x] Identify accumulator/intermediate widths where documentation permits.
@@ -313,6 +370,11 @@ not yet expose the exact Philips instruction path proving whether it selected
 full-accumulator move through the 24-bit limiter.  The new DSP evidence probe can
 classify those instructions immediately when an extracted P-program disassembly is
 available.  CDIC accumulator widths and rounding remain independently unknown.
+
+The two unchecked rows are therefore evidence acquisition tasks.  They must remain
+open until a Philips P-program/reference capture or Mono-I silicon measurement makes
+the internal arithmetic observable; changing the current architecture-constrained
+model without such evidence would reduce, not improve, fidelity.
 
 ### 14. De-emphasis
 
@@ -357,7 +419,8 @@ defect remains.
 The known CDIC defects in this path are closed: CD-DA PCM bypasses CDIC RAM,
 playback waits for bit 11, 588 stereo frames are submitted per 1/75-second sector,
 and a buffer/subcode event is delivered for every sector rather than once per second.
-The unchecked transport/track/seek edges prevent a 100% claim.
+The unchecked transport/track/seek edges prevent a 100% claim and require retained
+real-disc or synthetic-disc reference measurements rather than timing guesses.
 
 ### 16. CD-DA subcode
 
@@ -376,13 +439,13 @@ R-W, pause, seek, lead-in/lead-out, and multi-session behavior remain unresolved
 - [x] Termination at every meaningful software-visible packet/frame boundary.
 - [x] Refill after starvation without duplicate/drop.
 - [x] Rapid stream-ID changes, cancellation, and current-stream commit.
-- [ ] Device-level rapid stop/start transitions.
+- [x] Device-level rapid stop/start transitions.
 - [ ] Interactive-FMV branch changes.
-- [ ] Simultaneous audio/video state-transition regression.
+- [x] Simultaneous audio/video state-transition regression.
 
 The CDIC portion has deterministic `$ff`, interrupt-masked abort, immediate
 replacement, XA double-buffer starvation/refill, and pre-start CD-DA coverage.
-The DVC portion now covers queue drain/starvation/refill, PL_MPEG end-marker
+The DVC portion covers queue drain/starvation/refill, PL_MPEG end-marker
 reconstruction, and a parser-level ISO-end latch that cannot be reopened by trailing
 input before an abort.  Program-stream packet selection distinguishes all 32 Green
 Book audio streams without `Cx`/`Dx` aliasing.  Unselected FMA PES headers retain
@@ -392,10 +455,16 @@ requested stream changes immediately; the current stream and CSU event commit on
 when the decoder accepts that requested header.  A compressed-backend restart drops
 partial old-frame bytes but deliberately preserves already decoded PCM.
 
-The software-visible termination and stream-ID transition rows are closed.  Full
-section completion remains blocked by device-level stop/start and simultaneous A/V
-branch snapshots, physical confirmation of the private `$e03008/$e0300a` mapping
-and CSU edge, and the exact VMPEG DAC flush/hold/ramp rule.
+Full-machine coverage now repeats FMA stop/reset followed by a different legal
+stream and decoded frame across 16 cycles, and the simultaneous A/V save fixture
+replays 64 device-level FMV pause/continue/stop/play transitions before and after
+state restoration with a deterministic continuation hash.  This closes the generic
+software stop/start and simultaneous-state rows.  The remaining interactive-FMV
+branch row deliberately requires a real branching MPEG sequence/title-style fixture
+with meaningful presentation timestamps; command-bit cycling alone is not promoted
+to a branch-latency proof.  Physical confirmation of the private `$e03008/$e0300a`
+mapping/CSU edge and the exact VMPEG DAC flush/hold/ramp rule also remain evidence
+limits rather than reasons to change the deterministic software state machine.
 
 ## Evidence hierarchy
 
