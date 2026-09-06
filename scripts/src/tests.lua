@@ -69,7 +69,8 @@ project("mametests")
 		MAME_DIR .. "tests/emu/philips/cdicdic_memory.cpp",
 		MAME_DIR .. "tests/emu/philips/mcd212_video.cpp",
 		MAME_DIR .. "tests/emu/philips/mcd212_control_stream.cpp",
-		MAME_DIR .. "tests/emu/philips/cdidvc.cpp",
+		-- cdidvc_plmpeg.cpp owns PL_MPEG_IMPLEMENTATION and includes cdidvc.cpp so
+		-- tests that inspect decoder-private state remain in that implementation TU.
 		MAME_DIR .. "tests/emu/philips/cdidvc_plmpeg.cpp",
 		MAME_DIR .. "tests/emu/philips/cdidvc_timing.cpp",
 		MAME_DIR .. "tests/emu/philips/cdidvc_invariants.cpp",

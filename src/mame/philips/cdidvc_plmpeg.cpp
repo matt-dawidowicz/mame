@@ -1,6 +1,8 @@
 // license:BSD-3-Clause
 // copyright-holders:Matt Jordan
 
+#include <cstddef>
+
 // Keep the single-header decoder implementation in a tiny, stable
 // translation unit so ordinary DVC scheduling/register edits compile faster.
 #define PLM_NO_STDIO
