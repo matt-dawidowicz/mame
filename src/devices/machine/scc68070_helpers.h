@@ -23,6 +23,21 @@ constexpr std::uint8_t MMU_CONTROL_SEGMENT_NUMBER = 0x40;
 constexpr std::uint8_t MMU_DESCRIPTOR_FLUSH_VALID = 0x80;
 constexpr std::uint8_t MMU_DESCRIPTOR_SEGMENT_MASK = 0x7f;
 
+constexpr std::uint16_t MMU_ATTRIBUTE_SUPERVISOR = 0x4000;
+constexpr std::uint16_t MMU_ATTRIBUTE_EXECUTE = 0x2000;
+constexpr std::uint16_t MMU_ATTRIBUTE_READ = 0x1000;
+constexpr std::uint16_t MMU_ATTRIBUTE_WRITE = 0x0800;
+constexpr std::uint16_t MMU_ATTRIBUTE_STACK = 0x0080;
+
+constexpr std::uint8_t MMU_STATUS_NOT_PRESENT = 0x80;
+constexpr std::uint8_t MMU_STATUS_STACK = 0x40;
+constexpr std::uint8_t MMU_STATUS_LENGTH = 0x20;
+constexpr std::uint8_t MMU_STATUS_ACCESS = 0x10;
+constexpr std::uint8_t MMU_STATUS_SUPERVISOR = 0x08;
+constexpr std::uint8_t MMU_STATUS_EXECUTE = 0x04;
+constexpr std::uint8_t MMU_STATUS_READ = 0x02;
+constexpr std::uint8_t MMU_STATUS_WRITE = 0x01;
+
 struct mmu_descriptor
 {
 	std::uint16_t attr = 0;
@@ -31,12 +46,20 @@ struct mmu_descriptor
 	std::uint16_t base = 0;
 };
 
+enum class mmu_access_type : std::uint8_t
+{
+	execute,
+	read,
+	write
+};
+
 enum class mmu_translation_status : std::uint8_t
 {
 	disabled,
 	translated,
 	not_present,
 	length_violation,
+	attribute_violation,
 	multiple_match
 };
 
@@ -47,6 +70,8 @@ struct mmu_translation_result
 	std::uint8_t descriptor = 0xff;
 	std::uint8_t logical_segment = 0;
 	std::uint16_t displacement = 0;
+	std::uint16_t effective_displacement = 0;
+	std::uint16_t attributes = 0;
 };
 
 constexpr bool mmu_enabled(std::uint8_t control)
@@ -75,34 +100,84 @@ constexpr std::uint16_t mmu_logical_displacement(std::uint8_t control, std::uint
 		: std::uint16_t((address >> MMU_BLOCK_SHIFT) & 0x07ff);
 }
 
+constexpr std::uint16_t mmu_maximum_displacement(std::uint8_t control)
+{
+	return mmu_mode2(control) ? 0x007f : 0x07ff;
+}
+
 constexpr std::uint16_t mmu_effective_segment_length(std::uint8_t control, std::uint16_t length)
 {
 	length &= 0x07ff;
 	return mmu_mode2(control) ? std::uint16_t(length >> 4) : length;
 }
 
-constexpr bool mmu_descriptor_valid(const mmu_descriptor &desc)
+template <typename Descriptor>
+constexpr bool mmu_descriptor_valid(const Descriptor &desc)
 {
 	return (desc.segment & MMU_DESCRIPTOR_FLUSH_VALID) != 0;
 }
 
-constexpr std::uint8_t mmu_descriptor_segment(std::uint8_t control, const mmu_descriptor &desc)
+template <typename Descriptor>
+constexpr std::uint8_t mmu_descriptor_segment(std::uint8_t control, const Descriptor &desc)
 {
 	return mmu_mode2(control)
 		? std::uint8_t(desc.segment & MMU_DESCRIPTOR_SEGMENT_MASK)
 		: std::uint8_t(desc.segment & 0x07);
 }
 
-constexpr std::uint32_t mmu_physical_address(const mmu_descriptor &desc, std::uint16_t displacement, std::uint32_t address)
+template <typename Descriptor>
+constexpr bool mmu_descriptor_stack(const Descriptor &desc)
 {
-	const std::uint32_t physical_block = (std::uint32_t(desc.base & 0x3fff) + displacement) & 0x3fff;
+	return (desc.attr & MMU_ATTRIBUTE_STACK) != 0;
+}
+
+template <typename Descriptor>
+constexpr std::uint16_t mmu_effective_displacement(std::uint8_t control, const Descriptor &desc, std::uint16_t displacement)
+{
+	return mmu_descriptor_stack(desc)
+		? std::uint16_t(mmu_maximum_displacement(control) - displacement)
+		: displacement;
+}
+
+template <typename Descriptor>
+constexpr std::uint32_t mmu_physical_address(
+		std::uint8_t control,
+		const Descriptor &desc,
+		std::uint16_t displacement,
+		std::uint32_t address)
+{
+	const std::uint16_t effective = mmu_effective_displacement(control, desc, displacement);
+	const std::uint32_t base = desc.base & 0x3fff;
+	const std::uint32_t physical_block = mmu_descriptor_stack(desc)
+		? (base - effective) & 0x3fff
+		: (base + effective) & 0x3fff;
 	return ((physical_block << MMU_BLOCK_SHIFT) | (address & MMU_BLOCK_OFFSET_MASK)) & MMU_ADDRESS_MASK;
 }
 
-template <std::size_t Count>
-constexpr mmu_translation_result mmu_translate(
+template <typename Descriptor>
+constexpr bool mmu_access_permitted(const Descriptor &desc, mmu_access_type access, bool supervisor)
+{
+	if ((desc.attr & MMU_ATTRIBUTE_SUPERVISOR) && !supervisor)
+		return false;
+
+	switch (access)
+	{
+	case mmu_access_type::execute:
+		return (desc.attr & MMU_ATTRIBUTE_EXECUTE) != 0;
+	case mmu_access_type::read:
+		return (desc.attr & MMU_ATTRIBUTE_READ) != 0;
+	case mmu_access_type::write:
+		return (desc.attr & MMU_ATTRIBUTE_WRITE) != 0;
+	}
+
+	return false;
+}
+
+template <typename Descriptor>
+constexpr mmu_translation_result mmu_translate_impl(
 		std::uint8_t control,
-		const std::array<mmu_descriptor, Count> &descriptors,
+		const Descriptor *descriptors,
+		std::size_t count,
 		std::uint32_t logical_address)
 {
 	logical_address &= MMU_ADDRESS_MASK;
@@ -110,35 +185,137 @@ constexpr mmu_translation_result mmu_translate(
 	const std::uint16_t displacement = mmu_logical_displacement(control, logical_address);
 
 	if (!mmu_enabled(control))
-		return { mmu_translation_status::disabled, logical_address, 0xff, logical_segment, displacement };
+		return { mmu_translation_status::disabled, logical_address, 0xff, logical_segment, displacement, displacement, 0 };
 
 	std::uint8_t match = 0xff;
-	for (std::size_t index = 0; index < Count; ++index)
+	for (std::size_t index = 0; index < count; ++index)
 	{
-		const mmu_descriptor &desc = descriptors[index];
+		const Descriptor &desc = descriptors[index];
 		if (!mmu_descriptor_valid(desc) || mmu_descriptor_segment(control, desc) != logical_segment)
 			continue;
 
 		if (match != 0xff)
-			return { mmu_translation_status::multiple_match, logical_address, 0xff, logical_segment, displacement };
+			return { mmu_translation_status::multiple_match, logical_address, 0xff, logical_segment, displacement, displacement, 0 };
 
 		match = std::uint8_t(index);
 	}
 
 	if (match == 0xff)
-		return { mmu_translation_status::not_present, logical_address, 0xff, logical_segment, displacement };
+		return { mmu_translation_status::not_present, logical_address, 0xff, logical_segment, displacement, displacement, 0 };
 
-	const mmu_descriptor &desc = descriptors[match];
-	if (displacement > mmu_effective_segment_length(control, desc.length))
-		return { mmu_translation_status::length_violation, logical_address, match, logical_segment, displacement };
+	const Descriptor &desc = descriptors[match];
+	const std::uint16_t effective_displacement = mmu_effective_displacement(control, desc, displacement);
+	if (effective_displacement > mmu_effective_segment_length(control, desc.length))
+	{
+		return {
+			mmu_translation_status::length_violation,
+			logical_address,
+			match,
+			logical_segment,
+			displacement,
+			effective_displacement,
+			desc.attr
+		};
+	}
 
 	return {
 		mmu_translation_status::translated,
-		mmu_physical_address(desc, displacement, logical_address),
+		mmu_physical_address(control, desc, displacement, logical_address),
 		match,
 		logical_segment,
-		displacement
+		displacement,
+		effective_displacement,
+		desc.attr
 	};
+}
+
+template <typename Descriptor, std::size_t Count>
+constexpr mmu_translation_result mmu_translate(
+		std::uint8_t control,
+		const std::array<Descriptor, Count> &descriptors,
+		std::uint32_t logical_address)
+{
+	return mmu_translate_impl(control, descriptors.data(), Count, logical_address);
+}
+
+template <typename Descriptor, std::size_t Count>
+constexpr mmu_translation_result mmu_translate(
+		std::uint8_t control,
+		const Descriptor (&descriptors)[Count],
+		std::uint32_t logical_address)
+{
+	return mmu_translate_impl(control, descriptors, Count, logical_address);
+}
+
+template <typename Descriptor, std::size_t Count>
+constexpr mmu_translation_result mmu_translate_access(
+		std::uint8_t control,
+		const std::array<Descriptor, Count> &descriptors,
+		std::uint32_t logical_address,
+		mmu_access_type access,
+		bool supervisor)
+{
+	auto result = mmu_translate(control, descriptors, logical_address);
+	if (result.status == mmu_translation_status::translated && !mmu_access_permitted(descriptors[result.descriptor], access, supervisor))
+		result.status = mmu_translation_status::attribute_violation;
+	return result;
+}
+
+template <typename Descriptor, std::size_t Count>
+constexpr mmu_translation_result mmu_translate_access(
+		std::uint8_t control,
+		const Descriptor (&descriptors)[Count],
+		std::uint32_t logical_address,
+		mmu_access_type access,
+		bool supervisor)
+{
+	auto result = mmu_translate(control, descriptors, logical_address);
+	if (result.status == mmu_translation_status::translated && !mmu_access_permitted(descriptors[result.descriptor], access, supervisor))
+		result.status = mmu_translation_status::attribute_violation;
+	return result;
+}
+
+constexpr bool mmu_translation_succeeded(const mmu_translation_result &result)
+{
+	return result.status == mmu_translation_status::disabled || result.status == mmu_translation_status::translated;
+}
+
+constexpr std::uint8_t mmu_descriptor_status_bits(std::uint16_t attributes)
+{
+	std::uint8_t status = 0;
+	if (attributes & MMU_ATTRIBUTE_STACK)
+		status |= MMU_STATUS_STACK;
+	if (attributes & MMU_ATTRIBUTE_SUPERVISOR)
+		status |= MMU_STATUS_SUPERVISOR;
+	if (attributes & MMU_ATTRIBUTE_EXECUTE)
+		status |= MMU_STATUS_EXECUTE;
+	if (attributes & MMU_ATTRIBUTE_READ)
+		status |= MMU_STATUS_READ;
+	if (attributes & MMU_ATTRIBUTE_WRITE)
+		status |= MMU_STATUS_WRITE;
+	return status;
+}
+
+constexpr std::uint8_t mmu_status_for_fault(const mmu_translation_result &result)
+{
+	switch (result.status)
+	{
+	case mmu_translation_status::not_present:
+	case mmu_translation_status::multiple_match:
+		return MMU_STATUS_NOT_PRESENT;
+
+	case mmu_translation_status::length_violation:
+		return MMU_STATUS_LENGTH | mmu_descriptor_status_bits(result.attributes);
+
+	case mmu_translation_status::attribute_violation:
+		return MMU_STATUS_ACCESS | mmu_descriptor_status_bits(result.attributes);
+
+	case mmu_translation_status::disabled:
+	case mmu_translation_status::translated:
+		return 0;
+	}
+
+	return 0;
 }
 
 enum class interrupt_source : std::uint8_t
