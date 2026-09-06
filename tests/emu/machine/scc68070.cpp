@@ -83,3 +83,135 @@ TEST_CASE("SCC68070 MMU register fields mask reserved bits and compose byte lane
 	REQUIRE(scc68070::mmu_base_address(0xffff) == 0x3fff);
 	REQUIRE(scc68070::mmu_base_address(0x2001) == 0x2001);
 }
+
+TEST_CASE("SCC68070 MMU disabled preserves the external 24-bit address", "[emu][machine][scc68070][mmu][translation]")
+{
+	const std::array<scc68070::mmu_descriptor, 8> descriptors{};
+	constexpr std::array<uint32_t, 8> addresses = {
+		0x000000, 0x000001, 0x0003ff, 0x123456,
+		0x7fffff, 0xfffffe, 0xffffff, 0x12abcdef
+	};
+
+	for (uint32_t address : addresses)
+	{
+		const auto result = scc68070::mmu_translate(0x00, descriptors, address);
+		REQUIRE(result.status == scc68070::mmu_translation_status::disabled);
+		REQUIRE(result.physical_address == (address & scc68070::MMU_ADDRESS_MASK));
+		REQUIRE(result.descriptor == 0xff);
+	}
+}
+
+TEST_CASE("SCC68070 MMU selects every on-chip descriptor slot independently", "[emu][machine][scc68070][mmu][translation]")
+{
+	for (uint8_t slot = 0; slot < 8; ++slot)
+	{
+		std::array<scc68070::mmu_descriptor, 8> descriptors{};
+		const uint16_t base = uint16_t(0x0100 + slot * 0x0020);
+		descriptors[slot].segment = uint8_t(scc68070::MMU_DESCRIPTOR_FLUSH_VALID | slot);
+		descriptors[slot].length = 0x0010;
+		descriptors[slot].base = base;
+
+		const uint32_t logical = (uint32_t(slot) << 21) | (uint32_t(3) << 10) | 0x0155;
+		const auto result = scc68070::mmu_translate(scc68070::MMU_CONTROL_ENABLE, descriptors, logical);
+
+		REQUIRE(result.status == scc68070::mmu_translation_status::translated);
+		REQUIRE(result.descriptor == slot);
+		REQUIRE(result.logical_segment == slot);
+		REQUIRE(result.displacement == 3);
+		REQUIRE(result.physical_address == ((uint32_t(base + 3) << 10) | 0x0155));
+	}
+}
+
+TEST_CASE("SCC68070 MMU flush filtering and duplicate CAM matches are explicit", "[emu][machine][scc68070][mmu][translation]")
+{
+	std::array<scc68070::mmu_descriptor, 8> descriptors{};
+	const uint32_t logical = (uint32_t(3) << 21) | 0x0123;
+
+	descriptors[0].segment = uint8_t(scc68070::MMU_DESCRIPTOR_FLUSH_VALID | 3);
+	descriptors[0].length = 4;
+	descriptors[0].base = 0x0100;
+	descriptors[5].segment = uint8_t(scc68070::MMU_DESCRIPTOR_FLUSH_VALID | 3);
+	descriptors[5].length = 4;
+	descriptors[5].base = 0x0200;
+
+	auto result = scc68070::mmu_translate(scc68070::MMU_CONTROL_ENABLE, descriptors, logical);
+	REQUIRE(result.status == scc68070::mmu_translation_status::multiple_match);
+	REQUIRE(result.descriptor == 0xff);
+
+	// F=0 removes the descriptor from the associative comparison; no undocumented
+	// slot priority is used to resolve duplicate active segment numbers.
+	descriptors[0].segment = 3;
+	result = scc68070::mmu_translate(scc68070::MMU_CONTROL_ENABLE, descriptors, logical);
+	REQUIRE(result.status == scc68070::mmu_translation_status::translated);
+	REQUIRE(result.descriptor == 5);
+	REQUIRE(result.physical_address == ((uint32_t(0x0200) << 10) | 0x0123));
+}
+
+TEST_CASE("SCC68070 MMU enforces first last and out-of-range segment boundaries", "[emu][machine][scc68070][mmu][translation]")
+{
+	std::array<scc68070::mmu_descriptor, 8> descriptors{};
+	descriptors[4].segment = uint8_t(scc68070::MMU_DESCRIPTOR_FLUSH_VALID | 2);
+	descriptors[4].length = 3; // Maximum displacement: block 3 => four 1 KiB blocks.
+	descriptors[4].base = 0x0200;
+
+	const uint8_t control = scc68070::MMU_CONTROL_ENABLE;
+	const uint32_t segment_start = uint32_t(2) << 21;
+
+	auto result = scc68070::mmu_translate(control, descriptors, segment_start);
+	REQUIRE(result.status == scc68070::mmu_translation_status::translated);
+	REQUIRE(result.physical_address == (uint32_t(0x0200) << 10));
+
+	const uint32_t last_byte = segment_start | (uint32_t(3) << 10) | 0x03ff;
+	result = scc68070::mmu_translate(control, descriptors, last_byte);
+	REQUIRE(result.status == scc68070::mmu_translation_status::translated);
+	REQUIRE(result.physical_address == ((uint32_t(0x0203) << 10) | 0x03ff));
+
+	result = scc68070::mmu_translate(control, descriptors, segment_start | (uint32_t(4) << 10));
+	REQUIRE(result.status == scc68070::mmu_translation_status::length_violation);
+	REQUIRE(result.descriptor == 4);
+
+	result = scc68070::mmu_translate(control, descriptors, segment_start - 1);
+	REQUIRE(result.status == scc68070::mmu_translation_status::not_present);
+}
+
+TEST_CASE("SCC68070 MMU minimum and maximum segment lengths follow mode geometry", "[emu][machine][scc68070][mmu][translation]")
+{
+	std::array<scc68070::mmu_descriptor, 8> descriptors{};
+	descriptors[0].segment = scc68070::MMU_DESCRIPTOR_FLUSH_VALID;
+	descriptors[0].base = 0;
+
+	// Mode 1 length is the maximum 11-bit displacement.  Zero therefore
+	// describes one 1 KiB block, while 0x7ff describes 2048 blocks (2 MiB).
+	descriptors[0].length = 0;
+	auto result = scc68070::mmu_translate(scc68070::MMU_CONTROL_ENABLE, descriptors, 0x0003ff);
+	REQUIRE(result.status == scc68070::mmu_translation_status::translated);
+	result = scc68070::mmu_translate(scc68070::MMU_CONTROL_ENABLE, descriptors, 0x000400);
+	REQUIRE(result.status == scc68070::mmu_translation_status::length_violation);
+
+	descriptors[0].length = 0x07ff;
+	result = scc68070::mmu_translate(scc68070::MMU_CONTROL_ENABLE, descriptors, 0x1fffff);
+	REQUIRE(result.status == scc68070::mmu_translation_status::translated);
+	REQUIRE(result.displacement == 0x07ff);
+
+	// Mode 2 uses a seven-bit segment number and the seven MSBs of the stored
+	// length field.  The low four length bits do not alter the block boundary.
+	const uint8_t mode2_control = scc68070::MMU_CONTROL_ENABLE | scc68070::MMU_CONTROL_SEGMENT_NUMBER;
+	descriptors = {};
+	descriptors[6].segment = uint8_t(scc68070::MMU_DESCRIPTOR_FLUSH_VALID | 0x55);
+	descriptors[6].base = 0x0100;
+	descriptors[6].length = 0x000f;
+	const uint32_t mode2_start = uint32_t(0x55) << 17;
+
+	result = scc68070::mmu_translate(mode2_control, descriptors, mode2_start | 0x03ff);
+	REQUIRE(result.status == scc68070::mmu_translation_status::translated);
+	result = scc68070::mmu_translate(mode2_control, descriptors, mode2_start | 0x0400);
+	REQUIRE(result.status == scc68070::mmu_translation_status::length_violation);
+
+	descriptors[6].length = 0x07ff;
+	const uint32_t mode2_last = mode2_start | (uint32_t(0x7f) << 10) | 0x03ff;
+	result = scc68070::mmu_translate(mode2_control, descriptors, mode2_last);
+	REQUIRE(result.status == scc68070::mmu_translation_status::translated);
+	REQUIRE(result.displacement == 0x007f);
+	REQUIRE(scc68070::mmu_effective_segment_length(mode2_control, 0x07f0) == 0x007f);
+	REQUIRE(scc68070::mmu_effective_segment_length(mode2_control, 0x07ff) == 0x007f);
+}
