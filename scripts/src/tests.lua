@@ -34,7 +34,7 @@ project("mametests")
 		end
 
 	configuration { "mingw*" or "vs*" }
-		targetextension ".exe"
+		targetextension '.exe'
 
 	configuration { }
 
@@ -76,6 +76,7 @@ project("mametests")
 		MAME_DIR .. "tests/emu/philips/cdidvc_invariants.cpp",
 		MAME_DIR .. "tests/emu/philips/cdidvc_audio_format.cpp",
 		MAME_DIR .. "tests/emu/philips/cdi_audio_arithmetic.cpp",
+		MAME_DIR .. "tests/emu/philips/cdi_fma_attenuation.cpp",
 		MAME_DIR .. "tests/emu/philips/cdidvc_audio_reference.cpp",
 		MAME_DIR .. "tests/emu/philips/cdidvc_audio_replay.cpp",
 		MAME_DIR .. "tests/emu/philips/cdidvc_video_conversion.cpp",
@@ -115,7 +116,7 @@ project("cdihelpertests")
 	configuration { "Debug" }
 		targetsuffix "d"
 	configuration { "mingw*" or "vs*" }
-		targetextension ".exe"
+		targetextension '.exe'
 	configuration { }
 
 	links {
@@ -151,6 +152,7 @@ project("cdihelpertests")
 		MAME_DIR .. "tests/emu/philips/cdidvc_invariants.cpp",
 		MAME_DIR .. "tests/emu/philips/cdidvc_audio_format.cpp",
 		MAME_DIR .. "tests/emu/philips/cdi_audio_arithmetic.cpp",
+		MAME_DIR .. "tests/emu/philips/cdi_fma_attenuation.cpp",
 		MAME_DIR .. "tests/emu/philips/cdidvc_audio_reference.cpp",
 		MAME_DIR .. "tests/emu/philips/cdidvc_audio_replay.cpp",
 		MAME_DIR .. "tests/emu/philips/cdidvc_video_conversion.cpp",
@@ -187,7 +189,7 @@ if _OPTIONS["with-emulator"] then
 		configuration { "Debug" }
 			targetsuffix "d"
 		configuration { "mingw*" or "vs*" }
-			targetextension ".exe"
+			targetextension '.exe'
 		configuration { }
 
 		includedirs {
