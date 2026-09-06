@@ -122,15 +122,23 @@ audio branch so branch creation cannot replay source patches on unified developm
   GCC 13.3.0, C++17, `-O1`, including the widened-count regression.
 - DVC source liveness audit: **GREEN**; both board bindings and the held-request
   path remain connected, with one completion site and unchanged service cadence.
-- Emulator-linked build/run: pending publication CI. The previous six-case pass
-  applies to the pre-merge audio baseline, not the combined implementation.
+- Unified code commit: `e2d6fffb0853e54fde1be1429c6f12b01f4045a5`.
+- [Unified CI run 34065213340](https://github.com/matt-dawidowicz/mame/actions/runs/34065213340), job `101572661665`: **PASS**.
+  Generated helper target: **17,393,781 assertions / 219 cases**; emulator-linked
+  production build and integration target: **21 assertions / 6 cases**. This run
+  includes explicit START, held-request re-arm, immediate abort and the complete
+  65536-word transfer regression. The MMU case still tests translation queries and
+  state restoration, not executed faulting instructions.
+- Include guards, XML/JSON validation, UI translations and documentation build
+  passed. Full Linux/macOS/Windows platform builds were intentionally skipped;
+  the focused Linux CD-i gate compiled the combined production implementation.
 - No new retail-disc, physical hardware, or full Mono-II firmware validation.
 
 Known CDIC SRAM bounds, MMU executed-fault delivery, Q/TOC and actual decoded A/V
 coverage gaps from the fresh audit remain open. The SCC/DMA/DSP implementations
 have changed materially, so previous percentages are not silently promoted to new
 certification. Reassess those affected rows against the combined branch after the
-integration gates pass. The next source-defect task remains CDIC SRAM bounds.
+integration gates (now passing). The next source-defect task remains CDIC SRAM bounds.
 
 Reproduce helpers from the repository root:
 

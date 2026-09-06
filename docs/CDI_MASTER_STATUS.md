@@ -3,7 +3,7 @@
 **Active project branch: `cdi-unified`.** All 32 available project branches are
 consolidated; see the [merge inventory, resolutions and verification](cdi_branch_consolidation_20260906.md).
 The table below records the last pre-merge estimates. SCC68070, DMA, interrupts,
-timing, save states and board/DSP integration require reassessment after combined
+timing, save states and board/DSP integration require scoped percentage reassessment following combined
 validation; do not report their old numbers as newly certified unified results.
 
 **Fresh pre-merge verified-status recalculation: 2026-09-06.** This is the canonical project
@@ -11,6 +11,21 @@ index. Routine status reads the matrix, verification boundary and next actions h
 do not repeat the audit. [AGENTS.md](../AGENTS.md) defines request modes and worktree
 discipline. The detailed audio campaign controls its task list, subject to the
 explicit verification corrections in this audit.
+
+## Current unified verification
+
+- Branch: `cdi-unified`; verified code: `e2d6fffb0853e54fde1be1429c6f12b01f4045a5` (2026-09-06).
+- [CI run 34065213340](https://github.com/matt-dawidowicz/mame/actions/runs/34065213340): **PASS** — helper target
+  **17,393,781 assertions / 219 cases**; emulator-linked production build and
+  integration target **21 assertions / 6 cases**. Local helpers and DMA liveness
+  audit also pass.
+- Integration now covers explicit SCC START, held-request re-arm, immediate abort
+  and an entire 65536-word transfer. Prior MMU and A/V test-scope caveats still apply.
+- The old completion matrix is retained as historical evidence. Merging and passing
+  regressions do not automatically increase fidelity percentages. Review the
+  [changed implementation scopes](cdi_branch_consolidation_20260906.md#integration-changes-required-by-the-merge)
+  for SCC/DMA/DSP before assigning replacement values.
+- Next development task: CDIC SRAM bounds; then executed MMU exception delivery.
 
 ## Historical assessed branches and last verification
 

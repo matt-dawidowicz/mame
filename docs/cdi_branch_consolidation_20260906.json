@@ -231,5 +231,30 @@
     }
   ],
   "unavailable_local_only_branch": "dvc/fmv-clock-underflow-trace-20260905",
-  "policy": "All 32 enumerated project branch tips retained in ancestry. Existing refs preserved; superseded alternatives resolved in favor of current tested implementations."
+  "policy": "All 32 enumerated project branch tips retained in ancestry. Existing refs preserved; superseded alternatives resolved in favor of current tested implementations.",
+  "verification": {
+    "code_commit": "e2d6fffb0853e54fde1be1429c6f12b01f4045a5",
+    "date": "2026-09-06",
+    "workflow_run_id": 34065213340,
+    "workflow_job_id": 101572661665,
+    "workflow_url": "https://github.com/matt-dawidowicz/mame/actions/runs/34065213340",
+    "conclusion": "success",
+    "helper_cases": 219,
+    "helper_assertions": 17393781,
+    "integration_cases": 6,
+    "integration_assertions": 21,
+    "live_scope": [
+      "SCC START gates DREQ",
+      "held-request re-arm without a second DVC edge",
+      "immediate abort and exact partial restart",
+      "65536-word DVC transfer",
+      "existing Layer II DMA, optional DVC, save and MMU query fixtures"
+    ],
+    "limits": [
+      "No new retail or hardware tests",
+      "MMU executed-fault path remains unverified/defective",
+      "Historical alternative audio model is outside active targets",
+      "Affected completion percentages need scoped reassessment"
+    ]
+  }
 }
