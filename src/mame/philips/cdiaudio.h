@@ -10,6 +10,8 @@
 #include <cmath>
 #include <cstdint>
 
+#include "cdiaudio_dsp56001.h"
+
 namespace cdi_audio
 {
 
@@ -60,8 +62,8 @@ inline double nominal_attenuation_gain(uint8_t value)
 }
 
 // Candidate fixed-point representation used to compare possible attenuator
-// coefficient widths against captures.  This is deliberately parameterized:
-// no fractional width is attributed to CDIC or VMPEG silicon without evidence.
+// coefficient widths against captures.  This remains parameterized for CDIC
+// and other paths whose coefficient storage is not established.
 struct quantized_attenuation_gain
 {
 	uint64_t coefficient;
@@ -81,7 +83,7 @@ inline quantized_attenuation_gain quantize_nominal_attenuation_gain(
 {
 	// Keep the scale exactly representable in both uint64_t and double so the
 	// candidate quantizer itself does not inject an unrelated host precision
-	// limit.  The useful campaign candidates (Q15/Q23/Q31) are well inside it.
+	// limit.  The useful campaign candidates are well inside it.
 	if (fractional_bits > 52)
 		return { 0, fractional_bits, false };
 	if (attenuation_muted(value))
@@ -92,18 +94,56 @@ inline quantized_attenuation_gain quantize_nominal_attenuation_gain(
 	return { uint64_t(scaled + 0.5), fractional_bits, true };
 }
 
+// The retained Philips VMPEG FMA DSP data image contains the complete 0..127 dB
+// coefficient curve as round(2^22 * 10^(-dB/20)).  Keeping the values literal
+// makes the emulated FMA transfer independent of host libm rounding and avoids
+// recomputing a firmware table in the audio callback.  This evidence is scoped
+// to the VMPEG FMA path; it is not attributed to Mono-I CDIC attenuation.
+constexpr uint8_t FMA_ATTENUATION_FRACTIONAL_BITS = 22;
+constexpr uint32_t FMA_ATTENUATION_SCALE = uint32_t(1) << FMA_ATTENUATION_FRACTIONAL_BITS;
+constexpr std::array<uint32_t, 128> FMA_ATTENUATION_Q22 =
+{
+	0x400000U, 0x390a41U, 0x32d646U, 0x2d4efcU, 0x28619bU, 0x23fd66U, 0x201374U, 0x1c9677U,
+	0x197a96U, 0x16b543U, 0x143d13U, 0x1209a3U, 0x10137aU, 0x0e53ecU, 0x0cc50aU, 0x0b6188U,
+	0x0a24b0U, 0x090a4dU, 0x080ea0U, 0x072e51U, 0x066666U, 0x05b43aU, 0x05156dU, 0x0487e6U,
+	0x0409c3U, 0x039957U, 0x033525U, 0x02dbd9U, 0x028c42U, 0x024554U, 0x02061cU, 0x01cdc4U,
+	0x019b8cU, 0x016ecbU, 0x0146e7U, 0x01235aU, 0x0103abU, 0x00e76eU, 0x00ce43U, 0x00b7d5U,
+	0x00a3d7U, 0x009206U, 0x008225U, 0x0073fdU, 0x006760U, 0x005c22U, 0x00521dU, 0x00492fU,
+	0x00413aU, 0x003a22U, 0x0033d0U, 0x002e2dU, 0x002928U, 0x0024aeU, 0x0020b1U, 0x001d23U,
+	0x0019f8U, 0x001725U, 0x0014a0U, 0x001262U, 0x001062U, 0x000e9aU, 0x000d04U, 0x000b99U,
+	0x000a56U, 0x000937U, 0x000836U, 0x000752U, 0x000686U, 0x0005d0U, 0x00052eU, 0x00049eU,
+	0x00041eU, 0x0003abU, 0x000345U, 0x0002eaU, 0x000299U, 0x000250U, 0x000210U, 0x0001d7U,
+	0x0001a3U, 0x000176U, 0x00014dU, 0x000129U, 0x000109U, 0x0000ecU, 0x0000d2U, 0x0000bbU,
+	0x0000a7U, 0x000095U, 0x000085U, 0x000076U, 0x000069U, 0x00005eU, 0x000054U, 0x00004bU,
+	0x000042U, 0x00003bU, 0x000035U, 0x00002fU, 0x00002aU, 0x000025U, 0x000021U, 0x00001eU,
+	0x00001aU, 0x000018U, 0x000015U, 0x000013U, 0x000011U, 0x00000fU, 0x00000dU, 0x00000cU,
+	0x00000bU, 0x000009U, 0x000008U, 0x000007U, 0x000007U, 0x000006U, 0x000005U, 0x000005U,
+	0x000004U, 0x000004U, 0x000003U, 0x000003U, 0x000003U, 0x000002U, 0x000002U, 0x000002U
+};
+
+constexpr uint32_t fma_attenuation_coefficient(uint8_t value)
+{
+	return attenuation_muted(value) ? 0U : FMA_ATTENUATION_Q22[attenuation_decibels(value)];
+}
+
 struct attenuation_gains
 {
-	double ll;
-	double lr;
-	double rr;
-	double rl;
+	uint32_t ll;
+	uint32_t lr;
+	uint32_t rr;
+	uint32_t rl;
 };
 
 struct stereo_sample
 {
 	double left;
 	double right;
+};
+
+struct stereo_pcm16
+{
+	int16_t left;
+	int16_t right;
 };
 
 // Host PCM boundary shared by filtered paths.  Saturation and nearest rounding
@@ -123,6 +163,39 @@ inline int16_t quantize_pcm16_nearest_away(double sample)
 	if (sample >= 32767.0)
 		return 32767;
 	return saturate_pcm16(int64_t(sample >= 0.0 ? sample + 0.5 : sample - 0.5));
+}
+
+// A two-input FMA matrix cannot overflow the documented 56-bit DSP56001
+// accumulator when the decoded source samples are signed 16-bit and each Q22
+// coefficient is <= unity.  The worst magnitude is exactly 2^38 before the
+// Q22 reduction, so accumulator saturation is unreachable in this HLE path.
+constexpr int64_t FMA_Q22_MAX_ABS_ACCUMULATOR = int64_t(1) << 38;
+
+constexpr int64_t fma_mix_q22_accumulator(
+		int16_t first, uint32_t first_gain,
+		int16_t second, uint32_t second_gain)
+{
+	return int64_t(first) * first_gain + int64_t(second) * second_gain;
+}
+
+// DSP56001 RND/MPYR/MACR use convergent (nearest-even) rounding.  The retained
+// FMA coefficient image establishes the Q22 scale, while complete instruction-
+// path recovery is still tracked separately.  Centralizing the reduction here
+// makes that last instruction-level choice explicit and independently testable.
+constexpr int32_t fma_reduce_q22_nearest_even(int64_t accumulator)
+{
+	return int32_t(round_shift_nearest_even(accumulator, FMA_ATTENUATION_FRACTIONAL_BITS));
+}
+
+constexpr stereo_pcm16 mix_fma_attenuated_pcm16(
+		attenuation_gains const &gain, int16_t left, int16_t right)
+{
+	int64_t const left_accumulator = fma_mix_q22_accumulator(left, gain.ll, right, gain.rl);
+	int64_t const right_accumulator = fma_mix_q22_accumulator(left, gain.lr, right, gain.rr);
+	return {
+		saturate_pcm16(fma_reduce_q22_nearest_even(left_accumulator)),
+		saturate_pcm16(fma_reduce_q22_nearest_even(right_accumulator))
+	};
 }
 
 // Standards-derived 50/15 microsecond de-emphasis compatibility model.
@@ -228,22 +301,35 @@ inline int16_t quantize_deemphasized_pcm16(double sample)
 	return quantize_pcm16_nearest_away(sample);
 }
 
-inline attenuation_gains make_nominal_attenuation_gains(attenuation_matrix const &matrix)
+inline attenuation_gains make_fma_attenuation_gains(attenuation_matrix const &matrix)
 {
 	return {
-		nominal_attenuation_gain(matrix[ATTEN_LL]),
-		nominal_attenuation_gain(matrix[ATTEN_LR]),
-		nominal_attenuation_gain(matrix[ATTEN_RR]),
-		nominal_attenuation_gain(matrix[ATTEN_RL])
+		fma_attenuation_coefficient(matrix[ATTEN_LL]),
+		fma_attenuation_coefficient(matrix[ATTEN_LR]),
+		fma_attenuation_coefficient(matrix[ATTEN_RR]),
+		fma_attenuation_coefficient(matrix[ATTEN_RL])
 	};
 }
 
-constexpr stereo_sample mix_attenuated_stereo(
+// Compatibility name retained for the existing DVC call site.  CDIC does not
+// use this helper and therefore does not inherit the FMA DSP coefficient model.
+inline attenuation_gains make_nominal_attenuation_gains(attenuation_matrix const &matrix)
+{
+	return make_fma_attenuation_gains(matrix);
+}
+
+inline stereo_sample mix_attenuated_stereo(
 		attenuation_gains const &gain, double left, double right)
 {
+	// DVC supplies exact int16/32768 normalized samples here.  Recover that PCM
+	// domain, execute the firmware-derived Q22 matrix with one convergent
+	// reduction, then enforce the final signed-16-bit output boundary.
+	int16_t const pcm_left = quantize_pcm16_nearest_away(left * 32768.0);
+	int16_t const pcm_right = quantize_pcm16_nearest_away(right * 32768.0);
+	stereo_pcm16 const mixed = mix_fma_attenuated_pcm16(gain, pcm_left, pcm_right);
 	return {
-		left * gain.ll + right * gain.rl,
-		left * gain.lr + right * gain.rr
+		double(mixed.left) / 32768.0,
+		double(mixed.right) / 32768.0
 	};
 }
 
