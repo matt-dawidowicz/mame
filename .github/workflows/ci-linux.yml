@@ -3,8 +3,6 @@ name: CI (Linux)
 on:
   workflow_dispatch:
   push:
-    branches-ignore:
-      - 'audio/cdi-fidelity-100-campaign-20260905'
     paths:
     - '.github/workflows/ci-linux.yml'
     - '.cdi-full-ci-trigger'
@@ -33,6 +31,7 @@ permissions:
 
 jobs:
   build-linux:
+    if: github.event_name == 'workflow_dispatch' || github.ref != 'refs/heads/audio/cdi-fidelity-100-campaign-20260905'
     strategy:
       matrix:
         compiler: [gcc, clang]

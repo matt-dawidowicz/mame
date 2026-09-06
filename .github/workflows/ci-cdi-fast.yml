@@ -29,6 +29,7 @@ permissions:
 
 jobs:
   cdi-fast:
+    if: github.event_name != 'push' || github.event.head_commit.message != 'ci: preempt obsolete workflow runs'
     runs-on: ubuntu-latest
 
     env:
