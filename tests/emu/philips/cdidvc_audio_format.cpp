@@ -214,37 +214,59 @@ TEST_CASE("CD-i attenuation bytes exhaust the Green Book nominal curve", "[emu][
 	REQUIRE(cdi_audio::nominal_attenuation_gain(0xff) == 0.0);
 }
 
-TEST_CASE("CD-i four-path attenuation routes channels independently", "[emu][philips][audio][attenuation][exhaustive]")
+TEST_CASE("CD-i FMA four-path attenuation routes firmware Q22 coefficients independently", "[emu][philips][dvc][audio][attenuation][exhaustive]")
 {
-	double constexpr left = 0.25;
-	double constexpr right = -0.5;
+	int16_t constexpr left = 8192;
+	int16_t constexpr right = -16384;
+
+	auto const reference_reduce_q22 = [](int64_t accumulator)
+	{
+		uint64_t const magnitude = accumulator < 0
+			? uint64_t(-(accumulator + 1)) + 1
+			: uint64_t(accumulator);
+		uint64_t rounded = magnitude >> cdi_audio::FMA_ATTENUATION_FRACTIONAL_BITS;
+		uint64_t const remainder = magnitude & (cdi_audio::FMA_ATTENUATION_SCALE - 1U);
+		uint64_t constexpr half = uint64_t(1) << (cdi_audio::FMA_ATTENUATION_FRACTIONAL_BITS - 1);
+		if (remainder > half || (remainder == half && (rounded & 1U)))
+			++rounded;
+		int32_t const signed_value = int32_t(rounded);
+		return accumulator < 0 ? -signed_value : signed_value;
+	};
 
 	for (unsigned path = 0; path < 4; ++path)
 	{
-		double expected_gain = 1.0;
 		for (unsigned db = 0; db < 128; ++db)
 		{
 			cdi_audio::attenuation_matrix matrix = { 0x80, 0x80, 0x80, 0x80 };
 			matrix[path] = uint8_t(db);
-			auto const gains = cdi_audio::make_nominal_attenuation_gains(matrix);
-			auto const output = cdi_audio::mix_attenuated_stereo(gains, left, right);
-			double const expected_left = path == cdi_audio::ATTEN_LL
-				? left * expected_gain
-				: path == cdi_audio::ATTEN_RL ? right * expected_gain : 0.0;
-			double const expected_right = path == cdi_audio::ATTEN_LR
-				? left * expected_gain
-				: path == cdi_audio::ATTEN_RR ? right * expected_gain : 0.0;
+			auto const gains = cdi_audio::make_fma_attenuation_gains(matrix);
+			auto const output = cdi_audio::mix_fma_attenuated_pcm16(gains, left, right);
+			uint32_t const coefficient = cdi_audio::FMA_ATTENUATION_Q22[db];
+			int16_t const left_source = path == cdi_audio::ATTEN_RL ? right : left;
+			int16_t const right_source = path == cdi_audio::ATTEN_RR ? right : left;
+			int16_t const expected_left = (path == cdi_audio::ATTEN_LL || path == cdi_audio::ATTEN_RL)
+				? int16_t(reference_reduce_q22(int64_t(left_source) * coefficient))
+				: 0;
+			int16_t const expected_right = (path == cdi_audio::ATTEN_LR || path == cdi_audio::ATTEN_RR)
+				? int16_t(reference_reduce_q22(int64_t(right_source) * coefficient))
+				: 0;
 
-			INFO("path=" << path << " db=" << db);
-			REQUIRE(std::abs(output.left - expected_left) <= 1e-15);
-			REQUIRE(std::abs(output.right - expected_right) <= 1e-15);
-			expected_gain *= 0.8912509381337456;
+			INFO("path=" << path << " db=" << db << " coefficient=" << coefficient);
+			REQUIRE(output.left == expected_left);
+			REQUIRE(output.right == expected_right);
 		}
+
+		cdi_audio::attenuation_matrix muted = { 0x80, 0x80, 0x80, 0x80 };
+		muted[path] = 0xff;
+		auto const muted_output = cdi_audio::mix_fma_attenuated_pcm16(
+			cdi_audio::make_fma_attenuation_gains(muted), left, right);
+		REQUIRE(muted_output.left == 0);
+		REQUIRE(muted_output.right == 0);
 	}
 
-	auto const straight = cdi_audio::make_nominal_attenuation_gains(
+	auto const straight = cdi_audio::make_fma_attenuation_gains(
 		cdi_audio::STRAIGHT_ATTENUATION);
-	auto const straight_output = cdi_audio::mix_attenuated_stereo(straight, left, right);
+	auto const straight_output = cdi_audio::mix_fma_attenuated_pcm16(straight, left, right);
 	REQUIRE(straight_output.left == left);
 	REQUIRE(straight_output.right == right);
 }
