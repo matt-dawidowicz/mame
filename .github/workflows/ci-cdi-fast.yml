@@ -4,7 +4,6 @@ on:
   push:
     paths:
       - '.github/workflows/ci-cdi-fast.yml'
-      - '.cdi-fast-ci-trigger'
       - '3rdparty/pl_mpeg/**'
       - 'scripts/src/tests.lua'
       - 'src/devices/cpu/m68000/scc68070*'
@@ -31,22 +30,73 @@ permissions:
 jobs:
   cdi-fast:
     runs-on: ubuntu-latest
+
+    env:
+      OVERRIDE_CC: gcc
+      OVERRIDE_CXX: g++
+      ARCHOPTS: -U_FORTIFY_SOURCE
+      SOURCES: src/mame/philips/cdi.cpp,src/mame/philips/cdidvc_plmpeg.cpp
+      TESTS: 1
+      TOOLS: 0
+      OPTIMIZE: 0
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+
     steps:
       - uses: actions/checkout@v4
+
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libsdl2-dev libsdl2-ttf-dev libfontconfig-dev libasound2-dev libxinerama-dev libxi-dev qt6-base-dev qt6-base-dev-tools
-      - name: Build source-filtered CD-i emulator and tests
-        env:
-          OVERRIDE_CC: gcc
-          OVERRIDE_CXX: g++
-          ARCHOPTS: -U_FORTIFY_SOURCE
-          SOURCES: src/mame/philips/cdi.cpp
-          TESTS: 1
-          TOOLS: 0
-        run: make -j3
+          sudo apt-get install -y \
+            ccache \
+            libsdl2-dev \
+            libsdl2-ttf-dev \
+            libfontconfig-dev \
+            libasound2-dev \
+            libxinerama-dev \
+            libxi-dev \
+            qt6-base-dev \
+            qt6-base-dev-tools
+
+      - name: Restore compiler cache
+        uses: actions/cache@v4
+        with:
+          path: .ccache
+          key: cdi-ccache-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            cdi-ccache-${{ runner.os }}-
+
+      - name: Configure compiler cache
+        run: |
+          echo "/usr/lib/ccache" >> "$GITHUB_PATH"
+          ccache --set-config=max_size=1G
+          ccache --zero-stats
+
+      - name: Generate CD-i build
+        run: |
+          make -j"$(nproc)" \
+            generate \
+            build/projects/sdl/mame/gmake-linux/Makefile
+
+      - name: Build only CD-i test targets
+        run: |
+          make -j"$(nproc)" \
+            -C build/projects/sdl/mame/gmake-linux \
+            config=release64 \
+            precompile
+
+          make -j"$(nproc)" \
+            -C build/projects/sdl/mame/gmake-linux \
+            config=release64 \
+            mametests \
+            cdiintegrationtests
+
       - name: Run Philips helper tests
         run: ./mametests '[philips]'
-      - name: Validate source-filtered emulator
-        run: ./mame -validate
+
+      - name: Run CD-i integration tests
+        run: ./cdiintegrationtests
+
+      - name: Compiler cache statistics
+        if: always()
+        run: ccache --show-stats

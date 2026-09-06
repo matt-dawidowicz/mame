@@ -59,7 +59,7 @@ TEST_CASE("CD-i attenuation candidate coefficient grids expose high-range discri
 	for (unsigned db = 0; db <= 29; ++db)
 	{
 		double const ideal = cdi_audio::nominal_attenuation_gain(uint8_t(db));
-		for (auto const candidate : { std::pair<uint8_t, double *>{ 15, &maximum_q15_error_db },
+		for (auto const &candidate : { std::pair<uint8_t, double *>{ 15, &maximum_q15_error_db },
 				std::pair<uint8_t, double *>{ 23, &maximum_q23_error_db } })
 		{
 			double const reconstructed = cdi_audio::quantize_nominal_attenuation_gain(
