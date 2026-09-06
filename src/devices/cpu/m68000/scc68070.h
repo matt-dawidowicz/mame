@@ -7,6 +7,13 @@
 
 #include "m68kmusashi.h"
 
+enum class scc68070_access_type : u8
+{
+	execute,
+	read,
+	write
+};
+
 class scc68070_base_device : public m68000_musashi_device
 {
 protected:
@@ -18,7 +25,8 @@ protected:
 	// device-level overrides
 	virtual void device_start() override ATTR_COLD;
 
-	offs_t translate_addr(offs_t address) const;
+	virtual bool translate_address(offs_t address, scc68070_access_type access, bool side_effects, offs_t &translated);
+	bool translate_span(offs_t address, scc68070_access_type access, bool side_effects, offs_t *translated, unsigned width);
 
 	virtual bool memory_translate(int spacenum, int intention, offs_t &address, address_space *&target_space) override;
 
@@ -27,4 +35,3 @@ protected:
 };
 
 #endif
-
