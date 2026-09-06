@@ -63,7 +63,8 @@ private:
 	{
 		offs_t address = logical;
 		address_space *target = nullptr;
-		if (!m_maincpu->memory().translate(AS_PROGRAM, intention, address, target))
+		device_memory_interface &memory = *m_maincpu;
+		if (!memory.translate(AS_PROGRAM, intention, address, target))
 			return false;
 		return target == &m_maincpu->space(AS_PROGRAM) && address == expected;
 	}
