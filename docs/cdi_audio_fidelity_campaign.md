@@ -1,16 +1,30 @@
 # CD-i Audio Fidelity Campaign
 
-> Fresh completion estimates and code/test findings: [CDI_MASTER_STATUS.md](CDI_MASTER_STATUS.md) and [current unified audit](cdi_unified_verified_status_20260907.md). The pre-campaign numbers below are historical. Live CDIC DMA/Q/CD-DA gates and short decoded A/V reference continuity now pass; broader transport, interactive playback and physical fidelity remain open.
+> Fresh completion estimates and code/test findings: [CDI_MASTER_STATUS.md](CDI_MASTER_STATUS.md) and [current unified audit](cdi_unified_verified_status_20260907.md). The pre-campaign numbers below are historical. Live CDIC DMA/Q/CD-DA gates, moving A/V transitions and 30-minute decoded reference continuity now pass; long-playback saveability, seamless branch/host output and physical fidelity remain open.
 
-## Paused moving A/V work — 2026-09-07
+## Active moving A/V checkpoint — 2026-09-07
 
-Progress is saved for the user's shutdown. Three original textured I/P/B formats,
-complete MCD212 composition, pause/stream changes and ten save/load checkpoints
-pass the local gate: 11990 assertions / 22 integration cases and 17394016 /
-221 helper cases. No production change was needed. The uninterrupted run was
-intentionally stopped after its 960-second progress report; the **30-minute gate
-is incomplete**. Publication and exact-source CI are pending. Existing percentages
-are carried unchanged. Resume from the [moving A/V checkpoint](cdi_motion_av_checkpoint_20260907.md).
+Three original textured I/P/B formats pass complete MCD212-composed output,
+video pause/resume, stream/format changes and ten exact save/load continuations.
+The full **30-minute uninterrupted decoded playback gate passes**:
+90,154 complete composed fields and 158,786,462 channel samples,
+maximum RGB/PCM errors 9/537, exact native pixels and no detected
+cadence/reference failure. The long gate repeats one original 25 Hz clip;
+the short gate covers all three sizes/rates. No production change was needed.
+
+[CI 34144638170](https://github.com/matt-dawidowicz/mame/actions/runs/34144638170) passes on `d07ba8c1768ad6814f042696c00ab24fbf72ff76`:
+11990 assertions / 22 integration cases, 17394016 / 221 helper cases,
+generated Musashi freshness and DMA liveness. This is the documentation child
+of code `eb4fbe922c06d79eae0e48d08d3d2ae4356e091b` with identical production/tests.
+The long gate is a separate completed local run, hidden from the default CI suite.
+See the [moving A/V checkpoint](cdi_motion_av_checkpoint_20260907.md) for exact
+commands, reference provenance, timing and remaining scope.
+
+Scoped estimates now give DVC 75%, MPEG video 65%, A/V synchronization 60%,
+save states 65% and cross-system video 60%. MCD212 remains 65% after rounding.
+These weighted engineering judgments do not measure hardware fidelity or game
+compatibility. Queued-audio branch latency, long-playback saveability, broader
+display modes, host output and physical/retail validation remain open.
 
 ## Previous decoded A/V checkpoint — 2026-09-07
 
@@ -18,8 +32,8 @@ Original changing stereo MPEG audio and two I/P/B video scenes now have independ
 full PCM/pixel references through the live DVC. A 31-second, 12-scene run and active
 save/load pass; EOF picture loss and restored periodic IRQ phase were corrected.
 See [the checkpoint](cdi_decoded_av_checkpoint_20260907.md) for exact bounds and
-remaining scope. This is short synthetic software evidence; the 30-minute decoded,
-interactive stream-control, host-output and physical DSP/DAC gates remain open.
+remaining scope. This earlier short synthetic checkpoint is superseded by the active moving A/V
+checkpoint above. Host-output and physical DSP/DAC fidelity remain open.
 
 ## Goal
 
@@ -168,7 +182,7 @@ the exact VMPEG DAC edge and underflow interrupt timing remain open.
 - [x] Preserve pending/current/end stream-control state across a deterministic snapshot.
 - [x] Add full program-sequence-end and stream-switch device snapshots.
 - [x] Add live save/load of queued audio plus a video sequence header.
-- [ ] Add simultaneous decoded-picture/PCM presentation save/load continuation.
+- [x] Add simultaneous decoded-picture/PCM presentation save/load continuation.
 - [x] Validate long post-load continuation hashes/timestamps.
 
 The save image records both PL_MPEG's input-end marker and whether its opaque
@@ -177,7 +191,7 @@ replay and recreates the terminal failed decode only when it occurred live.  Hel
 tests cover a three-byte pre-header, exact frame boundary, partial following frame,
 starvation/refill, observed end, unobserved signalled end, and reopening after end.
 
-The full-machine fixture closes the register/backend-header snapshot portion of this row. Decoded-video picture and PCM presentation continuation remains open; the fixture suspends the CPU and does not decode video pictures.  It saves a
+The earlier full-machine fixture closes the register/backend-header snapshot portion of this row. That fixture suspends the CPU and does not decode video pictures; the newer decoded/moving A/V fixtures below cover picture and PCM continuation. The earlier fixture saves a
 pending requested/current stream split, mutates the live device, restores it, and
 requires the restored next legal Layer II header to commit the pending stream and
 raise the CSU/frame events.  A second snapshot preserves the ISO program-end latch
@@ -189,6 +203,13 @@ continuation cycles plus a video sequence-end packet, reloads the same snapshot,
 replays the identical continuation, and requires the complete guest-visible FNV
 hash to match.  The separate clock-domain regressions provide the long-run timing
 side of the continuation proof.
+
+The [moving A/V checkpoint](cdi_motion_av_checkpoint_20260907.md) now supplies ten
+decoded I/P/B, paused and scene-boundary snapshots. It repeats 1581 complete
+MCD212-composed fields, 2795940 channel samples, sound callback time/count/order
+and IRQ/status timing exactly. This closes the simultaneous decoded-picture/PCM
+software continuation row. Mid-field and broader native modes, plus saving after
+replay-journal capacity overflow, remain open.
 
 ### 5. DVC DMA audio ingress
 
@@ -273,14 +294,21 @@ long-run measurements remain open, so this area is not 100%.
 
 - [x] Instrument audio sample clock against SCR/PTS/DCLK.
 - [x] Check 30-minute MPEG-rate clock arithmetic with deterministic helper fixtures.
-- [ ] Run at least a 30-minute decoded/presented MPEG A/V fixture/title with drift telemetry.
+- [x] Run at least a 30-minute decoded/presented MPEG A/V fixture/title with drift telemetry (original software fixture).
 - [x] Run repeated re-anchoring and device command transitions.
 - [ ] Run repeated meaningful branching MPEG scene transitions.
 - [x] Establish an acceptable drift threshold from the MPEG/CD-i timing model rather than visual judgment.
 - [x] Prove no monotonic drift accumulation in the helper model across resets, seeks, pause/continue, and stream changes.
 
 The helper arithmetic gate is closed without defining sync by visual judgment.
-The decoded/presented continuous and branching MPEG gates remain open.  `audio_sample_clock90()` converts cumulative PCM frames into the MPEG
+The decoded/presented continuous gate now passes: an original repeated 25 Hz clip
+and changing stereo MP2 run for 1800 seconds of active output. All 90154 composed
+fields and 158786462 observed channel samples meet the independent references,
+native pixel and field-cadence checks; see the
+[completed checkpoint](cdi_motion_av_checkpoint_20260907.md). Short rendered
+format/stream branches pass the current queued-audio model. The broader repeated
+interactive branch gate remains open for synchronized timestamp/latency behavior.
+`audio_sample_clock90()` converts cumulative PCM frames into the MPEG
 90 kHz domain using quotient/remainder arithmetic, so rounding is performed from
 the complete rational position instead of accumulated sample increments.
 `observe_audio_clock()` reports the same sample instant against SCR, audio PTS, and
@@ -486,10 +514,12 @@ Full-machine coverage now repeats FMA stop/reset followed by a different legal
 stream and decoded frame across 16 cycles, and the simultaneous A/V save fixture
 replays 64 device-level FMV pause/continue/stop/play transitions before and after
 state restoration with a deterministic continuation hash.  This closes the generic
-software stop/start and simultaneous-state rows.  The remaining interactive-FMV
-branch row deliberately requires a real branching MPEG sequence/title-style fixture
-with meaningful presentation timestamps; command-bit cycling alone is not promoted
-to a branch-latency proof.  Physical confirmation of the private `$e03008/$e0300a`
+software stop/start and simultaneous-state rows. The moving A/V fixture now adds
+decoded, rendered format/stream-ID branches across three original video profiles,
+with complete pixel/PCM references and deterministic restoration. It verifies
+the current video-reset and preserved-PCM-queue behavior. The interactive-FMV
+branch row remains open for broader timestamp-controlled branching and synchronized
+audio/video latency; the current short reset branches do not close that scope.  Physical confirmation of the private `$e03008/$e0300a`
 mapping/CSU edge and the exact VMPEG DAC flush/hold/ramp rule also remain evidence
 limits rather than reasons to change the deterministic software state machine.
 

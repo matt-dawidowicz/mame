@@ -2,8 +2,8 @@
   "schema_version": 2,
   "audit_date": "2026-09-07",
   "branch": "cdi-unified",
-  "reviewed_head": "ee2a74166d8ffa54bf7602bbf4cb47889e43eb62",
-  "verified_code_commit": "ee2a74166d8ffa54bf7602bbf4cb47889e43eb62",
+  "reviewed_head": "d07ba8c1768ad6814f042696c00ab24fbf72ff76",
+  "verified_code_commit": "eb4fbe922c06d79eae0e48d08d3d2ae4356e091b",
   "upstream_commit": "1fb001f9bfab5cf0148fdfe8755659c4a869831b",
   "prior_report": "cdi_verified_status_20260906.json",
   "prior_audio_baseline": "442e5050846e680ed653fc1297b66df588b314e2",
@@ -449,15 +449,15 @@
           "weight": 15,
           "prior_grade": 2,
           "grade": 2,
-          "rationale": "Production pixel paths exist; limited independent image oracles.",
+          "rationale": "Complete 768x560 composed bitmaps pass one CLUT8/weight/matte/cursor configuration with exact native pixels. Broader native modes, mosaic and all combinations remain open.",
           "prior_rationale": "Production pixel paths exist; limited independent image oracles."
         },
         {
           "scope": "External overlay",
           "weight": 5,
           "prior_grade": 2,
-          "grade": 2,
-          "rationale": "Eligibility helper tested; combined-device frame not tested.",
+          "grade": 3,
+          "rationale": "Three original moving video formats pass complete composed-field references with matte clipping and native cursor priority; other positions/scales and full display-mode combinations remain open.",
           "prior_rationale": "Eligibility helper tested; combined-device frame not tested."
         },
         {
@@ -465,7 +465,7 @@
           "weight": 5,
           "prior_grade": 2,
           "grade": 2,
-          "rationale": "Fields saved; active frame reconstruction corpus missing.",
+          "rationale": "Ten DVC/MCD212 snapshots repeat complete composed-field hashes and times in one display configuration; broader native display modes and mid-field snapshots remain open.",
           "prior_rationale": "Fields saved; active frame reconstruction corpus missing."
         },
         {
@@ -478,9 +478,9 @@
         }
       ],
       "implementation_status": "CLUT/RLE/DYUV/RGB/QHY, control lists and pixel effects exist.",
-      "verification_status": "Mode/control/QHY helpers pass; independent full frames and combined overlay remain unverified.",
-      "next_action": "Add complete register-to-pixel and live overlay fixtures, then hardware captures.",
-      "raw_percent": 65.0,
+      "verification_status": "Complete composed fields pass one native matte/cursor/external-video configuration; broad display-mode and physical-output certification remain open.",
+      "next_action": "Extend composed-frame references to broad native/interlace/QHY modes and varied overlay geometry.",
+      "raw_percent": 66.25,
       "percent": 65,
       "source": [
         "src/mame/philips/cdi.cpp",
@@ -490,20 +490,22 @@
       ],
       "tests": [
         "tests/emu/philips/mcd212_control_stream.cpp",
-        "tests/emu/philips/mcd212_video.cpp"
+        "tests/emu/philips/mcd212_video.cpp",
+        "tests/emu/philips/cdi_dvc_motion_integration.cpp"
       ],
       "documentation": [
         "docs/cdi_modernization_status.md",
-        "docs/cdi_unified_verified_status_20260907.md#mcd"
+        "docs/cdi_unified_verified_status_20260907.md#mcd",
+        "docs/cdi_motion_av_checkpoint_20260907.md"
       ],
       "known_inaccuracies_and_evidence_gaps": [
         "CLUT/RLE/DYUV/RGB/QHY implementation; complete pixel-reference corpus absent.",
         "Audio adds wrapped control fetches; whole live command engine not exhaustive.",
         "Audio increases control-space testing; physical field edges remain.",
         "Token/FIR/quantizer vectors; cold field and odd-sum silicon remain.",
-        "Production pixel paths exist; limited independent image oracles.",
-        "Eligibility helper tested; combined-device frame not tested.",
-        "Fields saved; active frame reconstruction corpus missing.",
+        "Complete 768x560 composed bitmaps pass one CLUT8/weight/matte/cursor configuration with exact native pixels. Broader native modes, mosaic and all combinations remain open.",
+        "Three original moving video formats pass complete composed-field references with matte clipping and native cursor priority; other positions/scales and full display-mode combinations remain open.",
+        "Ten DVC/MCD212 snapshots repeat complete composed-field hashes and times in one display configuration; broader native display modes and mid-field snapshots remain open.",
         "No current full-frame hardware match."
       ],
       "remaining_work": [
@@ -516,12 +518,12 @@
         "Save state",
         "Physical output certification"
       ],
-      "last_reviewed_commit": "ad950937b72f258afe087bc2aa65cdb298e4e46b",
-      "last_verified_commit": "ade0f78abf4367f07c9d2fd3d383f448110c4cb2",
+      "last_reviewed_commit": "eb4fbe922c06d79eae0e48d08d3d2ae4356e091b",
+      "last_verified_commit": "eb4fbe922c06d79eae0e48d08d3d2ae4356e091b",
       "last_verification_date": "2026-09-07",
-      "verification_basis": "Fresh unified source/delta and fixture-scope review; existing passing CI on identical production/test code, not a new runtime or hardware measurement.",
+      "verification_basis": "Local full gates and completed 1800-second motion run; CI 34144638170 tests documentation child d07ba8c1768ad6814f042696c00ab24fbf72ff76 with identical source/tests. Scope and limits in motion checkpoint; no physical or retail claim.",
       "prior_audio_raw_percent": 65.0,
-      "last_test_date": "2026-09-06"
+      "last_test_date": "2026-09-07"
     },
     {
       "id": "dvc",
@@ -562,8 +564,8 @@
           "scope": "Video decode/output",
           "weight": 20,
           "prior_grade": 2,
-          "grade": 2,
-          "rationale": "Two original 32x32 I/P/B scenes pass full-pixel FFmpeg comparison through DVC overlay output; broader AC/motion, profiles and combined MCD212 composition remain open.",
+          "grade": 3,
+          "rationale": "Three original textured moving I/P/B formats pass FFmpeg references through complete MCD212 composition; the 25 Hz stream also passes 30 minutes uninterrupted. Full-size/profile breadth and physical fidelity remain open.",
           "prior_rationale": "Backend exists; independent I/P/B decode corpus absent."
         },
         {
@@ -571,7 +573,7 @@
           "weight": 10,
           "prior_grade": 2,
           "grade": 2,
-          "rationale": "Twelve scheduled scenes present all 768 pictures within one vblank; decode-ahead, first-PTS anchoring and interactive branches remain models with limited coverage.",
+          "rationale": "Varied-rate field output, video-only pause/resume and reset/stream-ID branches pass. Audio retains queued PCM on selection; seamless branch latency and hardware pause semantics remain unverified.",
           "prior_rationale": "26-frame temporary decode-ahead and first-PTS anchoring are models."
         },
         {
@@ -587,7 +589,7 @@
           "weight": 5,
           "prior_grade": 3,
           "grade": 3,
-          "rationale": "A scheduled active decoded A/V snapshot repeats 747 pictures, PCM, callback timing and IRQ events exactly; more snapshot phases, stream modes and capacity edges remain open.",
+          "rationale": "Ten I/P/B, paused and scene-boundary snapshots repeat composed fields, PCM, callback timing and IRQ events exactly. Saving beyond bounded replay journals and other modes remain open.",
           "prior_rationale": "Live state/queued audio/video header tested, no real decoded A/V continuation."
         },
         {
@@ -600,10 +602,10 @@
         }
       ],
       "implementation_status": "Ingress, registers, audio/video backend, scheduling and DMA operate as a model.",
-      "verification_status": "31-second original decoded A/V, 12 scene resets and active save/load pass; broad movie behavior and physical board fidelity remain open.",
-      "next_action": "Extend to varied moving video, interactive pause/stream branches and more active snapshot phases.",
-      "raw_percent": 70.0,
-      "percent": 70,
+      "verification_status": "Three moving I/P/B formats, ten active snapshots and 30-minute continuous decoded playback pass; broad movie/control behavior and physical board fidelity remain open.",
+      "next_action": "Reproduce active save/load before and after audio/video replay-journal capacity; investigate control/branch semantics with reference evidence.",
+      "raw_percent": 75.0,
+      "percent": 75,
       "source": [
         "3rdparty/pl_mpeg/pl_mpeg.h",
         "src/mame/philips/cdicdic.cpp",
@@ -625,21 +627,23 @@
         "tests/emu/philips/cdidvc_state_transitions.cpp",
         "tests/emu/philips/cdidvc_timing.cpp",
         "tests/emu/philips/cdidvc_video_conversion.cpp",
-        "tests/emu/philips/cdi_dvc_av_integration.cpp"
+        "tests/emu/philips/cdi_dvc_av_integration.cpp",
+        "tests/emu/philips/cdi_dvc_motion_integration.cpp"
       ],
       "documentation": [
         "docs/cdi_audio_fidelity_campaign.md",
         "docs/cdi_audio_final_certification_20260906.md",
         "docs/cdi_dma_av_optional_dvc_checkpoint_20260906.md",
         "docs/cdi_unified_verified_status_20260907.md#dvc",
-        "docs/cdi_decoded_av_checkpoint_20260907.md"
+        "docs/cdi_decoded_av_checkpoint_20260907.md",
+        "docs/cdi_motion_av_checkpoint_20260907.md"
       ],
       "known_inaccuracies_and_evidence_gaps": [
         "Stream/CSU and optional presence tested; private event edges unresolved.",
         "Reference-tested audio; physical arithmetic/output limits remain.",
-        "Two original 32x32 I/P/B scenes pass full-pixel FFmpeg comparison through DVC overlay output; broader AC/motion, profiles and combined MCD212 composition remain open.",
-        "Twelve scheduled scenes present all 768 pictures within one vblank; decode-ahead, first-PTS anchoring and interactive branches remain models with limited coverage.",
-        "A scheduled active decoded A/V snapshot repeats 747 pictures, PCM, callback timing and IRQ events exactly; more snapshot phases, stream modes and capacity edges remain open.",
+        "Three original textured moving I/P/B formats pass FFmpeg references through complete MCD212 composition; the 25 Hz stream also passes 30 minutes uninterrupted. Full-size/profile breadth and physical fidelity remain open.",
+        "Varied-rate field output, video-only pause/resume and reset/stream-ID branches pass. Audio retains queued PCM on selection; seamless branch latency and hardware pause semantics remain unverified.",
+        "Ten I/P/B, paused and scene-boundary snapshots repeat composed fields, PCM, callback timing and IRQ events exactly. Saving beyond bounded replay journals and other modes remain open.",
         "No full VMPEG timing/analogue certification."
       ],
       "remaining_work": [
@@ -650,10 +654,10 @@
         "Save reconstruction",
         "Physical board fidelity"
       ],
-      "last_reviewed_commit": "ee2a74166d8ffa54bf7602bbf4cb47889e43eb62",
-      "last_verified_commit": "ee2a74166d8ffa54bf7602bbf4cb47889e43eb62",
+      "last_reviewed_commit": "eb4fbe922c06d79eae0e48d08d3d2ae4356e091b",
+      "last_verified_commit": "eb4fbe922c06d79eae0e48d08d3d2ae4356e091b",
       "last_verification_date": "2026-09-07",
-      "verification_basis": "Fresh local decoded A/V source/fixture review and full local/CI gates on this code; CI 34085809119. Scope and limits in decoded checkpoint; no physical or retail claim.",
+      "verification_basis": "Local full gates and completed 1800-second motion run; CI 34144638170 tests documentation child d07ba8c1768ad6814f042696c00ab24fbf72ff76 with identical source/tests. Scope and limits in motion checkpoint; no physical or retail claim.",
       "prior_audio_raw_percent": 70.0,
       "last_test_date": "2026-09-07"
     },
@@ -672,8 +676,8 @@
           "scope": "Backend decode",
           "weight": 20,
           "prior_grade": 2,
-          "grade": 2,
-          "rationale": "Original flat-macroblock I/P/B video has an independent full-pixel FFmpeg oracle; broader AC/motion, dimensions, profiles and malformed video remain thinly verified.",
+          "grade": 3,
+          "rationale": "Original moving textured I/P/B streams at three sizes/rates have complete independent FFmpeg RGB references. Full-size video, wider motion/GOP/error cases and silicon rounding remain open.",
           "prior_rationale": "PL_MPEG runs; test tree does not retain an independent full video decode oracle."
         },
         {
@@ -697,7 +701,7 @@
           "weight": 10,
           "prior_grade": 3,
           "grade": 3,
-          "rationale": "All pixels of two original scenes match FFmpeg within 3 RGB levels; gradients, chroma/motion detail and complete color-range coverage remain open.",
+          "rationale": "Textured and chroma-gradient references pass the documented decoder tolerance through composed output. Full color-range coverage and physical conversion remain open.",
           "prior_rationale": "Audio compares PL_MPEG RGB/BGRA/ARGB paths; internal consistency only."
         },
         {
@@ -705,7 +709,7 @@
           "weight": 15,
           "prior_grade": 2,
           "grade": 2,
-          "rationale": "All 768 baseline pictures arrive within one vblank in 31 seconds; broader rates, queue limits and interactive branches remain unverified.",
+          "rationale": "Three rates, video pause/resume and format branches pass field comparisons; one 25 Hz stream passes 30 uninterrupted minutes. Arbitrary PTS, underflow and queue-limit cases remain open.",
           "prior_rationale": "Approximate backend queue and timestamp policy remain."
         },
         {
@@ -713,23 +717,23 @@
           "weight": 10,
           "prior_grade": 2,
           "grade": 2,
-          "rationale": "Production handoff exists; no combined-device pixel fixture.",
+          "rationale": "One native CLUT8/matte/cursor/external-video configuration passes complete visible bitmaps; broad interlace/QHY/native combinations remain open.",
           "prior_rationale": "Production handoff exists; no combined-device pixel fixture."
         },
         {
           "scope": "Independent frame/title certification",
           "weight": 10,
           "prior_grade": 0,
-          "grade": 1,
-          "rationale": "Limited original I/P/B scenes now have retained independent presented-pixel references; combined display, broad video and retail-runtime certification remain absent.",
+          "grade": 2,
+          "rationale": "Original textured I/P/B streams have complete independent RGB references and composed-field checks; retained retail-runtime and physical-frame certification remain absent.",
           "prior_rationale": "No retained present-frame or retail-runtime corpus in reviewed scope."
         }
       ],
       "implementation_status": "PL_MPEG decode, picture queues and presentation handoff exist.",
-      "verification_status": "Full pixels of original I/P/B scenes match FFmpeg and EOF frame loss is fixed; varied motion and combined displayed-frame coverage remain open.",
-      "next_action": "Add moving textured I/P/B references, varied dimensions/rates and combined MCD212 output.",
-      "raw_percent": 58.75,
-      "percent": 60,
+      "verification_status": "Original textured I/P/B references pass varied-rate composed output and a 30-minute 25 Hz run; full-size/GOP/error breadth and retail/hardware certification remain open.",
+      "next_action": "Extend independent references to full-size video, more GOP/motion cases, underflow and malformed input.",
+      "raw_percent": 66.25,
+      "percent": 65,
       "source": [
         "3rdparty/pl_mpeg/pl_mpeg.h",
         "src/mame/philips/cdi.cpp",
@@ -751,7 +755,8 @@
         "tests/emu/philips/cdidvc_video_conversion.cpp",
         "tests/emu/philips/mcd212_control_stream.cpp",
         "tests/emu/philips/mcd212_video.cpp",
-        "tests/emu/philips/cdi_dvc_av_integration.cpp"
+        "tests/emu/philips/cdi_dvc_av_integration.cpp",
+        "tests/emu/philips/cdi_dvc_motion_integration.cpp"
       ],
       "documentation": [
         "docs/cdi_audio_fidelity_campaign.md",
@@ -759,16 +764,17 @@
         "docs/cdi_dma_av_optional_dvc_checkpoint_20260906.md",
         "docs/cdi_modernization_status.md",
         "docs/cdi_unified_verified_status_20260907.md#mpeg_video",
-        "docs/cdi_decoded_av_checkpoint_20260907.md"
+        "docs/cdi_decoded_av_checkpoint_20260907.md",
+        "docs/cdi_motion_av_checkpoint_20260907.md"
       ],
       "known_inaccuracies_and_evidence_gaps": [
-        "Original flat-macroblock I/P/B video has an independent full-pixel FFmpeg oracle; broader AC/motion, dimensions, profiles and malformed video remain thinly verified.",
+        "Original moving textured I/P/B streams at three sizes/rates have complete independent FFmpeg RGB references. Full-size video, wider motion/GOP/error cases and silicon rounding remain open.",
         "PES and sequence/header helpers covered.",
         "Live 64-picture scenes and whole/split ring-buffer EOF tests detect and fix two missing final pictures; broader reorder/GOP cases remain open.",
-        "All pixels of two original scenes match FFmpeg within 3 RGB levels; gradients, chroma/motion detail and complete color-range coverage remain open.",
-        "All 768 baseline pictures arrive within one vblank in 31 seconds; broader rates, queue limits and interactive branches remain unverified.",
-        "Production handoff exists; no combined-device pixel fixture.",
-        "Limited original I/P/B scenes now have retained independent presented-pixel references; combined display, broad video and retail-runtime certification remain absent."
+        "Textured and chroma-gradient references pass the documented decoder tolerance through composed output. Full color-range coverage and physical conversion remain open.",
+        "Three rates, video pause/resume and format branches pass field comparisons; one 25 Hz stream passes 30 uninterrupted minutes. Arbitrary PTS, underflow and queue-limit cases remain open.",
+        "One native CLUT8/matte/cursor/external-video configuration passes complete visible bitmaps; broad interlace/QHY/native combinations remain open.",
+        "Original textured I/P/B streams have complete independent RGB references and composed-field checks; retained retail-runtime and physical-frame certification remain absent."
       ],
       "remaining_work": [
         "Backend decode",
@@ -779,10 +785,10 @@
         "MCD212 composition",
         "Independent frame/title certification"
       ],
-      "last_reviewed_commit": "ee2a74166d8ffa54bf7602bbf4cb47889e43eb62",
-      "last_verified_commit": "ee2a74166d8ffa54bf7602bbf4cb47889e43eb62",
+      "last_reviewed_commit": "eb4fbe922c06d79eae0e48d08d3d2ae4356e091b",
+      "last_verified_commit": "eb4fbe922c06d79eae0e48d08d3d2ae4356e091b",
       "last_verification_date": "2026-09-07",
-      "verification_basis": "Fresh local decoded A/V source/fixture review and full local/CI gates on this code; CI 34085809119. Scope and limits in decoded checkpoint; no physical or retail claim.",
+      "verification_basis": "Local full gates and completed 1800-second motion run; CI 34144638170 tests documentation child d07ba8c1768ad6814f042696c00ab24fbf72ff76 with identical source/tests. Scope and limits in motion checkpoint; no physical or retail claim.",
       "prior_audio_raw_percent": 56.25,
       "last_test_date": "2026-09-07"
     },
@@ -811,7 +817,7 @@
           "weight": 20,
           "prior_grade": 3,
           "grade": 3,
-          "rationale": "Changing original stereo Layer-II audio receives full live PCM comparison against FFmpeg, within documented decoder tolerances; broad profiles and physical arithmetic remain open.",
+          "rationale": "Changing original 44.1 kHz stereo MP2 passes full PCM comparison for 30 minutes against initial/steady FFmpeg references within documented tolerance. Other profiles and silicon arithmetic remain open.",
           "prior_rationale": "Three repeated frames/reference sampling; tolerances up to 1500 PCM counts."
         },
         {
@@ -851,7 +857,7 @@
           "weight": 10,
           "prior_grade": 3,
           "grade": 3,
-          "rationale": "Twelve deterministic scene reset/end cycles pass changing PCM continuity; interactive stream selection and arbitrary PTS branches remain open.",
+          "rationale": "Requested-stream selection rejects old IDs and preserves queued PCM in live format branches. Video pause leaves audio running in the current model; arbitrary PTS and physical flush semantics remain open.",
           "prior_rationale": "Program end/requested-current state tested; interactive PTS branches absent."
         },
         {
@@ -859,7 +865,7 @@
           "weight": 5,
           "prior_grade": 3,
           "grade": 3,
-          "rationale": "Active decoded A/V continuation repeats 2,644,236 channel samples and callback times exactly; other phases, rates and control edges remain open.",
+          "rationale": "Ten moving A/V snapshots repeat 2795940 channel samples and callback time/count/order exactly. Capacity overflow, other rates and control edges remain open.",
           "prior_rationale": "Replay and device state tested; real full A/V continuation absent."
         },
         {
@@ -872,8 +878,8 @@
         }
       ],
       "implementation_status": "Parser, Layer II decode, queues, recovered digital gain, emphasis and replay are implemented.",
-      "verification_status": "Changing stereo PCM matches FFmpeg within documented tolerance and restores exactly; broader stream controls and physical DSP/DAC edges remain open.",
-      "next_action": "Extend changing PCM references to stream selection, pause/resume and multiple snapshot phases.",
+      "verification_status": "Changing stereo PCM passes 30-minute reference comparison and ten exact restored continuations; queued-audio selection is verified as a model, with physical flush/gain edges still open.",
+      "next_action": "Reproduce long-playback save/load at the 8 MiB audio replay limit; expand reference-backed control/flush semantics.",
       "raw_percent": 80.0,
       "percent": 80,
       "source": [
@@ -901,7 +907,8 @@
         "tests/emu/philips/cdidvc_state_transitions.cpp",
         "tests/emu/philips/cdidvc_timing.cpp",
         "tests/emu/philips/cdidvc_video_conversion.cpp",
-        "tests/emu/philips/cdi_dvc_av_integration.cpp"
+        "tests/emu/philips/cdi_dvc_av_integration.cpp",
+        "tests/emu/philips/cdi_dvc_motion_integration.cpp"
       ],
       "documentation": [
         "docs/cdi_audio_arithmetic_checkpoint.md",
@@ -910,14 +917,15 @@
         "docs/cdi_audio_final_certification_20260906.md",
         "docs/cdi_dma_av_optional_dvc_checkpoint_20260906.md",
         "docs/cdi_unified_verified_status_20260907.md#dvc_audio",
-        "docs/cdi_decoded_av_checkpoint_20260907.md"
+        "docs/cdi_decoded_av_checkpoint_20260907.md",
+        "docs/cdi_motion_av_checkpoint_20260907.md"
       ],
       "known_inaccuracies_and_evidence_gaps": [
-        "Changing original stereo Layer-II audio receives full live PCM comparison against FFmpeg, within documented decoder tolerances; broad profiles and physical arithmetic remain open.",
+        "Changing original 44.1 kHz stereo MP2 passes full PCM comparison for 30 minutes against initial/steady FFmpeg references within documented tolerance. Other profiles and silicon arithmetic remain open.",
         "Deterministic pair/zero/refill; physical DAC rule missing.",
         "Standards shelf response tested; physical transition unknown.",
-        "Twelve deterministic scene reset/end cycles pass changing PCM continuity; interactive stream selection and arbitrary PTS branches remain open.",
-        "Active decoded A/V continuation repeats 2,644,236 channel samples and callback times exactly; other phases, rates and control edges remain open.",
+        "Requested-stream selection rejects old IDs and preserves queued PCM in live format branches. Video pause leaves audio running in the current model; arbitrary PTS and physical flush semantics remain open.",
+        "Ten moving A/V snapshots repeat 2795940 channel samples and callback time/count/order exactly. Capacity overflow, other rates and control edges remain open.",
         "Exact instruction/limiter and waveform remain unavailable."
       ],
       "remaining_work": [
@@ -928,10 +936,10 @@
         "Audio save/load",
         "Physical DSP/DAC attribution"
       ],
-      "last_reviewed_commit": "ee2a74166d8ffa54bf7602bbf4cb47889e43eb62",
-      "last_verified_commit": "ee2a74166d8ffa54bf7602bbf4cb47889e43eb62",
+      "last_reviewed_commit": "eb4fbe922c06d79eae0e48d08d3d2ae4356e091b",
+      "last_verified_commit": "eb4fbe922c06d79eae0e48d08d3d2ae4356e091b",
       "last_verification_date": "2026-09-07",
-      "verification_basis": "Fresh local decoded A/V source/fixture review and full local/CI gates on this code; CI 34085809119. Scope and limits in decoded checkpoint; no physical or retail claim.",
+      "verification_basis": "Local full gates and completed 1800-second motion run; CI 34144638170 tests documentation child d07ba8c1768ad6814f042696c00ab24fbf72ff76 with identical source/tests. Scope and limits in motion checkpoint; no physical or retail claim.",
       "prior_audio_raw_percent": 80.0,
       "last_test_date": "2026-09-07"
     },
@@ -1433,7 +1441,7 @@
           "weight": 20,
           "prior_grade": 3,
           "grade": 3,
-          "rationale": "Live decoded scenes compare enabled status, acknowledgement and restored periodic IRQ phase exactly; broader event combinations and physical timing remain open.",
+          "rationale": "Live moving scenes compare enabled status, acknowledgement and restored IRQ timing exactly; continuous playback retains the 1 ms status/ack check for 30 minutes. Physical timing and wider event combinations remain open.",
           "prior_rationale": "Audio integration sees synchronized completion/CSU."
         },
         {
@@ -1454,7 +1462,7 @@
         }
       ],
       "implementation_status": "Priority arbitration, acknowledgements and device IRQ sources exist.",
-      "verification_status": "Live DVC status/acknowledgement and restored periodic phase pass alongside MMU/CDIC gates; expanded peripheral IRQ sequences remain open.",
+      "verification_status": "Moving DVC snapshots and continuous status/acknowledgement pass alongside existing MMU/CDIC gates; wider event combinations and physical timing remain open.",
       "next_action": "Add live timer/UART/error-source and acknowledgement sequences.",
       "raw_percent": 68.75,
       "percent": 70,
@@ -1475,19 +1483,21 @@
         "tests/emu/philips/cdi_dvc_edge_integration.cpp",
         "tests/emu/philips/cdicdic.cpp",
         "tests/emu/philips/cdislavehle_response_ready.cpp",
-        "tests/emu/philips/cdi_dvc_av_integration.cpp"
+        "tests/emu/philips/cdi_dvc_av_integration.cpp",
+        "tests/emu/philips/cdi_dvc_motion_integration.cpp"
       ],
       "documentation": [
         "docs/cdi_dma_av_optional_dvc_checkpoint_20260906.md",
         "docs/cdi_modernization_status.md",
         "docs/cdi_unified_verified_status_20260907.md#irq",
-        "docs/cdi_decoded_av_checkpoint_20260907.md"
+        "docs/cdi_decoded_av_checkpoint_20260907.md",
+        "docs/cdi_motion_av_checkpoint_20260907.md"
       ],
       "known_inaccuracies_and_evidence_gaps": [
         "Priority/source helpers and register implementation.",
         "Audio measured AUDCTL/XBUF/ABUF gating.",
         "Readiness/replacement helpers; mailbox timing still a model.",
-        "Live decoded scenes compare enabled status, acknowledgement and restored periodic IRQ phase exactly; broader event combinations and physical timing remain open.",
+        "Live moving scenes compare enabled status, acknowledgement and restored IRQ timing exactly; continuous playback retains the 1 ms status/ack check for 30 minutes. Physical timing and wider event combinations remain open.",
         "Executed MMU exceptions and CDIC device-error status pass; expanded UART/timer/error-source and physical IACK sequences remain open.",
         "No trace-derived closure."
       ],
@@ -1499,10 +1509,10 @@
         "All fault/error sources",
         "Physical IACK edge timing"
       ],
-      "last_reviewed_commit": "ee2a74166d8ffa54bf7602bbf4cb47889e43eb62",
-      "last_verified_commit": "ee2a74166d8ffa54bf7602bbf4cb47889e43eb62",
+      "last_reviewed_commit": "eb4fbe922c06d79eae0e48d08d3d2ae4356e091b",
+      "last_verified_commit": "eb4fbe922c06d79eae0e48d08d3d2ae4356e091b",
       "last_verification_date": "2026-09-07",
-      "verification_basis": "Fresh local decoded A/V source/fixture review and full local/CI gates on this code; CI 34085809119. Scope and limits in decoded checkpoint; no physical or retail claim.",
+      "verification_basis": "Local full gates and completed 1800-second motion run; CI 34144638170 tests documentation child d07ba8c1768ad6814f042696c00ab24fbf72ff76 with identical source/tests. Scope and limits in motion checkpoint; no physical or retail claim.",
       "prior_audio_raw_percent": 66.25,
       "last_test_date": "2026-09-07"
     },
@@ -1539,7 +1549,7 @@
           "weight": 25,
           "prior_grade": 3,
           "grade": 3,
-          "rationale": "31-second live decoded presentation and restored timer phase pass; longer output runs, other rates and physical clock calibration remain open.",
+          "rationale": "Three video rates, composed-field cadence and 30 minutes uninterrupted decoded output pass software timing/reference checks. Host output, bus-cycle accuracy and physical calibration remain open.",
           "prior_rationale": "Advanced DCLK and rational helper tests; actual sequence output absent."
         },
         {
@@ -1560,7 +1570,7 @@
         }
       ],
       "implementation_status": "Raster, sector/sample, DCLK, SCC timer and DMA service models exist.",
-      "verification_status": "Live decoded frame timing and restored DVC timer phase pass; CPU/bus cycle accuracy and physical calibration remain unverified.",
+      "verification_status": "Varied-rate composed fields and 30-minute decoded timing pass; host output, CPU/bus cycles and physical calibration remain unverified.",
       "next_action": "Exercise Timer 1/2 and UART event timing in live fixtures; measure CPU/bus and cross-device timing separately.",
       "raw_percent": 60.0,
       "percent": 60,
@@ -1587,7 +1597,8 @@
         "tests/emu/philips/cdidvc_timing.cpp",
         "tests/emu/philips/mcd212_control_stream.cpp",
         "tests/emu/philips/mcd212_video.cpp",
-        "tests/emu/philips/cdi_dvc_av_integration.cpp"
+        "tests/emu/philips/cdi_dvc_av_integration.cpp",
+        "tests/emu/philips/cdi_dvc_motion_integration.cpp"
       ],
       "documentation": [
         "docs/cdi_audio_fidelity_campaign.md",
@@ -1596,12 +1607,13 @@
         "docs/cdi_dma_av_optional_dvc_checkpoint_20260906.md",
         "docs/cdi_modernization_status.md",
         "docs/cdi_unified_verified_status_20260907.md#timing",
-        "docs/cdi_decoded_av_checkpoint_20260907.md"
+        "docs/cdi_decoded_av_checkpoint_20260907.md",
+        "docs/cdi_motion_av_checkpoint_20260907.md"
       ],
       "known_inaccuracies_and_evidence_gaps": [
         "Table-derived profiles; pin waveforms unavailable.",
         "Audio long-run helper identity and captured buffer cadence.",
-        "31-second live decoded presentation and restored timer phase pass; longer output runs, other rates and physical clock calibration remain open.",
+        "Three video rates, composed-field cadence and 30 minutes uninterrupted decoded output pass software timing/reference checks. Host output, bus-cycle accuracy and physical calibration remain open.",
         "Timer 1/2 now have event scheduling, and DVC service/re-arm passes. This package grades CPU/bus cycle accuracy, arbitration and DTACK; those remain incomplete, so its grade does not increase.",
         "No full calibration corpus."
       ],
@@ -1612,10 +1624,10 @@
         "CPU/bus service timing",
         "Physical cross-device calibration"
       ],
-      "last_reviewed_commit": "ee2a74166d8ffa54bf7602bbf4cb47889e43eb62",
-      "last_verified_commit": "ee2a74166d8ffa54bf7602bbf4cb47889e43eb62",
+      "last_reviewed_commit": "eb4fbe922c06d79eae0e48d08d3d2ae4356e091b",
+      "last_verified_commit": "eb4fbe922c06d79eae0e48d08d3d2ae4356e091b",
       "last_verification_date": "2026-09-07",
-      "verification_basis": "Fresh local decoded A/V source/fixture review and full local/CI gates on this code; CI 34085809119. Scope and limits in decoded checkpoint; no physical or retail claim.",
+      "verification_basis": "Local full gates and completed 1800-second motion run; CI 34144638170 tests documentation child d07ba8c1768ad6814f042696c00ab24fbf72ff76 with identical source/tests. Scope and limits in motion checkpoint; no physical or retail claim.",
       "prior_audio_raw_percent": 60.0,
       "last_test_date": "2026-09-07"
     },
@@ -1642,7 +1654,7 @@
           "weight": 20,
           "prior_grade": 3,
           "grade": 3,
-          "rationale": "Live decoded pictures meet timestamp deadlines within one vblank across 12 scenes; other rates and broader queue/PTS cases remain open.",
+          "rationale": "Three-rate composed output and uninterrupted 25 Hz playback pass timestamp-based field references. Arbitrary PTS, underflow and wider queue cases remain open.",
           "prior_rationale": "DCLK-advanced scheduling exists; device presentation not fully validated."
         },
         {
@@ -1650,15 +1662,15 @@
           "weight": 15,
           "prior_grade": 3,
           "grade": 3,
-          "rationale": "Twelve scheduled decoder-reset scene transitions pass; interactive branching, pause and stream-selection transitions remain open.",
+          "rationale": "Video-only pause/resume and requested-stream format branches pass the existing queued-audio model with exact restored continuation. Seamless synchronized branches and hardware pause/flush latency remain unverified.",
           "prior_rationale": "Re-anchoring and command cycles covered; branching MPEG absent."
         },
         {
           "scope": "Decoded/presented continuous A/V",
           "weight": 20,
           "prior_grade": 0,
-          "grade": 1,
-          "rationale": "31 seconds of original decoded A/V and active save/load pass reference/timing checks; the 30-minute uninterrupted decoded and host-output gate remains open.",
+          "grade": 3,
+          "rationale": "Thirty minutes of uninterrupted repeated original moving video and changing stereo audio pass complete composed fields and PCM references. Other long-run profiles, host output and hardware timing remain open.",
           "prior_rationale": "30-minute tests calculate timestamps; they do not decode/render a movie."
         },
         {
@@ -1679,10 +1691,10 @@
         }
       ],
       "implementation_status": "Clock arithmetic, packet scheduling and discontinuity controls exist.",
-      "verification_status": "31-second decoded reference playback passes through 12 scene resets and save/load; 30-minute continuous and host-output drift measurements remain open.",
-      "next_action": "Run at least 30 minutes of uninterrupted varied decoded A/V, then interactive branches and host-output timing.",
-      "raw_percent": 51.25,
-      "percent": 50,
+      "verification_status": "Thirty-minute uninterrupted composed video/PCM reference playback passes; synchronized interactive branch latency and host/physical output drift remain open.",
+      "next_action": "Measure host-output drift and reference-backed pause/stream-branch latency; extend long-run rates and underflow coverage.",
+      "raw_percent": 61.25,
+      "percent": 60,
       "source": [
         "3rdparty/pl_mpeg/pl_mpeg.h",
         "src/mame/philips/cdidvc.cpp",
@@ -1698,19 +1710,21 @@
         "tests/emu/philips/cdidvc_avsync_threshold.cpp",
         "tests/emu/philips/cdidvc_timing.cpp",
         "tests/emu/philips/cdidvc_video_conversion.cpp",
-        "tests/emu/philips/cdi_dvc_av_integration.cpp"
+        "tests/emu/philips/cdi_dvc_av_integration.cpp",
+        "tests/emu/philips/cdi_dvc_motion_integration.cpp"
       ],
       "documentation": [
         "docs/cdi_audio_fidelity_campaign.md",
         "docs/cdi_audio_final_certification_20260906.md",
         "docs/cdi_dma_av_optional_dvc_checkpoint_20260906.md",
         "docs/cdi_unified_verified_status_20260907.md#av",
-        "docs/cdi_decoded_av_checkpoint_20260907.md"
+        "docs/cdi_decoded_av_checkpoint_20260907.md",
+        "docs/cdi_motion_av_checkpoint_20260907.md"
       ],
       "known_inaccuracies_and_evidence_gaps": [
-        "Live decoded pictures meet timestamp deadlines within one vblank across 12 scenes; other rates and broader queue/PTS cases remain open.",
-        "Twelve scheduled decoder-reset scene transitions pass; interactive branching, pause and stream-selection transitions remain open.",
-        "31 seconds of original decoded A/V and active save/load pass reference/timing checks; the 30-minute uninterrupted decoded and host-output gate remains open.",
+        "Three-rate composed output and uninterrupted 25 Hz playback pass timestamp-based field references. Arbitrary PTS, underflow and wider queue cases remain open.",
+        "Video-only pause/resume and requested-stream format branches pass the existing queued-audio model with exact restored continuation. Seamless synchronized branches and hardware pause/flush latency remain unverified.",
+        "Thirty minutes of uninterrupted repeated original moving video and changing stereo audio pass complete composed fields and PCM references. Other long-run profiles, host output and hardware timing remain open.",
         "Not measured.",
         "Not measured."
       ],
@@ -1721,10 +1735,10 @@
         "Host output drift",
         "Physical clock/branch latency"
       ],
-      "last_reviewed_commit": "ee2a74166d8ffa54bf7602bbf4cb47889e43eb62",
-      "last_verified_commit": "ee2a74166d8ffa54bf7602bbf4cb47889e43eb62",
+      "last_reviewed_commit": "eb4fbe922c06d79eae0e48d08d3d2ae4356e091b",
+      "last_verified_commit": "eb4fbe922c06d79eae0e48d08d3d2ae4356e091b",
       "last_verification_date": "2026-09-07",
-      "verification_basis": "Fresh local decoded A/V source/fixture review and full local/CI gates on this code; CI 34085809119. Scope and limits in decoded checkpoint; no physical or retail claim.",
+      "verification_basis": "Local full gates and completed 1800-second motion run; CI 34144638170 tests documentation child d07ba8c1768ad6814f042696c00ab24fbf72ff76 with identical source/tests. Scope and limits in motion checkpoint; no physical or retail claim.",
       "prior_audio_raw_percent": 46.25,
       "last_test_date": "2026-09-07"
     },
@@ -1744,15 +1758,15 @@
           "weight": 25,
           "prior_grade": 3,
           "grade": 3,
-          "rationale": "Scheduled decoded A/V save/load repeats changing PCM and sound callback timing exactly; broader audio/control phases remain open.",
+          "rationale": "Ten moving A/V snapshots repeat changing PCM and sound callback time/count/order exactly. Replay-capacity overflow and broader control modes remain open.",
           "prior_rationale": "Audio adds end/stream/live ram_state paths."
         },
         {
           "scope": "Decoded video continuation",
           "weight": 20,
           "prior_grade": 2,
-          "grade": 2,
-          "rationale": "A scheduled active snapshot repeats 747 decoded pictures, their hashes/times and IRQ events exactly; more snapshots, realistic motion and capacity/error scenarios remain open.",
+          "grade": 3,
+          "rationale": "Ten I/P/B, paused and scene-boundary snapshots repeat 1581 complete composed fields and their times exactly. Mid-field/native-mode and replay-capacity scenarios remain open.",
           "prior_rationale": "Queues mirrored; live fixture holds sequence header without decoded pictures."
         },
         {
@@ -1797,10 +1811,10 @@
         }
       ],
       "implementation_status": "State registration and decoder replay cover multiple devices.",
-      "verification_status": "Active decoded A/V, MMU and CD-DA continuations pass; more snapshot phases and active peripheral modes remain open.",
-      "next_action": "Add snapshots at I/P/B and scene-end boundaries, plus active XA/read/seek/UART/I2C/SLAVE continuation.",
-      "raw_percent": 57.5,
-      "percent": 60,
+      "verification_status": "Ten moving I/P/B/paused/scene snapshots repeat full fields, PCM, callbacks and IRQs; replay-capacity overflow and other active peripheral modes remain open.",
+      "next_action": "Exercise save/load immediately before and after bounded replay-journal capacity, plus active XA/read/seek/UART/I2C/SLAVE states.",
+      "raw_percent": 62.5,
+      "percent": 65,
       "source": [
         "src/devices/cpu/m68000/m68kcpu.cpp",
         "src/devices/cpu/m68000/scc68070.cpp",
@@ -1821,17 +1835,19 @@
         "tests/emu/philips/cdicdic_memory.cpp",
         "tests/emu/philips/cdidvc_audio_replay.cpp",
         "tests/emu/philips/cdidvc_state_transitions.cpp",
-        "tests/emu/philips/cdi_dvc_av_integration.cpp"
+        "tests/emu/philips/cdi_dvc_av_integration.cpp",
+        "tests/emu/philips/cdi_dvc_motion_integration.cpp"
       ],
       "documentation": [
         "docs/cdi_audio_fidelity_campaign.md",
         "docs/cdi_scc68070_mmu_checkpoint_20260906.md",
         "docs/cdi_unified_verified_status_20260907.md#save",
-        "docs/cdi_decoded_av_checkpoint_20260907.md"
+        "docs/cdi_decoded_av_checkpoint_20260907.md",
+        "docs/cdi_motion_av_checkpoint_20260907.md"
       ],
       "known_inaccuracies_and_evidence_gaps": [
-        "Scheduled decoded A/V save/load repeats changing PCM and sound callback timing exactly; broader audio/control phases remain open.",
-        "A scheduled active snapshot repeats 747 decoded pictures, their hashes/times and IRQ events exactly; more snapshots, realistic motion and capacity/error scenarios remain open.",
+        "Ten moving A/V snapshots repeat changing PCM and sound callback time/count/order exactly. Replay-capacity overflow and broader control modes remain open.",
+        "Ten I/P/B, paused and scene-boundary snapshots repeat 1581 complete composed fields and their times exactly. Mid-field/native-mode and replay-capacity scenarios remain open.",
         "Active-MMU save/load followed by executed fault recovery passes; snapshots inside partial fault cycles remain open.",
         "Four active CD-DA snapshots pass exact PCM/Q/IRQ continuation; active XA/read/seek and other command states remain open.",
         "Registered parser/response state; partial-command round trip missing.",
@@ -1847,10 +1863,10 @@
         "Active UART/I2C/DMA",
         "Capacity/error policy"
       ],
-      "last_reviewed_commit": "ee2a74166d8ffa54bf7602bbf4cb47889e43eb62",
-      "last_verified_commit": "ee2a74166d8ffa54bf7602bbf4cb47889e43eb62",
+      "last_reviewed_commit": "eb4fbe922c06d79eae0e48d08d3d2ae4356e091b",
+      "last_verified_commit": "eb4fbe922c06d79eae0e48d08d3d2ae4356e091b",
       "last_verification_date": "2026-09-07",
-      "verification_basis": "Fresh local decoded A/V source/fixture review and full local/CI gates on this code; CI 34085809119. Scope and limits in decoded checkpoint; no physical or retail claim.",
+      "verification_basis": "Local full gates and completed 1800-second motion run; CI 34144638170 tests documentation child d07ba8c1768ad6814f042696c00ab24fbf72ff76 with identical source/tests. Scope and limits in motion checkpoint; no physical or retail claim.",
       "prior_audio_raw_percent": 57.5,
       "last_test_date": "2026-09-07"
     },
@@ -2557,13 +2573,13 @@
           "weight": 10,
           "prior_grade": 2,
           "grade": 2,
-          "rationale": "Changing DVC PCM survives 12 scheduled scene resets and active save/load; interactive cross-stream, host-output and physical continuity remain open.",
+          "rationale": "Thirty-minute changing DVC PCM and queued-audio stream-selection continuations pass. Seamless interactive synchronization, cross-device host output and physical continuity remain open.",
           "prior_rationale": "Helpers/live commands; no true branching/movie/output capture."
         }
       ],
       "implementation_status": "XA, MPEG audio, queues, control, gain and emphasis are implemented.",
-      "verification_status": "Live changing DVC PCM and mixed-mode CD-DA gates pass; interactive cross-stream, host-output and physical continuity remain open.",
-      "next_action": "Extend interactive stream/control transitions and host-output/reference-disc evidence.",
+      "verification_status": "Changing DVC PCM passes 30 minutes and queued-stream branches; seamless cross-stream, host-output and physical continuity remain open.",
+      "next_action": "Extend seamless stream/control transitions and host-output/reference-disc evidence.",
       "raw_percent": 68.75,
       "percent": 70,
       "source": [
@@ -2588,7 +2604,8 @@
         "tests/emu/philips/cdidvc_avsync_threshold.cpp",
         "tests/emu/philips/cdidvc_timing.cpp",
         "tests/emu/philips/cdidvc_video_conversion.cpp",
-        "tests/emu/philips/cdi_dvc_av_integration.cpp"
+        "tests/emu/philips/cdi_dvc_av_integration.cpp",
+        "tests/emu/philips/cdi_dvc_motion_integration.cpp"
       ],
       "documentation": [
         "docs/cdi_audio_arithmetic_checkpoint.md",
@@ -2598,7 +2615,8 @@
         "docs/cdi_audio_final_certification_20260906.md",
         "docs/cdi_dma_av_optional_dvc_checkpoint_20260906.md",
         "docs/cdi_unified_verified_status_20260907.md#all_audio",
-        "docs/cdi_decoded_av_checkpoint_20260907.md"
+        "docs/cdi_decoded_av_checkpoint_20260907.md",
+        "docs/cdi_motion_av_checkpoint_20260907.md"
       ],
       "known_inaccuracies_and_evidence_gaps": [
         "Native decode broad; silicon arithmetic unproven.",
@@ -2606,7 +2624,7 @@
         "Software queues/cadence tested; physical edges missing.",
         "Synthetic Q/TOC and driver-controlled seek pass; mixed-mode digital PCM gating is verified. Physical output, full pause/error behavior and retail playback remain open.",
         "Q22 and filter tests; CDIC quantizer and switch unknown.",
-        "Changing DVC PCM survives 12 scheduled scene resets and active save/load; interactive cross-stream, host-output and physical continuity remain open."
+        "Thirty-minute changing DVC PCM and queued-audio stream-selection continuations pass. Seamless interactive synchronization, cross-device host output and physical continuity remain open."
       ],
       "remaining_work": [
         "XA compressed decode",
@@ -2616,10 +2634,10 @@
         "Gain/emphasis/control",
         "Cross-stream/output continuity"
       ],
-      "last_reviewed_commit": "ee2a74166d8ffa54bf7602bbf4cb47889e43eb62",
-      "last_verified_commit": "ee2a74166d8ffa54bf7602bbf4cb47889e43eb62",
+      "last_reviewed_commit": "eb4fbe922c06d79eae0e48d08d3d2ae4356e091b",
+      "last_verified_commit": "eb4fbe922c06d79eae0e48d08d3d2ae4356e091b",
       "last_verification_date": "2026-09-07",
-      "verification_basis": "Fresh local decoded A/V source/fixture review and full local/CI gates on this code; CI 34085809119. Scope and limits in decoded checkpoint; no physical or retail claim.",
+      "verification_basis": "Local full gates and completed 1800-second motion run; CI 34144638170 tests documentation child d07ba8c1768ad6814f042696c00ab24fbf72ff76 with identical source/tests. Scope and limits in motion checkpoint; no physical or retail claim.",
       "prior_audio_raw_percent": 68.75,
       "last_test_date": "2026-09-07"
     },
@@ -2646,8 +2664,8 @@
           "scope": "MPEG decoded pictures",
           "weight": 25,
           "prior_grade": 2,
-          "grade": 2,
-          "rationale": "Two original I/P/B scenes have complete FFmpeg pixel references; varied motion/AC, profiles and wider picture dimensions remain open.",
+          "grade": 3,
+          "rationale": "Three small textured moving I/P/B formats pass complete FFmpeg references; 25 Hz playback passes 30 minutes uninterrupted. Full-size/profile/GOP breadth remains open.",
           "prior_rationale": "Backend implementation, no independent full decode corpus."
         },
         {
@@ -2655,7 +2673,7 @@
           "weight": 20,
           "prior_grade": 2,
           "grade": 2,
-          "rationale": "Eligibility tests do not prove combined rendered pixels.",
+          "rationale": "Complete visible bitmaps pass one native CLUT8/matte/cursor/external-video configuration; broad native and interlace/QHY combinations remain open.",
           "prior_rationale": "Eligibility tests do not prove combined rendered pixels."
         },
         {
@@ -2663,7 +2681,7 @@
           "weight": 10,
           "prior_grade": 2,
           "grade": 2,
-          "rationale": "All 768 baseline pictures meet one-vblank bounds and saved continuation repeats exactly; broader rates, composed output and interactive branches remain open.",
+          "rationale": "Varied-rate fields, video pause/resume, stream/format branches and ten snapshots pass; long-run 25 Hz output is continuous. Wider control/underflow and physical presentation remain open.",
           "prior_rationale": "Scheduling model still requires runtime validation."
         },
         {
@@ -2676,10 +2694,10 @@
         }
       ],
       "implementation_status": "Native display, MPEG backend, composition and presentation model exist.",
-      "verification_status": "Original decoded DVC pixels and short presentation pass; varied video, combined MCD212 frames and hardware/title captures remain open.",
-      "next_action": "Add varied moving references and combined MCD212 presentation evidence.",
-      "raw_percent": 53.75,
-      "percent": 55,
+      "verification_status": "Varied moving video passes complete composed fields and 30-minute 25 Hz output; broad native modes, full-size video and hardware/title captures remain open.",
+      "next_action": "Add full-size/mode/GOP references, broader MCD212 combinations and host/physical output evidence.",
+      "raw_percent": 60.0,
+      "percent": 60,
       "source": [
         "3rdparty/pl_mpeg/pl_mpeg.h",
         "src/mame/philips/cdi.cpp",
@@ -2701,7 +2719,8 @@
         "tests/emu/philips/cdidvc_video_conversion.cpp",
         "tests/emu/philips/mcd212_control_stream.cpp",
         "tests/emu/philips/mcd212_video.cpp",
-        "tests/emu/philips/cdi_dvc_av_integration.cpp"
+        "tests/emu/philips/cdi_dvc_av_integration.cpp",
+        "tests/emu/philips/cdi_dvc_motion_integration.cpp"
       ],
       "documentation": [
         "docs/cdi_audio_fidelity_campaign.md",
@@ -2709,13 +2728,14 @@
         "docs/cdi_dma_av_optional_dvc_checkpoint_20260906.md",
         "docs/cdi_modernization_status.md",
         "docs/cdi_unified_verified_status_20260907.md#all_video",
-        "docs/cdi_decoded_av_checkpoint_20260907.md"
+        "docs/cdi_decoded_av_checkpoint_20260907.md",
+        "docs/cdi_motion_av_checkpoint_20260907.md"
       ],
       "known_inaccuracies_and_evidence_gaps": [
         "Documented MCD212 model; image corpus incomplete.",
-        "Two original I/P/B scenes have complete FFmpeg pixel references; varied motion/AC, profiles and wider picture dimensions remain open.",
-        "Eligibility tests do not prove combined rendered pixels.",
-        "All 768 baseline pictures meet one-vblank bounds and saved continuation repeats exactly; broader rates, composed output and interactive branches remain open.",
+        "Three small textured moving I/P/B formats pass complete FFmpeg references; 25 Hz playback passes 30 minutes uninterrupted. Full-size/profile/GOP breadth remains open.",
+        "Complete visible bitmaps pass one native CLUT8/matte/cursor/external-video configuration; broad native and interlace/QHY combinations remain open.",
+        "Varied-rate fields, video pause/resume, stream/format branches and ten snapshots pass; long-run 25 Hz output is continuous. Wider control/underflow and physical presentation remain open.",
         "No retained current complete-frame certification."
       ],
       "remaining_work": [
@@ -2725,10 +2745,10 @@
         "Presentation",
         "Hardware/title captures"
       ],
-      "last_reviewed_commit": "ee2a74166d8ffa54bf7602bbf4cb47889e43eb62",
-      "last_verified_commit": "ee2a74166d8ffa54bf7602bbf4cb47889e43eb62",
+      "last_reviewed_commit": "eb4fbe922c06d79eae0e48d08d3d2ae4356e091b",
+      "last_verified_commit": "eb4fbe922c06d79eae0e48d08d3d2ae4356e091b",
       "last_verification_date": "2026-09-07",
-      "verification_basis": "Fresh local decoded A/V source/fixture review and full local/CI gates on this code; CI 34085809119. Scope and limits in decoded checkpoint; no physical or retail claim.",
+      "verification_basis": "Local full gates and completed 1800-second motion run; CI 34144638170 tests documentation child d07ba8c1768ad6814f042696c00ab24fbf72ff76 with identical source/tests. Scope and limits in motion checkpoint; no physical or retail claim.",
       "prior_audio_raw_percent": 53.75,
       "last_test_date": "2026-09-07"
     },
@@ -2846,6 +2866,79 @@
     "date": "2026-09-07"
   },
   "local_verification": {
+    "commit": "d07ba8c1768ad6814f042696c00ab24fbf72ff76",
+    "code_commit": "eb4fbe922c06d79eae0e48d08d3d2ae4356e091b",
+    "date": "2026-09-07",
+    "helper_cases": 221,
+    "helper_assertions": 17394016,
+    "integration_cases": 22,
+    "integration_assertions": 11990,
+    "conclusion": "success",
+    "production_build": "Production code unchanged; integration target rebuilt before complete duration gate",
+    "production_validity": "./mame -validate: exit 0 in saved local gate",
+    "generated_musashi": "Exact-source CI 34144638170 passes",
+    "dma_liveness": "GREEN",
+    "reference_regeneration": "Byte-identical with FFmpeg 8.0.1-3ubuntu2 in saved local gate",
+    "asan": "Focused standalone 158-picture decode; no finding; no full-emulator ASan/UBSan",
+    "commands_document": "docs/cdi_motion_av_checkpoint_20260907.md",
+    "scope": "Original moving I/P/B composed output, ten short snapshots and full 1800-second repeated 25 Hz playback; no host/physical/retail claim",
+    "continuous_run": {
+      "head": "d07ba8c1768ad6814f042696c00ab24fbf72ff76",
+      "code_commit": "eb4fbe922c06d79eae0e48d08d3d2ae4356e091b",
+      "command": "./cdiintegrationtests \"[motion-long]\" -s",
+      "CDI_MOTION_SECONDS": "unset",
+      "active_playback_seconds": 1800,
+      "machine_end_seconds": 1800.3,
+      "started_utc": "2026-09-07T16:13:41.522551+00:00",
+      "binary_sha256": "7c75dad96a6276e27bb5281d0d756f9bf21532f694cf518dd7b7c738a2a2ae82",
+      "finished_utc": "2026-09-07T16:43:42.051539+00:00",
+      "wall_seconds": 1800.4645349099999,
+      "exit_code": 0,
+      "log_sha256": "220bba888519d7231d96846c5c58b95f27bd648e47820f58ed2d731c1fd28e9a",
+      "max_rgb_error": 9,
+      "max_pcm_error": 537,
+      "max_native_error": 0,
+      "decoded_values": 2215378944,
+      "rgb_error_squared": 5373790264,
+      "fields": 90154,
+      "reference_pixels": 38773432320,
+      "channel_samples": 158786462,
+      "rgb_rms": 1.557458001397784
+    }
+  },
+  "previous_final_ci": {
+    "url": "https://github.com/matt-dawidowicz/mame/actions/runs/34085809119",
+    "run_id": 34085809119,
+    "tested_commit": "ee2a74166d8ffa54bf7602bbf4cb47889e43eb62",
+    "conclusion": "success",
+    "helper_cases": 221,
+    "helper_assertions": 17394016,
+    "integration_cases": 21,
+    "integration_assertions": 11912,
+    "execution_date": "2026-09-07"
+  },
+  "final_ci": {
+    "url": "https://github.com/matt-dawidowicz/mame/actions/runs/34144638170",
+    "run_id": 34144638170,
+    "tested_commit": "d07ba8c1768ad6814f042696c00ab24fbf72ff76",
+    "code_commit": "eb4fbe922c06d79eae0e48d08d3d2ae4356e091b",
+    "conclusion": "success",
+    "helper_cases": 221,
+    "helper_assertions": 17394016,
+    "integration_cases": 22,
+    "integration_assertions": 11990,
+    "execution_date": "2026-09-07",
+    "scope": "Identical source/tests to code checkpoint; default CI excludes separate local 30-minute gate"
+  },
+  "decoded_av_checkpoint": {
+    "baseline": "85ff4e7560b662a36b5089b628c48f6105e17bdf",
+    "code_commit": "ee2a74166d8ffa54bf7602bbf4cb47889e43eb62",
+    "date": "2026-09-07",
+    "document": "docs/cdi_decoded_av_checkpoint_20260907.md",
+    "status": "Local and exact-source CI gates pass",
+    "ci_run_id": 34085809119
+  },
+  "previous_local_verification": {
     "commit": "ee2a74166d8ffa54bf7602bbf4cb47889e43eb62",
     "date": "2026-09-07",
     "helper_cases": 221,
@@ -2862,70 +2955,91 @@
     "commands_document": "docs/cdi_decoded_av_checkpoint_20260907.md",
     "scope": "Original 31-second live DVC reference and active save/load; no full MCD212 composition, host/physical output or retail claim"
   },
-  "previous_final_ci": {
-    "url": "https://github.com/matt-dawidowicz/mame/actions/runs/34080100953",
-    "run_id": 34080100953,
-    "tested_commit": "adf57f583a861e5573e73fa0519e6d5fc76f288a",
-    "conclusion": "success",
-    "helper_cases": 219,
-    "helper_assertions": 17393781,
-    "integration_cases": 19,
-    "integration_assertions": 11796,
-    "execution_date": "2026-09-07"
-  },
-  "final_ci": {
-    "url": "https://github.com/matt-dawidowicz/mame/actions/runs/34085809119",
-    "run_id": 34085809119,
-    "tested_commit": "ee2a74166d8ffa54bf7602bbf4cb47889e43eb62",
-    "conclusion": "success",
-    "helper_cases": 221,
-    "helper_assertions": 17394016,
-    "integration_cases": 21,
-    "integration_assertions": 11912,
-    "execution_date": "2026-09-07"
-  },
-  "decoded_av_checkpoint": {
-    "baseline": "85ff4e7560b662a36b5089b628c48f6105e17bdf",
-    "code_commit": "ee2a74166d8ffa54bf7602bbf4cb47889e43eb62",
-    "date": "2026-09-07",
-    "document": "docs/cdi_decoded_av_checkpoint_20260907.md",
-    "status": "Local and exact-source CI gates pass",
-    "ci_run_id": 34085809119
-  },
-  "previous_local_verification": {
-    "commit": "adf57f583a861e5573e73fa0519e6d5fc76f288a",
-    "date": "2026-09-07",
-    "helper_cases": 219,
-    "helper_assertions": 17393781,
-    "integration_cases": 19,
-    "integration_assertions": 11796,
-    "conclusion": "success",
-    "production_build": "make -j6 -C build/projects/sdl/mame/gmake-linux config=release64 mame",
-    "production_validity": "./mame -validate: exit 0",
-    "generated_musashi": "Regenerated to scratch; both .h and .cpp compare byte-identical",
-    "dma_liveness": "GREEN",
-    "commands_document": "docs/cdi_transport_checkpoint_20260907.md",
-    "scope": "Exact committed production code, synthetic live seek/DAC tests and private driver disassembly; no executed firmware or physical/retail claim"
-  },
   "motion_av_checkpoint": {
     "baseline": "a5b2ff9050352461da5d323cc550767d379e8197",
     "code_commit": "eb4fbe922c06d79eae0e48d08d3d2ae4356e091b",
     "date": "2026-09-07",
     "document": "docs/cdi_motion_av_checkpoint_20260907.md",
-    "status": "Paused by user for shutdown; local short gates pass; 30-minute gate, publication and exact-source CI pending",
+    "status": "Completed local 30-minute gate and exact-source CI pass",
     "integration_cases": 22,
     "integration_assertions": 11990,
     "helper_cases": 221,
     "helper_assertions": 17394016,
     "continuous_run": {
-      "status": "intentionally interrupted",
-      "last_report_machine_seconds": 960,
-      "fields": 48071,
+      "head": "d07ba8c1768ad6814f042696c00ab24fbf72ff76",
+      "code_commit": "eb4fbe922c06d79eae0e48d08d3d2ae4356e091b",
+      "command": "./cdiintegrationtests \"[motion-long]\" -s",
+      "CDI_MOTION_SECONDS": "unset",
+      "active_playback_seconds": 1800,
+      "machine_end_seconds": 1800.3,
+      "started_utc": "2026-09-07T16:13:41.522551+00:00",
+      "binary_sha256": "7c75dad96a6276e27bb5281d0d756f9bf21532f694cf518dd7b7c738a2a2ae82",
+      "finished_utc": "2026-09-07T16:43:42.051539+00:00",
+      "wall_seconds": 1800.4645349099999,
+      "exit_code": 0,
+      "log_sha256": "220bba888519d7231d96846c5c58b95f27bd648e47820f58ed2d731c1fd28e9a",
       "max_rgb_error": 9,
       "max_pcm_error": 537,
-      "channel_samples": 84672002,
-      "completed_30_minutes": false
+      "max_native_error": 0,
+      "decoded_values": 2215378944,
+      "rgb_error_squared": 5373790264,
+      "fields": 90154,
+      "reference_pixels": 38773432320,
+      "channel_samples": 158786462,
+      "rgb_rms": 1.557458001397784,
+      "completed_30_minutes": true
     },
-    "scoring": "All current certified grades carried unchanged pending completion and scoped review"
+    "scoring": "Scoped affected obligations reviewed against completed evidence; established weights retained",
+    "ci_run_id": 34144638170,
+    "score_deltas": [
+      {
+        "id": "mcd",
+        "subsystem": "MCD212 display",
+        "old_raw": 65.0,
+        "old_percent": 65,
+        "raw": 66.25,
+        "percent": 65
+      },
+      {
+        "id": "dvc",
+        "subsystem": "DVC overall",
+        "old_raw": 70.0,
+        "old_percent": 70,
+        "raw": 75.0,
+        "percent": 75
+      },
+      {
+        "id": "mpeg_video",
+        "subsystem": "MPEG video decode and presentation",
+        "old_raw": 58.75,
+        "old_percent": 60,
+        "raw": 66.25,
+        "percent": 65
+      },
+      {
+        "id": "av",
+        "subsystem": "A/V synchronization",
+        "old_raw": 51.25,
+        "old_percent": 50,
+        "raw": 61.25,
+        "percent": 60
+      },
+      {
+        "id": "save",
+        "subsystem": "Save states",
+        "old_raw": 57.5,
+        "old_percent": 60,
+        "raw": 62.5,
+        "percent": 65
+      },
+      {
+        "id": "all_video",
+        "subsystem": "Cross-system video",
+        "old_raw": 53.75,
+        "old_percent": 55,
+        "raw": 60.0,
+        "percent": 60
+      }
+    ]
   }
 }

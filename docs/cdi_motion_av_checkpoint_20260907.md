@@ -1,16 +1,15 @@
-# Moving decoded A/V checkpoint — paused 2026-09-07
+# Moving decoded A/V checkpoint — completed 2026-09-07
 
-The user requested saving progress for shutdown. The new moving-video regression
-passes the full local integration/helper gates. The uninterrupted run was stopped
-at the user's request after its last complete progress report at **960 seconds
-(16 minutes)**. This is **not a completed 30-minute gate**. New work is saved
-locally; publication and exact-source CI remain pending.
+The moving-video regression and full 30-minute uninterrupted playback gate pass.
+No production emulator change was needed in this batch. Initial fixture failures
+came from incorrect geometry, palette and queued-audio assumptions and are not
+reported as emulator defects.
 
 Baseline: `a5b2ff9050352461da5d323cc550767d379e8197`, branch `cdi-unified`.
-Code checkpoint: `eb4fbe922c06d79eae0e48d08d3d2ae4356e091b`. This subsequent documentation-only save records the exact local source; it does not certify pending CI or the interrupted duration gate.
-No production emulator changes were needed in this batch. Initial fixture
-failures came from incorrect geometry, palette and queued-audio assumptions;
-they are not reported as emulator defects.
+Code: `eb4fbe922c06d79eae0e48d08d3d2ae4356e091b`. The local duration run and
+[CI 34144638170](https://github.com/matt-dawidowicz/mame/actions/runs/34144638170) test `d07ba8c1768ad6814f042696c00ab24fbf72ff76`,
+its documentation-only child. Production and test trees are identical between
+these commits. This subsequent documentation certification records their results.
 
 ## Implemented coverage
 
@@ -70,7 +69,8 @@ semantics and seamless interactive branching remain unverified.
 | Full `./cdihelpertests` | PASS: 17394016 assertions, 221 cases |
 | `./mame -validate` | PASS, exit 0; production code unchanged |
 | DVC DMA liveness | GREEN |
-| Six-second `[motion-long]` smoke | PASS: 26 assertions |
+| Full 1800-second `[motion-long]` run | PASS: 26 assertions |
+| Exact-source CD-i fast CI | PASS: helpers, integration, Musashi freshness, DMA liveness |
 | Reference regeneration | Byte-identical |
 | Standalone production PL_MPEG ASan probe | PASS: all 158 original pictures |
 
@@ -85,44 +85,60 @@ errors of 11/1.55567, 11/1.57085 and 10/1.56321 for profiles 0, 1 and 2. ASan sc
 is this standalone decode, not the full emulator; no UBSan or physical/retail
 validation is claimed.
 
-## Interrupted uninterrupted-playback gate
+## Completed uninterrupted-playback gate
 
-The hidden `[motion-long]` case defaults to 1800 seconds of active playback after
-the 300 ms initial timestamp. It repeats the original 25 Hz clip and changing
-audio without decoder resets, pause, stream branches or save/load. The other
-two formats are covered by the short scenarios, not this duration gate.
+Command: `./cdiintegrationtests "[motion-long]" -s`, with `CDI_MOTION_SECONDS` unset.
+The test completes at 1800.3 seconds of machine time, providing 1800 seconds of
+active output after the initial 300 ms timestamp. It repeats the original 25 Hz
+clip and changing audio without decoder resets, pause, stream branches or saves.
+Other sizes/rates are covered by the short scenarios, not this duration gate.
 
-Last complete report before intentional termination:
+- Started UTC: `2026-09-07T16:13:41.522551+00:00`.
+- Finished UTC: `2026-09-07T16:43:42.051539+00:00`; wall duration 1800.465 seconds.
+- Exit 0; all 26 assertions pass.
+- Complete composed fields: 90,154; compared visible pixels: 38,773,432,320.
+- Compared channel samples: 158,786,462, including the initial timeline prefix.
+- Maximum decoded RGB error 9; decoded-channel RMS 1.557458; native pixel error 0.
+- Maximum PCM error 537; all PCM mean-square, field cadence and IRQ/status checks pass.
+- Binary SHA-256: `7c75dad96a6276e27bb5281d0d756f9bf21532f694cf518dd7b7c738a2a2ae82`.
+- Complete log SHA-256: `220bba888519d7231d96846c5c58b95f27bd648e47820f58ed2d731c1fd28e9a`.
 
-```text
-MOTION_LONG seconds=960 fields=48071 max_rgb=9 max_pcm=537 samples=84672002
-```
+The prior run was intentionally stopped for shutdown at its 960-second progress
+report. This completed run restarted from zero and supersedes that incomplete
+duration evidence. The normal repository binary was used. The 30-minute case is
+hidden from normal CI; default CI ran all 22 short integration cases separately.
 
-No failure was reported before interruption. This progress line includes the
-initial 300 ms timeline prefix; it does not certify 960 seconds of active output
-or a completed test. The process has stopped and must start from zero tomorrow.
-Long-run decoder replay capacity and saving after journal overflow remain open.
-Do not infer long-run saveability from uninterrupted playback.
+## Scoped assessment changes
 
-## Resume next
+Weights and the established 0-4 rubric remain unchanged. Moving decoded output,
+independent frame references and diverse snapshot phases now provide meaningful
+verification; the completed duration run closes the previously absent long-run
+software evidence. No grade reaches 4 from this work.
 
-1. Read this checkpoint and inspect branch/HEAD/worktree status. Keep the current
-   source; the older scratch fixture drafts are stale.
-2. Run the full uninterrupted gate from the repository root:
-   `./cdiintegrationtests "[motion-long]" -s` with `CDI_MOTION_SECONDS` unset.
-   Record final assertions, fields, samples, errors and completion. Do not promote
-   the interrupted 16-minute progress report to a 30-minute pass.
-3. Review the final source and update affected weighted worksheet obligations.
-   All current percentages are deliberately carried unchanged pending completion
-   and review. Broad MCD212 modes, host output, physical calibration and retail
-   compatibility remain open.
-4. Verify origin is the authorized `matt-dawidowicz/mame` fork and publish the
-   coherent commits to `cdi-unified`; wait for exact-source CD-i fast CI.
-5. Record the code hash and actual CI/long-run results in a subsequent
-   documentation-only certification, then push that certification.
+| Subsystem | Previous raw / rounded | Current raw / rounded |
+| --- | ---: | ---: |
+| MCD212 display | 65 / 65% | 66.25 / 65% |
+| DVC overall | 70 / 70% | 75 / 75% |
+| MPEG video decode and presentation | 58.75 / 60% | 66.25 / 65% |
+| A/V synchronization | 51.25 / 50% | 61.25 / 60% |
+| Save states | 57.5 / 60% | 62.5 / 65% |
+| Cross-system video | 53.75 / 55% | 60 / 60% |
 
-Local build command used:
-`make -j6 -C build/projects/sdl/mame/gmake-linux config=release64 cdiintegrationtests`.
-An optional `/tmp` binary with only the test observer built at `-O2` passed a
-six-second smoke but offered no useful speed improvement. The interrupted long
-run used the normal repository binary. No optimized binary is required to resume.
+All other grades are carried with updated evidence where relevant. There is no
+overall average across overlapping rows and no hardware/compatibility percentage.
+
+## Remaining work and exact next batch
+
+Reproduce active save/load just before and after the 8 MiB audio / 32 MiB video
+replay-journal limits. Passing uninterrupted playback does not prove saveability
+after overflow. Define the continuation/error policy from a live trace before
+changing it. Ten short snapshots are certified; long-duration snapshots are not.
+
+Continue full-size/GOP/error/underflow references, wider long-run rates and broader
+MCD212 native/interlace/QHY configurations. This fixture tests one display setup.
+Reference-backed synchronized branch latency, host-output drift, physical board
+calibration and retained retail gameplay remain open. Firmware execution and SCC
+DMA ingress are outside this fixture's scope; existing separate DMA gates remain.
+
+Build command: `make -j6 -C build/projects/sdl/mame/gmake-linux config=release64 cdiintegrationtests`.
+No additional production build is required for this documentation-only completion.

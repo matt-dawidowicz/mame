@@ -4,17 +4,31 @@ This report updates the consolidation assessment with executed MMU/CDIC and
 synthetic Q/TOC evidence. The current source certification is below. Historical figures remain in
 [the earlier audit](cdi_verified_status_20260906.md).
 
-## Paused moving A/V work — 2026-09-07
+## Active moving A/V checkpoint — 2026-09-07
 
-Progress is saved for the user's shutdown. Three original textured I/P/B formats,
-complete MCD212 composition, pause/stream changes and ten save/load checkpoints
-pass the local gate: 11990 assertions / 22 integration cases and 17394016 /
-221 helper cases. No production change was needed. The uninterrupted run was
-intentionally stopped after its 960-second progress report; the **30-minute gate
-is incomplete**. Publication and exact-source CI are pending. Existing percentages
-are carried unchanged. Resume from the [moving A/V checkpoint](cdi_motion_av_checkpoint_20260907.md).
+Three original textured I/P/B formats pass complete MCD212-composed output,
+video pause/resume, stream/format changes and ten exact save/load continuations.
+The full **30-minute uninterrupted decoded playback gate passes**:
+90,154 complete composed fields and 158,786,462 channel samples,
+maximum RGB/PCM errors 9/537, exact native pixels and no detected
+cadence/reference failure. The long gate repeats one original 25 Hz clip;
+the short gate covers all three sizes/rates. No production change was needed.
 
-## Latest certified decoded A/V checkpoint — 2026-09-07
+[CI 34144638170](https://github.com/matt-dawidowicz/mame/actions/runs/34144638170) passes on `d07ba8c1768ad6814f042696c00ab24fbf72ff76`:
+11990 assertions / 22 integration cases, 17394016 / 221 helper cases,
+generated Musashi freshness and DMA liveness. This is the documentation child
+of code `eb4fbe922c06d79eae0e48d08d3d2ae4356e091b` with identical production/tests.
+The long gate is a separate completed local run, hidden from the default CI suite.
+See the [moving A/V checkpoint](cdi_motion_av_checkpoint_20260907.md) for exact
+commands, reference provenance, timing and remaining scope.
+
+Scoped estimates now give DVC 75%, MPEG video 65%, A/V synchronization 60%,
+save states 65% and cross-system video 60%. MCD212 remains 65% after rounding.
+These weighted engineering judgments do not measure hardware fidelity or game
+compatibility. Queued-audio branch latency, long-playback saveability, broader
+display modes, host output and physical/retail validation remain open.
+
+## Previous decoded A/V checkpoint — 2026-09-07
 
 Original changing stereo MPEG audio and two original I/P/B video scenes now run
 through the live DVC for 31 seconds across 12 scheduled scene resets. All 768
@@ -39,8 +53,8 @@ Only two previously absent evidence obligations gain limited credit: MPEG video
 55% to 60% (raw 56.25 to 58.75), and A/V synchronization 45% to 50% (raw 46.25 to
 51.25). Other grades are carried unchanged with updated evidence. These remain
 scoped engineering judgments, not hardware fidelity or game compatibility.
-The 30-minute uninterrupted decoded gate, interactive branching, varied motion,
-combined MCD212 output and physical/retail validation remain open.
+Those evidence gaps were open at this earlier checkpoint. The active moving A/V
+checkpoint above supersedes them only within its explicitly tested scope.
 
 ## Previous CD-DA save/load checkpoint — 2026-09-07
 
@@ -197,8 +211,8 @@ de-emphasis or recovered-Q22 work is reopened by this reassessment.
 | [SCC68070 MMU](#mmu) | 65% | 75% | Medium |
 | [CDIC](#cdic) | 55% | 70% | Medium |
 | [MCD212 display](#mcd) | 65% | 65% | Medium |
-| [DVC overall](#dvc) | 70% | 70% | Medium |
-| [MPEG video decode and presentation](#mpeg_video) | 55% | 60% | Low |
+| [DVC overall](#dvc) | 70% | 75% | Medium |
+| [MPEG video decode and presentation](#mpeg_video) | 55% | 65% | Low |
 | [DVC audio](#dvc_audio) | 80% | 80% | Medium |
 | [XA routing and ADPCM](#xa) | 75% | 75% | Medium |
 | [CD-DA playback and transport](#cdda) | 50% | 65% | Low |
@@ -206,8 +220,8 @@ de-emphasis or recovered-Q22 work is reopened by this reassessment.
 | [DMA integration](#dma) | 60% | 70% | Medium |
 | [Interrupts](#irq) | 65% | 70% | Medium |
 | [Device timing](#timing) | 60% | 60% | Medium |
-| [A/V synchronization](#av) | 45% | 50% | Medium |
-| [Save states](#save) | 60% | 60% | Medium |
+| [A/V synchronization](#av) | 45% | 60% | Medium |
+| [Save states](#save) | 60% | 65% | Medium |
 | [SLAVE HLE](#slave) | 55% | 55% | Medium |
 | [Input and peripherals](#input) | 45% | 45% | Medium |
 | [SERVO and MCU integration](#servo) | 15% | 15% | Low |
@@ -215,7 +229,7 @@ de-emphasis or recovered-Q22 work is reopened by this reassessment.
 | [Mono-I/II board glue](#glue) | 50% | 50% | Low |
 | [Mono-II functional system](#mono2) | 20% | 20% | Low |
 | [Cross-system audio](#all_audio) | 70% | 70% | Medium |
-| [Cross-system video](#all_video) | 55% | 55% | Low |
+| [Cross-system video](#all_video) | 55% | 60% | Low |
 | [DSP56000/56001 standalone core](#dsp) | Not separately scored | 40% | Low |
 | Compatibility | Not estimated | Not estimated | Low |
 
@@ -317,11 +331,11 @@ Current live disc evidence: [Q checkpoint](cdi_q_checkpoint_20260907.md) and [tr
 
 ### MCD212 display
 
-**65% — Medium confidence; raw weighted score 65.**
+**65% — Medium confidence; raw weighted score 66.25.**
 
 Implementation: CLUT/RLE/DYUV/RGB/QHY, control lists and pixel effects exist.
 
-Verification: Mode/control/QHY helpers pass; independent full frames and combined overlay remain unverified.
+Verification: Complete composed fields pass one native matte/cursor/external-video configuration; broad display-mode and physical-output certification remain open.
 
 | Obligation | Weight | Previous grade | Current grade | Rationale and remaining gaps |
 | --- | ---: | ---: | ---: | --- |
@@ -329,75 +343,75 @@ Verification: Mode/control/QHY helpers pass; independent full frames and combine
 | ICA/DCA and memory bounds | 20 | 3 | 3 | Audio adds wrapped control fetches; whole live command engine not exhaustive. |
 | Field timing | 15 | 3 | 3 | Audio increases control-space testing; physical field edges remain. |
 | QHY reconstruction | 15 | 3 | 3 | Token/FIR/quantizer vectors; cold field and odd-sum silicon remain. |
-| Matte/cursor/mosaic/weight | 15 | 2 | 2 | Production pixel paths exist; limited independent image oracles. |
-| External overlay | 5 | 2 | 2 | Eligibility helper tested; combined-device frame not tested. |
-| Save state | 5 | 2 | 2 | Fields saved; active frame reconstruction corpus missing. |
+| Matte/cursor/mosaic/weight | 15 | 2 | 2 | Complete 768x560 composed bitmaps pass one CLUT8/weight/matte/cursor configuration with exact native pixels. Broader native modes, mosaic and all combinations remain open. |
+| External overlay | 5 | 2 | 3 | Three original moving video formats pass complete composed-field references with matte clipping and native cursor priority; other positions/scales and full display-mode combinations remain open. |
+| Save state | 5 | 2 | 2 | Ten DVC/MCD212 snapshots repeat complete composed-field hashes and times in one display configuration; broader native display modes and mid-field snapshots remain open. |
 | Physical output certification | 5 | 0 | 0 | No current full-frame hardware match. |
 
 Implementation: [src/mame/philips/cdi.cpp](../src/mame/philips/cdi.cpp), [src/mame/philips/mcd212.cpp](../src/mame/philips/mcd212.cpp), [src/mame/philips/mcd212_control_stream.h](../src/mame/philips/mcd212_control_stream.h), [src/mame/philips/mcd212_video.h](../src/mame/philips/mcd212_video.h).
 
-Tests: [tests/emu/philips/mcd212_control_stream.cpp](../tests/emu/philips/mcd212_control_stream.cpp), [tests/emu/philips/mcd212_video.cpp](../tests/emu/philips/mcd212_video.cpp).
+Tests: [moving A/V composition](../tests/emu/philips/cdi_dvc_motion_integration.cpp), [tests/emu/philips/mcd212_control_stream.cpp](../tests/emu/philips/mcd212_control_stream.cpp), [tests/emu/philips/mcd212_video.cpp](../tests/emu/philips/mcd212_video.cpp).
 
-Documentation: [docs/cdi_modernization_status.md](../docs/cdi_modernization_status.md).
+Documentation: [moving A/V checkpoint](cdi_motion_av_checkpoint_20260907.md), [docs/cdi_modernization_status.md](../docs/cdi_modernization_status.md).
 
-Next action: Add complete register-to-pixel and live overlay fixtures, then hardware captures.
+Next action: Extend composed-frame references to broad native/interlace/QHY modes and varied overlay geometry.
 
 <a id="dvc"></a>
 
 ### DVC overall
 
-**70% — Medium confidence; raw weighted score 70.**
+**75% — Medium confidence; raw weighted score 75.**
 
 Implementation: Ingress, registers, audio/video backend, scheduling and DMA operate as a model.
 
-Verification: 31-second original decoded A/V, 12 scene resets and active save/load pass; broad movie behavior and physical board fidelity remain open.
+Verification: Three moving I/P/B formats, ten active snapshots and 30-minute continuous decoded playback pass; broad movie/control behavior and physical board fidelity remain open.
 
 | Obligation | Weight | Previous grade | Current grade | Rationale and remaining gaps |
 | --- | ---: | ---: | ---: | --- |
 | Ingress and parser | 15 | 4 | 4 | Audio header/access/PES paths have broad deterministic coverage. |
 | Registers/status/commands | 15 | 3 | 3 | Stream/CSU and optional presence tested; private event edges unresolved. |
 | Audio decode/output | 20 | 3 | 3 | Reference-tested audio; physical arithmetic/output limits remain. |
-| Video decode/output | 20 | 2 | 2 | Two original 32x32 I/P/B scenes pass full-pixel FFmpeg comparison through DVC overlay output; broader AC/motion, profiles and combined MCD212 composition remain open. |
-| Presentation scheduling | 10 | 2 | 2 | Twelve scheduled scenes present all 768 pictures within one vblank; decode-ahead, first-PTS anchoring and interactive branches remain models with limited coverage. |
+| Video decode/output | 20 | 2 | 3 | Three original textured moving I/P/B formats pass FFmpeg references through complete MCD212 composition; the 25 Hz stream also passes 30 minutes uninterrupted. Full-size/profile breadth and physical fidelity remain open. |
+| Presentation scheduling | 10 | 2 | 2 | Varied-rate field output, video-only pause/resume and reset/stream-ID branches pass. Audio retains queued PCM on selection; seamless branch latency and hardware pause semantics remain unverified. |
 | DVC DMA boundary | 10 | 4 | 4 | Live SCC/DVC fixtures now cover explicit START, held-request re-arm, immediate abort, full 65536-word transfer and legal Layer II ingress. Grade 4 remains limited to this tested software handshake scope. |
-| Save reconstruction | 5 | 3 | 3 | A scheduled active decoded A/V snapshot repeats 747 pictures, PCM, callback timing and IRQ events exactly; more snapshot phases, stream modes and capacity edges remain open. |
+| Save reconstruction | 5 | 3 | 3 | Ten I/P/B, paused and scene-boundary snapshots repeat composed fields, PCM, callback timing and IRQ events exactly. Saving beyond bounded replay journals and other modes remain open. |
 | Physical board fidelity | 5 | 0 | 0 | No full VMPEG timing/analogue certification. |
 
 Implementation: [3rdparty/pl_mpeg/pl_mpeg.h](../3rdparty/pl_mpeg/pl_mpeg.h), [src/mame/philips/cdicdic.cpp](../src/mame/philips/cdicdic.cpp), [src/mame/philips/cdidvc.cpp](../src/mame/philips/cdidvc.cpp), [src/mame/philips/cdidvc_fidelity.h](../src/mame/philips/cdidvc_fidelity.h), [src/mame/philips/cdidvc_mpeg_format.h](../src/mame/philips/cdidvc_mpeg_format.h), [src/mame/philips/cdidvc_save_state.h](../src/mame/philips/cdidvc_save_state.h), [src/mame/philips/cdidvc_utils.h](../src/mame/philips/cdidvc_utils.h), [src/mame/philips/cdislavehle.cpp](../src/mame/philips/cdislavehle.cpp).
 
-Tests: [decoded A/V continuity](../tests/emu/philips/cdi_dvc_av_integration.cpp), [tests/emu/philips/cdi_dvc_state_integration.cpp](../tests/emu/philips/cdi_dvc_state_integration.cpp), [tests/emu/philips/cdi_mmu_integration.cpp](../tests/emu/philips/cdi_mmu_integration.cpp), [tests/emu/philips/cdidvc.cpp](../tests/emu/philips/cdidvc.cpp), [tests/emu/philips/cdidvc_audio_format.cpp](../tests/emu/philips/cdidvc_audio_format.cpp), [tests/emu/philips/cdidvc_audio_reference.cpp](../tests/emu/philips/cdidvc_audio_reference.cpp), [tests/emu/philips/cdidvc_audio_replay.cpp](../tests/emu/philips/cdidvc_audio_replay.cpp), [tests/emu/philips/cdidvc_avsync_threshold.cpp](../tests/emu/philips/cdidvc_avsync_threshold.cpp), [tests/emu/philips/cdidvc_state_transitions.cpp](../tests/emu/philips/cdidvc_state_transitions.cpp), [tests/emu/philips/cdidvc_timing.cpp](../tests/emu/philips/cdidvc_timing.cpp), [tests/emu/philips/cdidvc_video_conversion.cpp](../tests/emu/philips/cdidvc_video_conversion.cpp).
+Tests: [moving A/V composition](../tests/emu/philips/cdi_dvc_motion_integration.cpp), [decoded A/V continuity](../tests/emu/philips/cdi_dvc_av_integration.cpp), [tests/emu/philips/cdi_dvc_state_integration.cpp](../tests/emu/philips/cdi_dvc_state_integration.cpp), [tests/emu/philips/cdi_mmu_integration.cpp](../tests/emu/philips/cdi_mmu_integration.cpp), [tests/emu/philips/cdidvc.cpp](../tests/emu/philips/cdidvc.cpp), [tests/emu/philips/cdidvc_audio_format.cpp](../tests/emu/philips/cdidvc_audio_format.cpp), [tests/emu/philips/cdidvc_audio_reference.cpp](../tests/emu/philips/cdidvc_audio_reference.cpp), [tests/emu/philips/cdidvc_audio_replay.cpp](../tests/emu/philips/cdidvc_audio_replay.cpp), [tests/emu/philips/cdidvc_avsync_threshold.cpp](../tests/emu/philips/cdidvc_avsync_threshold.cpp), [tests/emu/philips/cdidvc_state_transitions.cpp](../tests/emu/philips/cdidvc_state_transitions.cpp), [tests/emu/philips/cdidvc_timing.cpp](../tests/emu/philips/cdidvc_timing.cpp), [tests/emu/philips/cdidvc_video_conversion.cpp](../tests/emu/philips/cdidvc_video_conversion.cpp).
 
-Documentation: [decoded A/V checkpoint](cdi_decoded_av_checkpoint_20260907.md), [docs/cdi_audio_fidelity_campaign.md](../docs/cdi_audio_fidelity_campaign.md), [docs/cdi_audio_final_certification_20260906.md](../docs/cdi_audio_final_certification_20260906.md), [docs/cdi_dma_av_optional_dvc_checkpoint_20260906.md](../docs/cdi_dma_av_optional_dvc_checkpoint_20260906.md).
+Documentation: [moving A/V checkpoint](cdi_motion_av_checkpoint_20260907.md), [decoded A/V checkpoint](cdi_decoded_av_checkpoint_20260907.md), [docs/cdi_audio_fidelity_campaign.md](../docs/cdi_audio_fidelity_campaign.md), [docs/cdi_audio_final_certification_20260906.md](../docs/cdi_audio_final_certification_20260906.md), [docs/cdi_dma_av_optional_dvc_checkpoint_20260906.md](../docs/cdi_dma_av_optional_dvc_checkpoint_20260906.md).
 
-Next action: Extend to varied moving video, interactive pause/stream branches and more active snapshot phases.
+Next action: Reproduce active save/load before and after audio/video replay-journal capacity; investigate control/branch semantics with reference evidence.
 
 <a id="mpeg_video"></a>
 
 ### MPEG video decode and presentation
 
-**60% — Low confidence; raw weighted score 58.75.**
+**65% — Low confidence; raw weighted score 66.25.**
 
 Implementation: PL_MPEG decode, picture queues and presentation handoff exist.
 
-Verification: Full pixels of original I/P/B scenes match FFmpeg and EOF frame loss is fixed; varied motion and combined displayed-frame coverage remain open.
+Verification: Original textured I/P/B references pass varied-rate composed output and a 30-minute 25 Hz run; full-size/GOP/error breadth and retail/hardware certification remain open.
 
 | Obligation | Weight | Previous grade | Current grade | Rationale and remaining gaps |
 | --- | ---: | ---: | ---: | --- |
-| Backend decode | 20 | 2 | 2 | Original flat-macroblock I/P/B video has an independent full-pixel FFmpeg oracle; broader AC/motion, dimensions, profiles and malformed video remain thinly verified. |
+| Backend decode | 20 | 2 | 3 | Original moving textured I/P/B streams at three sizes/rates have complete independent FFmpeg RGB references. Full-size video, wider motion/GOP/error cases and silicon rounding remain open. |
 | Packet/header handling | 20 | 3 | 3 | PES and sequence/header helpers covered. |
 | Picture event/reordering | 15 | 3 | 3 | Live 64-picture scenes and whole/split ring-buffer EOF tests detect and fix two missing final pictures; broader reorder/GOP cases remain open. |
-| Color conversion | 10 | 3 | 3 | All pixels of two original scenes match FFmpeg within 3 RGB levels; gradients, chroma/motion detail and complete color-range coverage remain open. |
-| Presentation/queue timing | 15 | 2 | 2 | All 768 baseline pictures arrive within one vblank in 31 seconds; broader rates, queue limits and interactive branches remain unverified. |
-| MCD212 composition | 10 | 2 | 2 | Production handoff exists; no combined-device pixel fixture. |
-| Independent frame/title certification | 10 | 0 | 1 | Limited original I/P/B scenes now have retained independent presented-pixel references; combined display, broad video and retail-runtime certification remain absent. |
+| Color conversion | 10 | 3 | 3 | Textured and chroma-gradient references pass the documented decoder tolerance through composed output. Full color-range coverage and physical conversion remain open. |
+| Presentation/queue timing | 15 | 2 | 2 | Three rates, video pause/resume and format branches pass field comparisons; one 25 Hz stream passes 30 uninterrupted minutes. Arbitrary PTS, underflow and queue-limit cases remain open. |
+| MCD212 composition | 10 | 2 | 2 | One native CLUT8/matte/cursor/external-video configuration passes complete visible bitmaps; broad interlace/QHY/native combinations remain open. |
+| Independent frame/title certification | 10 | 0 | 2 | Original textured I/P/B streams have complete independent RGB references and composed-field checks; retained retail-runtime and physical-frame certification remain absent. |
 
 Implementation: [3rdparty/pl_mpeg/pl_mpeg.h](../3rdparty/pl_mpeg/pl_mpeg.h), [src/mame/philips/cdi.cpp](../src/mame/philips/cdi.cpp), [src/mame/philips/cdidvc.cpp](../src/mame/philips/cdidvc.cpp), [src/mame/philips/cdidvc_fidelity.h](../src/mame/philips/cdidvc_fidelity.h), [src/mame/philips/cdidvc_mpeg_format.h](../src/mame/philips/cdidvc_mpeg_format.h), [src/mame/philips/cdidvc_utils.h](../src/mame/philips/cdidvc_utils.h), [src/mame/philips/mcd212.cpp](../src/mame/philips/mcd212.cpp), [src/mame/philips/mcd212_control_stream.h](../src/mame/philips/mcd212_control_stream.h), [src/mame/philips/mcd212_video.h](../src/mame/philips/mcd212_video.h).
 
-Tests: [decoded A/V continuity](../tests/emu/philips/cdi_dvc_av_integration.cpp), [tests/emu/philips/cdi_dvc_state_integration.cpp](../tests/emu/philips/cdi_dvc_state_integration.cpp), [tests/emu/philips/cdidvc.cpp](../tests/emu/philips/cdidvc.cpp), [tests/emu/philips/cdidvc_audio_format.cpp](../tests/emu/philips/cdidvc_audio_format.cpp), [tests/emu/philips/cdidvc_audio_reference.cpp](../tests/emu/philips/cdidvc_audio_reference.cpp), [tests/emu/philips/cdidvc_avsync_threshold.cpp](../tests/emu/philips/cdidvc_avsync_threshold.cpp), [tests/emu/philips/cdidvc_timing.cpp](../tests/emu/philips/cdidvc_timing.cpp), [tests/emu/philips/cdidvc_video_conversion.cpp](../tests/emu/philips/cdidvc_video_conversion.cpp), [tests/emu/philips/mcd212_control_stream.cpp](../tests/emu/philips/mcd212_control_stream.cpp), [tests/emu/philips/mcd212_video.cpp](../tests/emu/philips/mcd212_video.cpp).
+Tests: [moving A/V composition](../tests/emu/philips/cdi_dvc_motion_integration.cpp), [decoded A/V continuity](../tests/emu/philips/cdi_dvc_av_integration.cpp), [tests/emu/philips/cdi_dvc_state_integration.cpp](../tests/emu/philips/cdi_dvc_state_integration.cpp), [tests/emu/philips/cdidvc.cpp](../tests/emu/philips/cdidvc.cpp), [tests/emu/philips/cdidvc_audio_format.cpp](../tests/emu/philips/cdidvc_audio_format.cpp), [tests/emu/philips/cdidvc_audio_reference.cpp](../tests/emu/philips/cdidvc_audio_reference.cpp), [tests/emu/philips/cdidvc_avsync_threshold.cpp](../tests/emu/philips/cdidvc_avsync_threshold.cpp), [tests/emu/philips/cdidvc_timing.cpp](../tests/emu/philips/cdidvc_timing.cpp), [tests/emu/philips/cdidvc_video_conversion.cpp](../tests/emu/philips/cdidvc_video_conversion.cpp), [tests/emu/philips/mcd212_control_stream.cpp](../tests/emu/philips/mcd212_control_stream.cpp), [tests/emu/philips/mcd212_video.cpp](../tests/emu/philips/mcd212_video.cpp).
 
-Documentation: [decoded A/V checkpoint](cdi_decoded_av_checkpoint_20260907.md), [docs/cdi_audio_fidelity_campaign.md](../docs/cdi_audio_fidelity_campaign.md), [docs/cdi_audio_final_certification_20260906.md](../docs/cdi_audio_final_certification_20260906.md), [docs/cdi_dma_av_optional_dvc_checkpoint_20260906.md](../docs/cdi_dma_av_optional_dvc_checkpoint_20260906.md), [docs/cdi_modernization_status.md](../docs/cdi_modernization_status.md).
+Documentation: [moving A/V checkpoint](cdi_motion_av_checkpoint_20260907.md), [decoded A/V checkpoint](cdi_decoded_av_checkpoint_20260907.md), [docs/cdi_audio_fidelity_campaign.md](../docs/cdi_audio_fidelity_campaign.md), [docs/cdi_audio_final_certification_20260906.md](../docs/cdi_audio_final_certification_20260906.md), [docs/cdi_dma_av_optional_dvc_checkpoint_20260906.md](../docs/cdi_dma_av_optional_dvc_checkpoint_20260906.md), [docs/cdi_modernization_status.md](../docs/cdi_modernization_status.md).
 
-Next action: Add moving textured I/P/B references, varied dimensions/rates and combined MCD212 output.
+Next action: Extend independent references to full-size video, more GOP/motion cases, underflow and malformed input.
 
 <a id="dvc_audio"></a>
 
@@ -407,27 +421,27 @@ Next action: Add moving textured I/P/B references, varied dimensions/rates and c
 
 Implementation: Parser, Layer II decode, queues, recovered digital gain, emphasis and replay are implemented.
 
-Verification: Changing stereo PCM matches FFmpeg within documented tolerance and restores exactly; broader stream controls and physical DSP/DAC edges remain open.
+Verification: Changing stereo PCM passes 30-minute reference comparison and ten exact restored continuations; queued-audio selection is verified as a model, with physical flush/gain edges still open.
 
 | Obligation | Weight | Previous grade | Current grade | Rationale and remaining gaps |
 | --- | ---: | ---: | ---: | --- |
 | Parser/access/selection | 15 | 4 | 4 | Exhaustive legal syntax/profile, stream IDs and access forms. |
-| Layer II PCM decode | 20 | 3 | 3 | Changing original stereo Layer-II audio receives full live PCM comparison against FFmpeg, within documented decoder tolerances; broad profiles and physical arithmetic remain open. |
+| Layer II PCM decode | 20 | 3 | 3 | Changing original 44.1 kHz stereo MP2 passes full PCM comparison for 30 minutes against initial/steady FFmpeg references within documented tolerance. Other profiles and silicon arithmetic remain open. |
 | PCM queue | 15 | 3 | 3 | Deterministic pair/zero/refill; physical DAC rule missing. |
 | Live DMA ingress | 10 | 4 | 4 | Legal frame traverses actual SCC/DVC device boundary in existing CI. |
 | FMA digital gain | 10 | 4 | 4 | Literal recovered Q22 curve, routes and mute tested. |
 | De-emphasis response | 10 | 3 | 3 | Standards shelf response tested; physical transition unknown. |
-| Termination and switching | 10 | 3 | 3 | Twelve deterministic scene reset/end cycles pass changing PCM continuity; interactive stream selection and arbitrary PTS branches remain open. |
-| Audio save/load | 5 | 3 | 3 | Active decoded A/V continuation repeats 2,644,236 channel samples and callback times exactly; other phases, rates and control edges remain open. |
+| Termination and switching | 10 | 3 | 3 | Requested-stream selection rejects old IDs and preserves queued PCM in live format branches. Video pause leaves audio running in the current model; arbitrary PTS and physical flush semantics remain open. |
+| Audio save/load | 5 | 3 | 3 | Ten moving A/V snapshots repeat 2795940 channel samples and callback time/count/order exactly. Capacity overflow, other rates and control edges remain open. |
 | Physical DSP/DAC attribution | 5 | 0 | 0 | Exact instruction/limiter and waveform remain unavailable. |
 
 Implementation: [3rdparty/pl_mpeg/pl_mpeg.h](../3rdparty/pl_mpeg/pl_mpeg.h), [src/mame/philips/cdiaudio.h](../src/mame/philips/cdiaudio.h), [src/mame/philips/cdiaudio_dsp56001.h](../src/mame/philips/cdiaudio_dsp56001.h), [src/mame/philips/cdicdic.cpp](../src/mame/philips/cdicdic.cpp), [src/mame/philips/cdidvc.cpp](../src/mame/philips/cdidvc.cpp), [src/mame/philips/cdidvc_fidelity.h](../src/mame/philips/cdidvc_fidelity.h), [src/mame/philips/cdidvc_mpeg_format.h](../src/mame/philips/cdidvc_mpeg_format.h), [src/mame/philips/cdidvc_save_state.h](../src/mame/philips/cdidvc_save_state.h), [src/mame/philips/cdidvc_utils.h](../src/mame/philips/cdidvc_utils.h), [src/mame/philips/cdislavehle.cpp](../src/mame/philips/cdislavehle.cpp).
 
-Tests: [decoded A/V continuity](../tests/emu/philips/cdi_dvc_av_integration.cpp), [tests/emu/philips/cdi_audio_arithmetic.cpp](../tests/emu/philips/cdi_audio_arithmetic.cpp), [tests/emu/philips/cdi_dvc_state_integration.cpp](../tests/emu/philips/cdi_dvc_state_integration.cpp), [tests/emu/philips/cdi_fma_attenuation.cpp](../tests/emu/philips/cdi_fma_attenuation.cpp), [tests/emu/philips/cdi_mmu_integration.cpp](../tests/emu/philips/cdi_mmu_integration.cpp), [tests/emu/philips/cdidvc.cpp](../tests/emu/philips/cdidvc.cpp), [tests/emu/philips/cdidvc_audio_format.cpp](../tests/emu/philips/cdidvc_audio_format.cpp), [tests/emu/philips/cdidvc_audio_reference.cpp](../tests/emu/philips/cdidvc_audio_reference.cpp), [tests/emu/philips/cdidvc_audio_replay.cpp](../tests/emu/philips/cdidvc_audio_replay.cpp), [tests/emu/philips/cdidvc_avsync_threshold.cpp](../tests/emu/philips/cdidvc_avsync_threshold.cpp), [tests/emu/philips/cdidvc_state_transitions.cpp](../tests/emu/philips/cdidvc_state_transitions.cpp), [tests/emu/philips/cdidvc_timing.cpp](../tests/emu/philips/cdidvc_timing.cpp), [tests/emu/philips/cdidvc_video_conversion.cpp](../tests/emu/philips/cdidvc_video_conversion.cpp).
+Tests: [moving A/V composition](../tests/emu/philips/cdi_dvc_motion_integration.cpp), [decoded A/V continuity](../tests/emu/philips/cdi_dvc_av_integration.cpp), [tests/emu/philips/cdi_audio_arithmetic.cpp](../tests/emu/philips/cdi_audio_arithmetic.cpp), [tests/emu/philips/cdi_dvc_state_integration.cpp](../tests/emu/philips/cdi_dvc_state_integration.cpp), [tests/emu/philips/cdi_fma_attenuation.cpp](../tests/emu/philips/cdi_fma_attenuation.cpp), [tests/emu/philips/cdi_mmu_integration.cpp](../tests/emu/philips/cdi_mmu_integration.cpp), [tests/emu/philips/cdidvc.cpp](../tests/emu/philips/cdidvc.cpp), [tests/emu/philips/cdidvc_audio_format.cpp](../tests/emu/philips/cdidvc_audio_format.cpp), [tests/emu/philips/cdidvc_audio_reference.cpp](../tests/emu/philips/cdidvc_audio_reference.cpp), [tests/emu/philips/cdidvc_audio_replay.cpp](../tests/emu/philips/cdidvc_audio_replay.cpp), [tests/emu/philips/cdidvc_avsync_threshold.cpp](../tests/emu/philips/cdidvc_avsync_threshold.cpp), [tests/emu/philips/cdidvc_state_transitions.cpp](../tests/emu/philips/cdidvc_state_transitions.cpp), [tests/emu/philips/cdidvc_timing.cpp](../tests/emu/philips/cdidvc_timing.cpp), [tests/emu/philips/cdidvc_video_conversion.cpp](../tests/emu/philips/cdidvc_video_conversion.cpp).
 
-Documentation: [decoded A/V checkpoint](cdi_decoded_av_checkpoint_20260907.md), [docs/cdi_audio_arithmetic_checkpoint.md](../docs/cdi_audio_arithmetic_checkpoint.md), [docs/cdi_audio_fidelity.md](../docs/cdi_audio_fidelity.md), [docs/cdi_audio_fidelity_campaign.md](../docs/cdi_audio_fidelity_campaign.md), [docs/cdi_audio_final_certification_20260906.md](../docs/cdi_audio_final_certification_20260906.md), [docs/cdi_dma_av_optional_dvc_checkpoint_20260906.md](../docs/cdi_dma_av_optional_dvc_checkpoint_20260906.md).
+Documentation: [moving A/V checkpoint](cdi_motion_av_checkpoint_20260907.md), [decoded A/V checkpoint](cdi_decoded_av_checkpoint_20260907.md), [docs/cdi_audio_arithmetic_checkpoint.md](../docs/cdi_audio_arithmetic_checkpoint.md), [docs/cdi_audio_fidelity.md](../docs/cdi_audio_fidelity.md), [docs/cdi_audio_fidelity_campaign.md](../docs/cdi_audio_fidelity_campaign.md), [docs/cdi_audio_final_certification_20260906.md](../docs/cdi_audio_final_certification_20260906.md), [docs/cdi_dma_av_optional_dvc_checkpoint_20260906.md](../docs/cdi_dma_av_optional_dvc_checkpoint_20260906.md).
 
-Next action: Extend changing PCM references to stream selection, pause/resume and multiple snapshot phases.
+Next action: Reproduce long-playback save/load at the 8 MiB audio replay limit; expand reference-backed control/flush semantics.
 
 <a id="xa"></a>
 
@@ -553,22 +567,22 @@ Next action: Extend controller error/request-mode and bus-arbitration coverage.
 
 Implementation: Priority arbitration, acknowledgements and device IRQ sources exist.
 
-Verification: Live DVC status/acknowledgement and restored periodic phase pass alongside MMU/CDIC gates; expanded peripheral IRQ sequences remain open.
+Verification: Moving DVC snapshots and continuous status/acknowledgement pass alongside existing MMU/CDIC gates; wider event combinations and physical timing remain open.
 
 | Obligation | Weight | Previous grade | Current grade | Rationale and remaining gaps |
 | --- | ---: | ---: | ---: | --- |
 | SCC arbitration/ack | 25 | 3 | 3 | Priority/source helpers and register implementation. |
 | CDIC source control | 20 | 3 | 3 | Audio measured AUDCTL/XBUF/ABUF gating. |
 | SLAVE response IRQ | 20 | 3 | 3 | Readiness/replacement helpers; mailbox timing still a model. |
-| DVC status/IRQ | 20 | 3 | 3 | Live decoded scenes compare enabled status, acknowledgement and restored periodic IRQ phase exactly; broader event combinations and physical timing remain open. |
+| DVC status/IRQ | 20 | 3 | 3 | Live moving scenes compare enabled status, acknowledgement and restored IRQ timing exactly; continuous playback retains the 1 ms status/ack check for 30 minutes. Physical timing and wider event combinations remain open. |
 | All fault/error sources | 10 | 1 | 2 | Executed MMU exceptions and CDIC device-error status pass; expanded UART/timer/error-source and physical IACK sequences remain open. |
 | Physical IACK edge timing | 5 | 0 | 0 | No trace-derived closure. |
 
 Implementation: [src/devices/machine/scc68070.cpp](../src/devices/machine/scc68070.cpp), [src/mame/philips/cdi.cpp](../src/mame/philips/cdi.cpp), [src/mame/philips/cdi_dvc_dma_service.h](../src/mame/philips/cdi_dvc_dma_service.h), [src/mame/philips/cdicdic.cpp](../src/mame/philips/cdicdic.cpp), [src/mame/philips/cdidvc.cpp](../src/mame/philips/cdidvc.cpp), [src/mame/philips/cdislavehle.cpp](../src/mame/philips/cdislavehle.cpp).
 
-Tests: [decoded A/V continuity](../tests/emu/philips/cdi_dvc_av_integration.cpp), [tests/emu/machine/scc68070.cpp](../tests/emu/machine/scc68070.cpp), [tests/emu/machine/scc68070_peripherals.cpp](../tests/emu/machine/scc68070_peripherals.cpp), [tests/emu/philips/cdi_dvc_audio_dma_integration.cpp](../tests/emu/philips/cdi_dvc_audio_dma_integration.cpp), [tests/emu/philips/cdi_dvc_dma_integration.cpp](../tests/emu/philips/cdi_dvc_dma_integration.cpp), [tests/emu/philips/cdi_dvc_edge_integration.cpp](../tests/emu/philips/cdi_dvc_edge_integration.cpp), [tests/emu/philips/cdicdic.cpp](../tests/emu/philips/cdicdic.cpp), [tests/emu/philips/cdislavehle_response_ready.cpp](../tests/emu/philips/cdislavehle_response_ready.cpp).
+Tests: [moving A/V composition](../tests/emu/philips/cdi_dvc_motion_integration.cpp), [decoded A/V continuity](../tests/emu/philips/cdi_dvc_av_integration.cpp), [tests/emu/machine/scc68070.cpp](../tests/emu/machine/scc68070.cpp), [tests/emu/machine/scc68070_peripherals.cpp](../tests/emu/machine/scc68070_peripherals.cpp), [tests/emu/philips/cdi_dvc_audio_dma_integration.cpp](../tests/emu/philips/cdi_dvc_audio_dma_integration.cpp), [tests/emu/philips/cdi_dvc_dma_integration.cpp](../tests/emu/philips/cdi_dvc_dma_integration.cpp), [tests/emu/philips/cdi_dvc_edge_integration.cpp](../tests/emu/philips/cdi_dvc_edge_integration.cpp), [tests/emu/philips/cdicdic.cpp](../tests/emu/philips/cdicdic.cpp), [tests/emu/philips/cdislavehle_response_ready.cpp](../tests/emu/philips/cdislavehle_response_ready.cpp).
 
-Documentation: [decoded A/V checkpoint](cdi_decoded_av_checkpoint_20260907.md), [docs/cdi_dma_av_optional_dvc_checkpoint_20260906.md](../docs/cdi_dma_av_optional_dvc_checkpoint_20260906.md), [docs/cdi_modernization_status.md](../docs/cdi_modernization_status.md).
+Documentation: [moving A/V checkpoint](cdi_motion_av_checkpoint_20260907.md), [decoded A/V checkpoint](cdi_decoded_av_checkpoint_20260907.md), [docs/cdi_dma_av_optional_dvc_checkpoint_20260906.md](../docs/cdi_dma_av_optional_dvc_checkpoint_20260906.md), [docs/cdi_modernization_status.md](../docs/cdi_modernization_status.md).
 
 Next action: Add live timer/UART/error-source and acknowledgement sequences.
 
@@ -580,21 +594,21 @@ Next action: Add live timer/UART/error-source and acknowledgement sequences.
 
 Implementation: Raster, sector/sample, DCLK, SCC timer and DMA service models exist.
 
-Verification: Live decoded frame timing and restored DVC timer phase pass; CPU/bus cycle accuracy and physical calibration remain unverified.
+Verification: Varied-rate composed fields and 30-minute decoded timing pass; host output, CPU/bus cycles and physical calibration remain unverified.
 
 | Obligation | Weight | Previous grade | Current grade | Rationale and remaining gaps |
 | --- | ---: | ---: | ---: | --- |
 | Video raster model | 25 | 3 | 3 | Table-derived profiles; pin waveforms unavailable. |
 | CDIC sector/sample cadence | 25 | 3 | 3 | Audio long-run helper identity and captured buffer cadence. |
-| DVC clocks/scheduling | 25 | 3 | 3 | 31-second live decoded presentation and restored timer phase pass; longer output runs, other rates and physical clock calibration remain open. |
+| DVC clocks/scheduling | 25 | 3 | 3 | Three video rates, composed-field cadence and 30 minutes uninterrupted decoded output pass software timing/reference checks. Host output, bus-cycle accuracy and physical calibration remain open. |
 | CPU/bus service timing | 15 | 1 | 1 | Timer 1/2 now have event scheduling, and DVC service/re-arm passes. This package grades CPU/bus cycle accuracy, arbitration and DTACK; those remain incomplete, so its grade does not increase. |
 | Physical cross-device calibration | 10 | 0 | 0 | No full calibration corpus. |
 
 Implementation: [src/devices/cpu/m68000/scc68070.cpp](../src/devices/cpu/m68000/scc68070.cpp), [src/devices/machine/scc68070.cpp](../src/devices/machine/scc68070.cpp), [src/mame/philips/cdi.cpp](../src/mame/philips/cdi.cpp), [src/mame/philips/cdicdic.cpp](../src/mame/philips/cdicdic.cpp), [src/mame/philips/cdicdic_memory.h](../src/mame/philips/cdicdic_memory.h), [src/mame/philips/cdicdic_state.h](../src/mame/philips/cdicdic_state.h), [src/mame/philips/cdidvc.cpp](../src/mame/philips/cdidvc.cpp), [src/mame/philips/cdidvc_fidelity.h](../src/mame/philips/cdidvc_fidelity.h), [src/mame/philips/mcd212.cpp](../src/mame/philips/mcd212.cpp), [src/mame/philips/mcd212_control_stream.h](../src/mame/philips/mcd212_control_stream.h), [src/mame/philips/mcd212_video.h](../src/mame/philips/mcd212_video.h).
 
-Tests: [decoded A/V continuity](../tests/emu/philips/cdi_dvc_av_integration.cpp), [tests/emu/machine/scc68070.cpp](../tests/emu/machine/scc68070.cpp), [tests/emu/machine/scc68070_peripherals.cpp](../tests/emu/machine/scc68070_peripherals.cpp), [tests/emu/philips/cdi_dvc_state_integration.cpp](../tests/emu/philips/cdi_dvc_state_integration.cpp), [tests/emu/philips/cdicdic.cpp](../tests/emu/philips/cdicdic.cpp), [tests/emu/philips/cdicdic_memory.cpp](../tests/emu/philips/cdicdic_memory.cpp), [tests/emu/philips/cdidvc_avsync_threshold.cpp](../tests/emu/philips/cdidvc_avsync_threshold.cpp), [tests/emu/philips/cdidvc_timing.cpp](../tests/emu/philips/cdidvc_timing.cpp), [tests/emu/philips/mcd212_control_stream.cpp](../tests/emu/philips/mcd212_control_stream.cpp), [tests/emu/philips/mcd212_video.cpp](../tests/emu/philips/mcd212_video.cpp).
+Tests: [moving A/V composition](../tests/emu/philips/cdi_dvc_motion_integration.cpp), [decoded A/V continuity](../tests/emu/philips/cdi_dvc_av_integration.cpp), [tests/emu/machine/scc68070.cpp](../tests/emu/machine/scc68070.cpp), [tests/emu/machine/scc68070_peripherals.cpp](../tests/emu/machine/scc68070_peripherals.cpp), [tests/emu/philips/cdi_dvc_state_integration.cpp](../tests/emu/philips/cdi_dvc_state_integration.cpp), [tests/emu/philips/cdicdic.cpp](../tests/emu/philips/cdicdic.cpp), [tests/emu/philips/cdicdic_memory.cpp](../tests/emu/philips/cdicdic_memory.cpp), [tests/emu/philips/cdidvc_avsync_threshold.cpp](../tests/emu/philips/cdidvc_avsync_threshold.cpp), [tests/emu/philips/cdidvc_timing.cpp](../tests/emu/philips/cdidvc_timing.cpp), [tests/emu/philips/mcd212_control_stream.cpp](../tests/emu/philips/mcd212_control_stream.cpp), [tests/emu/philips/mcd212_video.cpp](../tests/emu/philips/mcd212_video.cpp).
 
-Documentation: [decoded A/V checkpoint](cdi_decoded_av_checkpoint_20260907.md), [docs/cdi_audio_fidelity_campaign.md](../docs/cdi_audio_fidelity_campaign.md), [docs/cdi_audio_final_certification_20260906.md](../docs/cdi_audio_final_certification_20260906.md), [docs/cdi_branch_consolidation_20260906.md](../docs/cdi_branch_consolidation_20260906.md), [docs/cdi_dma_av_optional_dvc_checkpoint_20260906.md](../docs/cdi_dma_av_optional_dvc_checkpoint_20260906.md), [docs/cdi_modernization_status.md](../docs/cdi_modernization_status.md).
+Documentation: [moving A/V checkpoint](cdi_motion_av_checkpoint_20260907.md), [decoded A/V checkpoint](cdi_decoded_av_checkpoint_20260907.md), [docs/cdi_audio_fidelity_campaign.md](../docs/cdi_audio_fidelity_campaign.md), [docs/cdi_audio_final_certification_20260906.md](../docs/cdi_audio_final_certification_20260906.md), [docs/cdi_branch_consolidation_20260906.md](../docs/cdi_branch_consolidation_20260906.md), [docs/cdi_dma_av_optional_dvc_checkpoint_20260906.md](../docs/cdi_dma_av_optional_dvc_checkpoint_20260906.md), [docs/cdi_modernization_status.md](../docs/cdi_modernization_status.md).
 
 Next action: Exercise Timer 1/2 and UART event timing in live fixtures; measure CPU/bus and cross-device timing separately.
 
@@ -602,43 +616,43 @@ Next action: Exercise Timer 1/2 and UART event timing in live fixtures; measure 
 
 ### A/V synchronization
 
-**50% — Medium confidence; raw weighted score 51.25.**
+**60% — Medium confidence; raw weighted score 61.25.**
 
 Implementation: Clock arithmetic, packet scheduling and discontinuity controls exist.
 
-Verification: 31-second decoded reference playback passes through 12 scene resets and save/load; 30-minute continuous and host-output drift measurements remain open.
+Verification: Thirty-minute uninterrupted composed video/PCM reference playback passes; synchronized interactive branch latency and host/physical output drift remain open.
 
 | Obligation | Weight | Previous grade | Current grade | Rationale and remaining gaps |
 | --- | ---: | ---: | ---: | --- |
 | Clock-domain arithmetic | 20 | 4 | 4 | Audio long-run rational helper tests close arithmetic accumulation scope. |
-| Packet scheduling | 20 | 3 | 3 | Live decoded pictures meet timestamp deadlines within one vblank across 12 scenes; other rates and broader queue/PTS cases remain open. |
-| Discontinuities | 15 | 3 | 3 | Twelve scheduled decoder-reset scene transitions pass; interactive branching, pause and stream-selection transitions remain open. |
-| Decoded/presented continuous A/V | 20 | 0 | 1 | 31 seconds of original decoded A/V and active save/load pass reference/timing checks; the 30-minute uninterrupted decoded and host-output gate remains open. |
+| Packet scheduling | 20 | 3 | 3 | Three-rate composed output and uninterrupted 25 Hz playback pass timestamp-based field references. Arbitrary PTS, underflow and wider queue cases remain open. |
+| Discontinuities | 15 | 3 | 3 | Video-only pause/resume and requested-stream format branches pass the existing queued-audio model with exact restored continuation. Seamless synchronized branches and hardware pause/flush latency remain unverified. |
+| Decoded/presented continuous A/V | 20 | 0 | 3 | Thirty minutes of uninterrupted repeated original moving video and changing stereo audio pass complete composed fields and PCM references. Other long-run profiles, host output and hardware timing remain open. |
 | Host output drift | 15 | 0 | 0 | Not measured. |
 | Physical clock/branch latency | 10 | 0 | 0 | Not measured. |
 
 Implementation: [3rdparty/pl_mpeg/pl_mpeg.h](../3rdparty/pl_mpeg/pl_mpeg.h), [src/mame/philips/cdidvc.cpp](../src/mame/philips/cdidvc.cpp), [src/mame/philips/cdidvc_fidelity.h](../src/mame/philips/cdidvc_fidelity.h), [src/mame/philips/cdidvc_mpeg_format.h](../src/mame/philips/cdidvc_mpeg_format.h), [src/mame/philips/cdidvc_utils.h](../src/mame/philips/cdidvc_utils.h).
 
-Tests: [decoded A/V continuity](../tests/emu/philips/cdi_dvc_av_integration.cpp), [tests/emu/philips/cdi_dvc_state_integration.cpp](../tests/emu/philips/cdi_dvc_state_integration.cpp), [tests/emu/philips/cdidvc.cpp](../tests/emu/philips/cdidvc.cpp), [tests/emu/philips/cdidvc_audio_format.cpp](../tests/emu/philips/cdidvc_audio_format.cpp), [tests/emu/philips/cdidvc_audio_reference.cpp](../tests/emu/philips/cdidvc_audio_reference.cpp), [tests/emu/philips/cdidvc_avsync_threshold.cpp](../tests/emu/philips/cdidvc_avsync_threshold.cpp), [tests/emu/philips/cdidvc_timing.cpp](../tests/emu/philips/cdidvc_timing.cpp), [tests/emu/philips/cdidvc_video_conversion.cpp](../tests/emu/philips/cdidvc_video_conversion.cpp).
+Tests: [moving A/V composition](../tests/emu/philips/cdi_dvc_motion_integration.cpp), [decoded A/V continuity](../tests/emu/philips/cdi_dvc_av_integration.cpp), [tests/emu/philips/cdi_dvc_state_integration.cpp](../tests/emu/philips/cdi_dvc_state_integration.cpp), [tests/emu/philips/cdidvc.cpp](../tests/emu/philips/cdidvc.cpp), [tests/emu/philips/cdidvc_audio_format.cpp](../tests/emu/philips/cdidvc_audio_format.cpp), [tests/emu/philips/cdidvc_audio_reference.cpp](../tests/emu/philips/cdidvc_audio_reference.cpp), [tests/emu/philips/cdidvc_avsync_threshold.cpp](../tests/emu/philips/cdidvc_avsync_threshold.cpp), [tests/emu/philips/cdidvc_timing.cpp](../tests/emu/philips/cdidvc_timing.cpp), [tests/emu/philips/cdidvc_video_conversion.cpp](../tests/emu/philips/cdidvc_video_conversion.cpp).
 
-Documentation: [decoded A/V checkpoint](cdi_decoded_av_checkpoint_20260907.md), [docs/cdi_audio_fidelity_campaign.md](../docs/cdi_audio_fidelity_campaign.md), [docs/cdi_audio_final_certification_20260906.md](../docs/cdi_audio_final_certification_20260906.md), [docs/cdi_dma_av_optional_dvc_checkpoint_20260906.md](../docs/cdi_dma_av_optional_dvc_checkpoint_20260906.md).
+Documentation: [moving A/V checkpoint](cdi_motion_av_checkpoint_20260907.md), [decoded A/V checkpoint](cdi_decoded_av_checkpoint_20260907.md), [docs/cdi_audio_fidelity_campaign.md](../docs/cdi_audio_fidelity_campaign.md), [docs/cdi_audio_final_certification_20260906.md](../docs/cdi_audio_final_certification_20260906.md), [docs/cdi_dma_av_optional_dvc_checkpoint_20260906.md](../docs/cdi_dma_av_optional_dvc_checkpoint_20260906.md).
 
-Next action: Run at least 30 minutes of uninterrupted varied decoded A/V, then interactive branches and host-output timing.
+Next action: Measure host-output drift and reference-backed pause/stream-branch latency; extend long-run rates and underflow coverage.
 
 <a id="save"></a>
 
 ### Save states
 
-**60% — Medium confidence; raw weighted score 57.5.**
+**65% — Medium confidence; raw weighted score 62.5.**
 
 Implementation: State registration and decoder replay cover multiple devices.
 
-Verification: Active decoded A/V, MMU and CD-DA continuations pass; more snapshot phases and active peripheral modes remain open.
+Verification: Ten moving I/P/B/paused/scene snapshots repeat full fields, PCM, callbacks and IRQs; replay-capacity overflow and other active peripheral modes remain open.
 
 | Obligation | Weight | Previous grade | Current grade | Rationale and remaining gaps |
 | --- | ---: | ---: | ---: | --- |
-| DVC audio replay/device state | 25 | 3 | 3 | Scheduled decoded A/V save/load repeats changing PCM and sound callback timing exactly; broader audio/control phases remain open. |
-| Decoded video continuation | 20 | 2 | 2 | A scheduled active snapshot repeats 747 decoded pictures, their hashes/times and IRQ events exactly; more snapshots, realistic motion and capacity/error scenarios remain open. |
+| DVC audio replay/device state | 25 | 3 | 3 | Ten moving A/V snapshots repeat changing PCM and sound callback time/count/order exactly. Replay-capacity overflow and broader control modes remain open. |
+| Decoded video continuation | 20 | 2 | 3 | Ten I/P/B, paused and scene-boundary snapshots repeat 1581 complete composed fields and their times exactly. Mid-field/native-mode and replay-capacity scenarios remain open. |
 | MMU state | 15 | 3 | 3 | Active-MMU save/load followed by executed fault recovery passes; snapshots inside partial fault cycles remain open. |
 | CDIC active transport | 15 | 2 | 2 | Four active CD-DA snapshots pass exact PCM/Q/IRQ continuation; active XA/read/seek and other command states remain open. |
 | SLAVE partial commands | 10 | 2 | 2 | Registered parser/response state; partial-command round trip missing. |
@@ -647,11 +661,11 @@ Verification: Active decoded A/V, MMU and CD-DA continuations pass; more snapsho
 
 Implementation: [src/devices/cpu/m68000/m68kcpu.cpp](../src/devices/cpu/m68000/m68kcpu.cpp), [src/devices/cpu/m68000/scc68070.cpp](../src/devices/cpu/m68000/scc68070.cpp), [src/devices/machine/scc68070.h](../src/devices/machine/scc68070.h), [src/devices/machine/scc68070_helpers.h](../src/devices/machine/scc68070_helpers.h), [src/mame/philips/cdicdic.cpp](../src/mame/philips/cdicdic.cpp), [src/mame/philips/cdicdic_memory.h](../src/mame/philips/cdicdic_memory.h), [src/mame/philips/cdicdic_state.h](../src/mame/philips/cdicdic_state.h), [src/mame/philips/cdidvc.cpp](../src/mame/philips/cdidvc.cpp), [src/mame/philips/cdidvc_save_state.h](../src/mame/philips/cdidvc_save_state.h), [src/mame/philips/cdislavehle.cpp](../src/mame/philips/cdislavehle.cpp).
 
-Tests: [decoded A/V continuity](../tests/emu/philips/cdi_dvc_av_integration.cpp), [active CD-DA save/load](../tests/emu/philips/cdi_cdda_save_integration.cpp), [tests/emu/machine/scc68070.cpp](../tests/emu/machine/scc68070.cpp), [tests/emu/philips/cdi_dvc_state_integration.cpp](../tests/emu/philips/cdi_dvc_state_integration.cpp), [tests/emu/philips/cdi_mmu_integration.cpp](../tests/emu/philips/cdi_mmu_integration.cpp), [tests/emu/philips/cdicdic.cpp](../tests/emu/philips/cdicdic.cpp), [tests/emu/philips/cdicdic_memory.cpp](../tests/emu/philips/cdicdic_memory.cpp), [tests/emu/philips/cdidvc_audio_replay.cpp](../tests/emu/philips/cdidvc_audio_replay.cpp), [tests/emu/philips/cdidvc_state_transitions.cpp](../tests/emu/philips/cdidvc_state_transitions.cpp).
+Tests: [moving A/V composition](../tests/emu/philips/cdi_dvc_motion_integration.cpp), [decoded A/V continuity](../tests/emu/philips/cdi_dvc_av_integration.cpp), [active CD-DA save/load](../tests/emu/philips/cdi_cdda_save_integration.cpp), [tests/emu/machine/scc68070.cpp](../tests/emu/machine/scc68070.cpp), [tests/emu/philips/cdi_dvc_state_integration.cpp](../tests/emu/philips/cdi_dvc_state_integration.cpp), [tests/emu/philips/cdi_mmu_integration.cpp](../tests/emu/philips/cdi_mmu_integration.cpp), [tests/emu/philips/cdicdic.cpp](../tests/emu/philips/cdicdic.cpp), [tests/emu/philips/cdicdic_memory.cpp](../tests/emu/philips/cdicdic_memory.cpp), [tests/emu/philips/cdidvc_audio_replay.cpp](../tests/emu/philips/cdidvc_audio_replay.cpp), [tests/emu/philips/cdidvc_state_transitions.cpp](../tests/emu/philips/cdidvc_state_transitions.cpp).
 
-Documentation: [decoded A/V checkpoint](cdi_decoded_av_checkpoint_20260907.md), [docs/cdi_audio_fidelity_campaign.md](../docs/cdi_audio_fidelity_campaign.md), [docs/cdi_scc68070_mmu_checkpoint_20260906.md](../docs/cdi_scc68070_mmu_checkpoint_20260906.md).
+Documentation: [moving A/V checkpoint](cdi_motion_av_checkpoint_20260907.md), [decoded A/V checkpoint](cdi_decoded_av_checkpoint_20260907.md), [docs/cdi_audio_fidelity_campaign.md](../docs/cdi_audio_fidelity_campaign.md), [docs/cdi_scc68070_mmu_checkpoint_20260906.md](../docs/cdi_scc68070_mmu_checkpoint_20260906.md).
 
-Next action: Add snapshots at I/P/B and scene-end boundaries, plus active XA/read/seek/UART/I2C/SLAVE continuation.
+Next action: Exercise save/load immediately before and after bounded replay-journal capacity, plus active XA/read/seek/UART/I2C/SLAVE states.
 
 <a id="slave"></a>
 
@@ -826,7 +840,7 @@ Next action: Complete and validate the DSP firmware path plus host DTACK and MCU
 
 Implementation: XA, MPEG audio, queues, control, gain and emphasis are implemented.
 
-Verification: Live changing DVC PCM and mixed-mode CD-DA gates pass; interactive cross-stream, host-output and physical continuity remain open.
+Verification: Changing DVC PCM passes 30 minutes and queued-stream branches; seamless cross-stream, host-output and physical continuity remain open.
 
 | Obligation | Weight | Previous grade | Current grade | Rationale and remaining gaps |
 | --- | ---: | ---: | ---: | --- |
@@ -835,41 +849,41 @@ Verification: Live changing DVC PCM and mixed-mode CD-DA gates pass; interactive
 | Buffer/output delivery | 20 | 3 | 3 | Software queues/cadence tested; physical edges missing. |
 | CD-DA transport | 15 | 2 | 2 | Synthetic Q/TOC and driver-controlled seek pass; mixed-mode digital PCM gating is verified. Physical output, full pause/error behavior and retail playback remain open. |
 | Gain/emphasis/control | 15 | 3 | 3 | Q22 and filter tests; CDIC quantizer and switch unknown. |
-| Cross-stream/output continuity | 10 | 2 | 2 | Changing DVC PCM survives 12 scheduled scene resets and active save/load; interactive cross-stream, host-output and physical continuity remain open. |
+| Cross-stream/output continuity | 10 | 2 | 2 | Thirty-minute changing DVC PCM and queued-audio stream-selection continuations pass. Seamless interactive synchronization, cross-device host output and physical continuity remain open. |
 
 Implementation: [3rdparty/pl_mpeg/pl_mpeg.h](../3rdparty/pl_mpeg/pl_mpeg.h), [src/mame/philips/cdiaudio.h](../src/mame/philips/cdiaudio.h), [src/mame/philips/cdiaudio_dsp56001.h](../src/mame/philips/cdiaudio_dsp56001.h), [src/mame/philips/cdicdic.cpp](../src/mame/philips/cdicdic.cpp), [src/mame/philips/cdicdic_state.h](../src/mame/philips/cdicdic_state.h), [src/mame/philips/cdidvc.cpp](../src/mame/philips/cdidvc.cpp), [src/mame/philips/cdidvc_fidelity.h](../src/mame/philips/cdidvc_fidelity.h), [src/mame/philips/cdidvc_mpeg_format.h](../src/mame/philips/cdidvc_mpeg_format.h), [src/mame/philips/cdidvc_utils.h](../src/mame/philips/cdidvc_utils.h).
 
-Tests: [decoded A/V continuity](../tests/emu/philips/cdi_dvc_av_integration.cpp), [tests/emu/philips/cdi_audio_arithmetic.cpp](../tests/emu/philips/cdi_audio_arithmetic.cpp), [tests/emu/philips/cdi_dvc_state_integration.cpp](../tests/emu/philips/cdi_dvc_state_integration.cpp), [tests/emu/philips/cdi_fma_attenuation.cpp](../tests/emu/philips/cdi_fma_attenuation.cpp), [tests/emu/philips/cdicdic.cpp](../tests/emu/philips/cdicdic.cpp), [tests/emu/philips/cdidvc.cpp](../tests/emu/philips/cdidvc.cpp), [tests/emu/philips/cdidvc_audio_format.cpp](../tests/emu/philips/cdidvc_audio_format.cpp), [tests/emu/philips/cdidvc_audio_reference.cpp](../tests/emu/philips/cdidvc_audio_reference.cpp), [tests/emu/philips/cdidvc_avsync_threshold.cpp](../tests/emu/philips/cdidvc_avsync_threshold.cpp), [tests/emu/philips/cdidvc_timing.cpp](../tests/emu/philips/cdidvc_timing.cpp), [tests/emu/philips/cdidvc_video_conversion.cpp](../tests/emu/philips/cdidvc_video_conversion.cpp).
+Tests: [moving A/V composition](../tests/emu/philips/cdi_dvc_motion_integration.cpp), [decoded A/V continuity](../tests/emu/philips/cdi_dvc_av_integration.cpp), [tests/emu/philips/cdi_audio_arithmetic.cpp](../tests/emu/philips/cdi_audio_arithmetic.cpp), [tests/emu/philips/cdi_dvc_state_integration.cpp](../tests/emu/philips/cdi_dvc_state_integration.cpp), [tests/emu/philips/cdi_fma_attenuation.cpp](../tests/emu/philips/cdi_fma_attenuation.cpp), [tests/emu/philips/cdicdic.cpp](../tests/emu/philips/cdicdic.cpp), [tests/emu/philips/cdidvc.cpp](../tests/emu/philips/cdidvc.cpp), [tests/emu/philips/cdidvc_audio_format.cpp](../tests/emu/philips/cdidvc_audio_format.cpp), [tests/emu/philips/cdidvc_audio_reference.cpp](../tests/emu/philips/cdidvc_audio_reference.cpp), [tests/emu/philips/cdidvc_avsync_threshold.cpp](../tests/emu/philips/cdidvc_avsync_threshold.cpp), [tests/emu/philips/cdidvc_timing.cpp](../tests/emu/philips/cdidvc_timing.cpp), [tests/emu/philips/cdidvc_video_conversion.cpp](../tests/emu/philips/cdidvc_video_conversion.cpp).
 
-Documentation: [decoded A/V checkpoint](cdi_decoded_av_checkpoint_20260907.md), [docs/cdi_audio_arithmetic_checkpoint.md](../docs/cdi_audio_arithmetic_checkpoint.md), [docs/cdi_audio_compatibility_matrix_20260906.md](../docs/cdi_audio_compatibility_matrix_20260906.md), [docs/cdi_audio_fidelity.md](../docs/cdi_audio_fidelity.md), [docs/cdi_audio_fidelity_campaign.md](../docs/cdi_audio_fidelity_campaign.md), [docs/cdi_audio_final_certification_20260906.md](../docs/cdi_audio_final_certification_20260906.md), [docs/cdi_dma_av_optional_dvc_checkpoint_20260906.md](../docs/cdi_dma_av_optional_dvc_checkpoint_20260906.md).
+Documentation: [moving A/V checkpoint](cdi_motion_av_checkpoint_20260907.md), [decoded A/V checkpoint](cdi_decoded_av_checkpoint_20260907.md), [docs/cdi_audio_arithmetic_checkpoint.md](../docs/cdi_audio_arithmetic_checkpoint.md), [docs/cdi_audio_compatibility_matrix_20260906.md](../docs/cdi_audio_compatibility_matrix_20260906.md), [docs/cdi_audio_fidelity.md](../docs/cdi_audio_fidelity.md), [docs/cdi_audio_fidelity_campaign.md](../docs/cdi_audio_fidelity_campaign.md), [docs/cdi_audio_final_certification_20260906.md](../docs/cdi_audio_final_certification_20260906.md), [docs/cdi_dma_av_optional_dvc_checkpoint_20260906.md](../docs/cdi_dma_av_optional_dvc_checkpoint_20260906.md).
 
-Next action: Extend interactive stream/control transitions and host-output/reference-disc evidence.
+Next action: Extend seamless stream/control transitions and host-output/reference-disc evidence.
 
 <a id="all_video"></a>
 
 ### Cross-system video
 
-**55% — Low confidence; raw weighted score 53.75.**
+**60% — Low confidence; raw weighted score 60.**
 
 Implementation: Native display, MPEG backend, composition and presentation model exist.
 
-Verification: Original decoded DVC pixels and short presentation pass; varied video, combined MCD212 frames and hardware/title captures remain open.
+Verification: Varied moving video passes complete composed fields and 30-minute 25 Hz output; broad native modes, full-size video and hardware/title captures remain open.
 
 | Obligation | Weight | Previous grade | Current grade | Rationale and remaining gaps |
 | --- | ---: | ---: | ---: | --- |
 | Native display | 35 | 3 | 3 | Documented MCD212 model; image corpus incomplete. |
-| MPEG decoded pictures | 25 | 2 | 2 | Two original I/P/B scenes have complete FFmpeg pixel references; varied motion/AC, profiles and wider picture dimensions remain open. |
-| Composition | 20 | 2 | 2 | Eligibility tests do not prove combined rendered pixels. |
-| Presentation | 10 | 2 | 2 | All 768 baseline pictures meet one-vblank bounds and saved continuation repeats exactly; broader rates, composed output and interactive branches remain open. |
+| MPEG decoded pictures | 25 | 2 | 3 | Three small textured moving I/P/B formats pass complete FFmpeg references; 25 Hz playback passes 30 minutes uninterrupted. Full-size/profile/GOP breadth remains open. |
+| Composition | 20 | 2 | 2 | Complete visible bitmaps pass one native CLUT8/matte/cursor/external-video configuration; broad native and interlace/QHY combinations remain open. |
+| Presentation | 10 | 2 | 2 | Varied-rate fields, video pause/resume, stream/format branches and ten snapshots pass; long-run 25 Hz output is continuous. Wider control/underflow and physical presentation remain open. |
 | Hardware/title captures | 10 | 0 | 0 | No retained current complete-frame certification. |
 
 Implementation: [3rdparty/pl_mpeg/pl_mpeg.h](../3rdparty/pl_mpeg/pl_mpeg.h), [src/mame/philips/cdi.cpp](../src/mame/philips/cdi.cpp), [src/mame/philips/cdidvc.cpp](../src/mame/philips/cdidvc.cpp), [src/mame/philips/cdidvc_fidelity.h](../src/mame/philips/cdidvc_fidelity.h), [src/mame/philips/cdidvc_mpeg_format.h](../src/mame/philips/cdidvc_mpeg_format.h), [src/mame/philips/cdidvc_utils.h](../src/mame/philips/cdidvc_utils.h), [src/mame/philips/mcd212.cpp](../src/mame/philips/mcd212.cpp), [src/mame/philips/mcd212_control_stream.h](../src/mame/philips/mcd212_control_stream.h), [src/mame/philips/mcd212_video.h](../src/mame/philips/mcd212_video.h).
 
-Tests: [decoded A/V continuity](../tests/emu/philips/cdi_dvc_av_integration.cpp), [tests/emu/philips/cdi_dvc_state_integration.cpp](../tests/emu/philips/cdi_dvc_state_integration.cpp), [tests/emu/philips/cdidvc.cpp](../tests/emu/philips/cdidvc.cpp), [tests/emu/philips/cdidvc_audio_format.cpp](../tests/emu/philips/cdidvc_audio_format.cpp), [tests/emu/philips/cdidvc_audio_reference.cpp](../tests/emu/philips/cdidvc_audio_reference.cpp), [tests/emu/philips/cdidvc_avsync_threshold.cpp](../tests/emu/philips/cdidvc_avsync_threshold.cpp), [tests/emu/philips/cdidvc_timing.cpp](../tests/emu/philips/cdidvc_timing.cpp), [tests/emu/philips/cdidvc_video_conversion.cpp](../tests/emu/philips/cdidvc_video_conversion.cpp), [tests/emu/philips/mcd212_control_stream.cpp](../tests/emu/philips/mcd212_control_stream.cpp), [tests/emu/philips/mcd212_video.cpp](../tests/emu/philips/mcd212_video.cpp).
+Tests: [moving A/V composition](../tests/emu/philips/cdi_dvc_motion_integration.cpp), [decoded A/V continuity](../tests/emu/philips/cdi_dvc_av_integration.cpp), [tests/emu/philips/cdi_dvc_state_integration.cpp](../tests/emu/philips/cdi_dvc_state_integration.cpp), [tests/emu/philips/cdidvc.cpp](../tests/emu/philips/cdidvc.cpp), [tests/emu/philips/cdidvc_audio_format.cpp](../tests/emu/philips/cdidvc_audio_format.cpp), [tests/emu/philips/cdidvc_audio_reference.cpp](../tests/emu/philips/cdidvc_audio_reference.cpp), [tests/emu/philips/cdidvc_avsync_threshold.cpp](../tests/emu/philips/cdidvc_avsync_threshold.cpp), [tests/emu/philips/cdidvc_timing.cpp](../tests/emu/philips/cdidvc_timing.cpp), [tests/emu/philips/cdidvc_video_conversion.cpp](../tests/emu/philips/cdidvc_video_conversion.cpp), [tests/emu/philips/mcd212_control_stream.cpp](../tests/emu/philips/mcd212_control_stream.cpp), [tests/emu/philips/mcd212_video.cpp](../tests/emu/philips/mcd212_video.cpp).
 
-Documentation: [decoded A/V checkpoint](cdi_decoded_av_checkpoint_20260907.md), [docs/cdi_audio_fidelity_campaign.md](../docs/cdi_audio_fidelity_campaign.md), [docs/cdi_audio_final_certification_20260906.md](../docs/cdi_audio_final_certification_20260906.md), [docs/cdi_dma_av_optional_dvc_checkpoint_20260906.md](../docs/cdi_dma_av_optional_dvc_checkpoint_20260906.md), [docs/cdi_modernization_status.md](../docs/cdi_modernization_status.md).
+Documentation: [moving A/V checkpoint](cdi_motion_av_checkpoint_20260907.md), [decoded A/V checkpoint](cdi_decoded_av_checkpoint_20260907.md), [docs/cdi_audio_fidelity_campaign.md](../docs/cdi_audio_fidelity_campaign.md), [docs/cdi_audio_final_certification_20260906.md](../docs/cdi_audio_final_certification_20260906.md), [docs/cdi_dma_av_optional_dvc_checkpoint_20260906.md](../docs/cdi_dma_av_optional_dvc_checkpoint_20260906.md), [docs/cdi_modernization_status.md](../docs/cdi_modernization_status.md).
 
-Next action: Add varied moving references and combined MCD212 presentation evidence.
+Next action: Add full-size/mode/GOP references, broader MCD212 combinations and host/physical output evidence.
 
 <a id="dsp"></a>
 
