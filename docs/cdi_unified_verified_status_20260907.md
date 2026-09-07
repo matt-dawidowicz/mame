@@ -4,7 +4,17 @@ This report updates the consolidation assessment with executed MMU/CDIC and
 synthetic Q/TOC evidence. The current source certification is below. Historical figures remain in
 [the earlier audit](cdi_verified_status_20260906.md).
 
-## Active decoded A/V checkpoint — 2026-09-07
+## Paused moving A/V work — 2026-09-07
+
+Progress is saved for the user's shutdown. Three original textured I/P/B formats,
+complete MCD212 composition, pause/stream changes and ten save/load checkpoints
+pass the local gate: 11990 assertions / 22 integration cases and 17394016 /
+221 helper cases. No production change was needed. The uninterrupted run was
+intentionally stopped after its 960-second progress report; the **30-minute gate
+is incomplete**. Publication and exact-source CI are pending. Existing percentages
+are carried unchanged. Resume from the [moving A/V checkpoint](cdi_motion_av_checkpoint_20260907.md).
+
+## Latest certified decoded A/V checkpoint — 2026-09-07
 
 Original changing stereo MPEG audio and two original I/P/B video scenes now run
 through the live DVC for 31 seconds across 12 scheduled scene resets. All 768

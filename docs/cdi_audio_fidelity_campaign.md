@@ -2,7 +2,17 @@
 
 > Fresh completion estimates and code/test findings: [CDI_MASTER_STATUS.md](CDI_MASTER_STATUS.md) and [current unified audit](cdi_unified_verified_status_20260907.md). The pre-campaign numbers below are historical. Live CDIC DMA/Q/CD-DA gates and short decoded A/V reference continuity now pass; broader transport, interactive playback and physical fidelity remain open.
 
-## Decoded A/V checkpoint — 2026-09-07
+## Paused moving A/V work — 2026-09-07
+
+Progress is saved for the user's shutdown. Three original textured I/P/B formats,
+complete MCD212 composition, pause/stream changes and ten save/load checkpoints
+pass the local gate: 11990 assertions / 22 integration cases and 17394016 /
+221 helper cases. No production change was needed. The uninterrupted run was
+intentionally stopped after its 960-second progress report; the **30-minute gate
+is incomplete**. Publication and exact-source CI are pending. Existing percentages
+are carried unchanged. Resume from the [moving A/V checkpoint](cdi_motion_av_checkpoint_20260907.md).
+
+## Previous decoded A/V checkpoint — 2026-09-07
 
 Original changing stereo MPEG audio and two I/P/B video scenes now have independent
 full PCM/pixel references through the live DVC. A 31-second, 12-scene run and active

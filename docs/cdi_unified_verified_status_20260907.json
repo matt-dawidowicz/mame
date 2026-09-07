@@ -2906,5 +2906,26 @@
     "dma_liveness": "GREEN",
     "commands_document": "docs/cdi_transport_checkpoint_20260907.md",
     "scope": "Exact committed production code, synthetic live seek/DAC tests and private driver disassembly; no executed firmware or physical/retail claim"
+  },
+  "motion_av_checkpoint": {
+    "baseline": "a5b2ff9050352461da5d323cc550767d379e8197",
+    "code_commit": null,
+    "date": "2026-09-07",
+    "document": "docs/cdi_motion_av_checkpoint_20260907.md",
+    "status": "Paused by user for shutdown; local short gates pass; 30-minute gate, publication and exact-source CI pending",
+    "integration_cases": 22,
+    "integration_assertions": 11990,
+    "helper_cases": 221,
+    "helper_assertions": 17394016,
+    "continuous_run": {
+      "status": "intentionally interrupted",
+      "last_report_machine_seconds": 960,
+      "fields": 48071,
+      "max_rgb_error": 9,
+      "max_pcm_error": 537,
+      "channel_samples": 84672002,
+      "completed_30_minutes": false
+    },
+    "scoring": "All current certified grades carried unchanged pending completion and scoped review"
   }
 }

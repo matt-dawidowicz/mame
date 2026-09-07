@@ -14,7 +14,17 @@ verified status updates affected worksheets; development resumes the next action
 [AGENTS.md](../AGENTS.md) defines those modes. The audio campaign remains the
 detailed audio ledger on this unified branch.
 
-## Active decoded A/V checkpoint — 2026-09-07
+## Paused moving A/V work — 2026-09-07
+
+Progress is saved for the user's shutdown. Three original textured I/P/B formats,
+complete MCD212 composition, pause/stream changes and ten save/load checkpoints
+pass the local gate: 11990 assertions / 22 integration cases and 17394016 /
+221 helper cases. No production change was needed. The uninterrupted run was
+intentionally stopped after its 960-second progress report; the **30-minute gate
+is incomplete**. Publication and exact-source CI are pending. Existing percentages
+are carried unchanged. Resume from the [moving A/V checkpoint](cdi_motion_av_checkpoint_20260907.md).
+
+## Latest certified decoded A/V checkpoint — 2026-09-07
 
 Original changing stereo MPEG audio and two original I/P/B video scenes now run
 through the live DVC for 31 seconds across 12 scheduled scene resets. All 768
@@ -164,11 +174,11 @@ fidelity percentage is invented when evidence is insufficient.
    active PCM save/load now passes four live scenarios. Continue with broader
    transport error semantics and other active modes.
 
-2. **Broader decoded A/V:** the 31-second original reference and active save/load
-   gate passes. Extend moving/textured I/P/B content, rates/dimensions, pause and
-   interactive stream branches, multiple snapshot phases and combined MCD212
-   output. Retain a 30-minute uninterrupted decoded run before closing long-run
-   continuity; calibrate host and physical timing separately.
+2. **Paused moving A/V batch:** the varied-format, composed-output and ten-snapshot
+   local regression passes. Restart the interrupted 30-minute decoded gate from
+   zero, then finish scoring, publication and exact-source CI certification using
+   the [resume checkpoint](cdi_motion_av_checkpoint_20260907.md). Current matrix
+   values remain the last certified assessment pending this batch's completion.
 3. **Newly merged peripheral verification:** live timer match/capture/count IRQs,
    UART mode/break/overrun, active peripheral saves and DMA error injection.
 4. **Mono-II/DSP:** complete standalone architectural/firmware execution and
