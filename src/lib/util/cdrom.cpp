@@ -102,16 +102,19 @@ uint32_t cdrom_file::physical_to_chd_lba(uint32_t physlba, uint32_t &tracknum) c
 
 uint32_t cdrom_file::logical_to_chd_lba(uint32_t loglba, uint32_t &tracknum) const
 {
-	// loop until our current LBA is less than the start LBA of the next track
+	// A track owns its INDEX 00 pregap, including when it uses another file.
 	for (int track = 0; track < cdtoc.numtrks; track++)
 	{
-		if (loglba < cdtoc.tracks[track + 1].logframeofs)
+		track_info const &next = cdtoc.tracks[track + 1];
+		uint32_t const next_start = next.logframeofs - std::min(next.logframeofs, next.pregap);
+		if (loglba < next_start)
 		{
-			// convert to physical and proceed
-			uint32_t physlba = cdtoc.tracks[track].physframeofs + (loglba - cdtoc.tracks[track].logframeofs);
-			uint32_t chdlba = physlba - cdtoc.tracks[track].physframeofs + cdtoc.tracks[track].chdframeofs;
+			track_info const &info = cdtoc.tracks[track];
 			tracknum = track;
-			return chdlba;
+			// Storage starts at INDEX 00 for stored gaps, INDEX 01 otherwise.
+			// Virtual pregap reads are zero-filled before accessing storage.
+			uint32_t const stored_start = info.logframeofs - (info.pgdatasize ? info.pregap : 0);
+			return info.chdframeofs + (loglba < stored_start ? 0 : loglba - stored_start);
 		}
 	}
 
@@ -390,13 +393,6 @@ std::error_condition cdrom_file::read_partial_sector(void *dest, uint32_t lbasec
 	// if a CHD, just read
 	if (chd != nullptr)
 	{
-		if (!phys && cdtoc.tracks[tracknum].pgdatasize != 0)
-		{
-			// chdman (phys=true) relies on chdframeofs to point to index 0 instead of index 1 for extractcd.
-			// Actually playing CDs requires it to point to index 1 instead of index 0, so adjust the offset when phys=false.
-			chdsector += cdtoc.tracks[tracknum].pregap;
-		}
-
 		result = chd->read_bytes(uint64_t(chdsector) * uint64_t(FRAME_SIZE) + startoffs, dest, length);
 
 		// swap CDDA in the case of LE GDROMs
@@ -411,10 +407,7 @@ std::error_condition cdrom_file::read_partial_sector(void *dest, uint32_t lbasec
 		int bytespersector = cdtoc.tracks[tracknum].datasize + cdtoc.tracks[tracknum].subsize;
 		uint64_t sourcefileoffset = cdtrack_info.track[tracknum].offset;
 
-		if (cdtoc.tracks[tracknum].pgdatasize != 0)
-			chdsector += cdtoc.tracks[tracknum].pregap;
-
-		sourcefileoffset += chdsector * bytespersector + startoffs;
+		sourcefileoffset += uint64_t(chdsector) * bytespersector + startoffs;
 
 		if (EXTRA_VERBOSE)
 			osd_printf_verbose("Reading %u bytes from sector %d from track %d at offset %lu\n", (unsigned)length, chdsector, tracknum + 1, (unsigned long)sourcefileoffset);
@@ -422,11 +415,17 @@ std::error_condition cdrom_file::read_partial_sector(void *dest, uint32_t lbasec
 		result = srcfile.seek(sourcefileoffset, SEEK_SET);
 		size_t actual;
 		if (!result)
+		{
 			std::tie(result, actual) = read(srcfile, dest, length);
-		// FIXME: if (!result && (actual < length)) report error
+			if (!result && actual != length)
+				result = std::errc::io_error;
+		}
 
 		needswap = cdtrack_info.track[tracknum].swap;
 	}
+
+	if (result)
+		return result;
 
 	if (needswap)
 	{
@@ -603,19 +602,21 @@ uint32_t cdrom_file::get_track_index(uint32_t frame) const
 {
 	const uint32_t track = get_track(frame);
 	const uint32_t track_start = get_track_start(track);
-	const uint32_t index_offset = frame - track_start;
-	int index = 0;
+	if (frame < track_start)
+		return 0;
 
-	for (int i = 0; i < std::size(cdtrack_info.track[track].idx); i++)
+	// CUE indexes are file-relative, while frame and track_start are logical.
+	// Formats without index metadata (including CHD) default to INDEX 01.
+	auto const &indexes = cdtrack_info.track[track].idx;
+	if (indexes[1] < 0)
+		return 1;
+	int64_t const file_frame = int64_t(frame - track_start) + indexes[1];
+	int index = 1;
+	for (int i = 2; i < std::size(indexes); ++i)
 	{
-		if (index_offset >= cdtrack_info.track[track].idx[i])
+		if (indexes[i] >= 0 && file_frame >= indexes[i])
 			index = i;
-		else
-			break;
 	}
-
-	if (cdtrack_info.track[track].idx[index] == -1)
-		index = 1; // valid index not found, default to index 1
 
 	return index;
 }
@@ -2747,7 +2748,7 @@ std::error_condition cdrom_file::parse_cue(std::string_view tocfname, toc &outto
 				return chd_file::error::INVALID_DATA;
 			}
 
-			if (trknum > 0)
+			if (trknum > 0 && outinfo.track[trknum].fname == outinfo.track[trknum-1].fname)
 			{
 				const uint32_t previous_track_raw_size = outtoc.tracks[trknum-1].frames * (outtoc.tracks[trknum-1].datasize + outtoc.tracks[trknum-1].subsize);
 				outinfo.track[trknum].offset = outinfo.track[trknum-1].offset + previous_track_raw_size;

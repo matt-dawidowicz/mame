@@ -2,8 +2,8 @@
   "schema_version": 2,
   "audit_date": "2026-09-07",
   "branch": "cdi-unified",
-  "reviewed_head": "ee18320370b6c7e0abfd901bf0deafa543da0d6b",
-  "verified_code_commit": "ee18320370b6c7e0abfd901bf0deafa543da0d6b",
+  "reviewed_head": "39885b7d304ccd7947be45e643a37d7294b84062",
+  "verified_code_commit": null,
   "upstream_commit": "1fb001f9bfab5cf0148fdfe8755659c4a869831b",
   "prior_report": "cdi_verified_status_20260906.json",
   "prior_audio_baseline": "442e5050846e680ed653fc1297b66df588b314e2",
@@ -323,7 +323,7 @@
           "weight": 15,
           "prior_grade": 1,
           "grade": 3,
-          "rationale": "Live synthetic Q and full twelve-track TOC pass, including stored raw Q and error fallback. Wider disc layouts, physical status and timing remain open.",
+          "rationale": "Live Q/TOC and four shared/separate CUE layouts with stored/virtual pregaps pass; CUE higher indexes reach SRAM in BCD. Physical status and timing remain open.",
           "prior_rationale": "Hard-coded position fields and partial TOC synthesis."
         },
         {
@@ -344,7 +344,7 @@
         }
       ],
       "implementation_status": "Commands, sector routing, double buffers, XA and AUDCTL are implemented.",
-      "verification_status": "Live synthetic Q and full twelve-track TOC pass, including stored raw Q and error fallback. Wider disc layouts, physical status and timing remain open.",
+      "verification_status": "Live Q/TOC and four shared/separate CUE layouts with stored/virtual pregaps pass; CUE higher indexes reach SRAM in BCD. Physical status and timing remain open.",
       "next_action": "Validate seek-only completion and mixed-mode data-track PCM gating; extend image-layout coverage.",
       "raw_percent": 71.25,
       "percent": 70,
@@ -354,7 +354,8 @@
         "src/mame/philips/cdi_dvc_dma_service.h",
         "src/mame/philips/cdicdic.cpp",
         "src/mame/philips/cdicdic_memory.h",
-        "src/mame/philips/cdicdic_state.h"
+        "src/mame/philips/cdicdic_state.h",
+        "src/lib/util/cdrom.cpp"
       ],
       "tests": [
         "tests/emu/machine/scc68070_peripherals.cpp",
@@ -380,7 +381,7 @@
         "Measured double-buffer behavior; no full disc-device campaign.",
         "Audio fixes AUDCTL/playback/sector ownership; physical edges remain.",
         "Both live DMA directions stop safely at 16 KiB and report SCC device bus error; clipping/error policy is emulator safety, not measured silicon behavior.",
-        "Live synthetic Q and full twelve-track TOC pass, including stored raw Q and error fallback. Wider disc layouts, physical status and timing remain open.",
+        "Live Q/TOC and four shared/separate CUE layouts with stored/virtual pregaps pass; CUE higher indexes reach SRAM in BCD. Physical status and timing remain open.",
         "Read failure is bounded; hardware error response incomplete.",
         "Fields are registered; CDIC live transport snapshot fixture missing."
       ],
@@ -393,10 +394,10 @@
         "Error/status fidelity",
         "Active save/load"
       ],
-      "last_reviewed_commit": "ee18320370b6c7e0abfd901bf0deafa543da0d6b",
-      "last_verified_commit": "ee18320370b6c7e0abfd901bf0deafa543da0d6b",
+      "last_reviewed_commit": "39885b7d304ccd7947be45e643a37d7294b84062",
+      "last_verified_commit": null,
       "last_verification_date": "2026-09-07",
-      "verification_basis": "Final local production build/validity, regenerated-source helper/integration and DMA-liveness gates. See MMU and Q checkpoints; no hardware or retail certification. Final CI 34075842095 also passes helper/integration and generator/liveness gates.",
+      "verification_basis": "Current candidate passes local 17-case integration, 219-case helpers, production build/validity and DMA liveness; see Q checkpoint. Hardware and retail remain unverified.",
       "prior_audio_raw_percent": 56.25,
       "last_test_date": "2026-09-07"
     },
@@ -1076,7 +1077,7 @@
           "weight": 15,
           "prior_grade": 1,
           "grade": 3,
-          "rationale": "Live sequential track/pregap/INDEX 01 transitions pass; higher indexes and wider disc formats remain open.",
+          "rationale": "Live shared/separate-file stored/virtual pregaps and CUE indexes through 12 pass; wider formats and physical transition timing remain open.",
           "prior_rationale": "Current Q track/index stay 01 regardless of later track."
         },
         {
@@ -1122,7 +1123,8 @@
         "src/mame/philips/cdiaudio_dsp56001.h",
         "src/mame/philips/cdicdic.cpp",
         "src/mame/philips/cdicdic_state.h",
-        "src/mame/philips/cdidvc.cpp"
+        "src/mame/philips/cdidvc.cpp",
+        "src/lib/util/cdrom.cpp"
       ],
       "tests": [
         "tests/emu/philips/cdi_audio_arithmetic.cpp",
@@ -1143,7 +1145,7 @@
         "Start/stop/read model; no complete pause/seek reference campaign.",
         "Audio 588-frame sector model and pre-start buffer; no live output sample capture.",
         "Audio fixes AUDCTL and 75 Hz events.",
-        "Live sequential track/pregap/INDEX 01 transitions pass; higher indexes and wider disc formats remain open.",
+        "Live shared/separate-file stored/virtual pregaps and CUE indexes through 12 pass; wider formats and physical transition timing remain open.",
         "Track-relative and absolute Q, backward command repositioning and lead-out no-fabrication checks pass; seek-only completion and hardware alignment remain open.",
         "Image flags and response tested.",
         "Synthetic audio/data Q delivery passes; audible output, mixed-mode DAC gating and retail compatibility remain unverified.",
@@ -1159,10 +1161,10 @@
         "Mixed-mode runtime",
         "Physical alignment/servo"
       ],
-      "last_reviewed_commit": "ee18320370b6c7e0abfd901bf0deafa543da0d6b",
-      "last_verified_commit": "ee18320370b6c7e0abfd901bf0deafa543da0d6b",
+      "last_reviewed_commit": "39885b7d304ccd7947be45e643a37d7294b84062",
+      "last_verified_commit": null,
       "last_verification_date": "2026-09-07",
-      "verification_basis": "Final local production build/validity, regenerated-source helper/integration and DMA-liveness gates. See MMU and Q checkpoints; no hardware or retail certification. Final CI 34075842095 also passes helper/integration and generator/liveness gates.",
+      "verification_basis": "Current candidate passes local 17-case integration, 219-case helpers, production build/validity and DMA liveness; see Q checkpoint. Hardware and retail remain unverified.",
       "prior_audio_raw_percent": 48.75,
       "last_test_date": "2026-09-07"
     },
@@ -1196,7 +1198,7 @@
           "weight": 25,
           "prior_grade": 1,
           "grade": 3,
-          "rationale": "Live twelve-track CUE verifies INDEX 00/01, countdown, track-relative reset and continuous absolute MSF; valid stored raw Q preserves higher indexes; generic CUE indexes and wider formats remain open.",
+          "rationale": "Four CUE layouts verify INDEX 00/01 and higher indexes through 12, countdown, relative reset and absolute MSF; valid raw Q overrides metadata. Wider formats and hardware remain open.",
           "prior_rationale": "Hard-coded 01 fields and absolute MSF in relative slots."
         },
         {
@@ -1228,18 +1230,19 @@
           "weight": 10,
           "prior_grade": 0,
           "grade": 2,
-          "rationale": "Synthetic mixed audio/data shared BIN/CUE runs through real CDIC commands, timer and SRAM; other image layouts, hardware and retail remain open.",
+          "rationale": "Four synthetic mixed-mode CUE layouts run through real CDIC commands, timer and SRAM. Generic CHD stored/virtual gaps and padding pass; hardware, multisession and retail remain open.",
           "prior_rationale": "Missing."
         }
       ],
       "implementation_status": "ADR/control, buffer placement, cadence and partial Q/TOC synthesis exist.",
       "verification_status": "Live 45-packet TOC verifies all twelve tracks, triplicate points, absolute starts, first/last track and complete A2 lead-out. Physical lead-in and multisession remain open.",
-      "next_action": "Test generic CUE higher-index normalization and separate-file/virtual pregap ownership; retain physical lead-in/status uncertainty.",
+      "next_action": "Validate stored Q modes 2/3 and multisession inputs; retain physical lead-in/status uncertainty.",
       "raw_percent": 71.25,
       "percent": 70,
       "source": [
         "src/mame/philips/cdicdic.cpp",
-        "src/mame/philips/cdicdic_state.h"
+        "src/mame/philips/cdicdic_state.h",
+        "src/lib/util/cdrom.cpp"
       ],
       "tests": [
         "tests/emu/philips/cdi_q_integration.cpp",
@@ -1252,11 +1255,11 @@
         "docs/cdi_unified_verified_status_20260907.md#q"
       ],
       "known_inaccuracies_and_evidence_gaps": [
-        "Live twelve-track CUE verifies INDEX 00/01, countdown, track-relative reset and continuous absolute MSF; valid stored raw Q preserves higher indexes; generic CUE indexes and wider formats remain open.",
+        "Four CUE layouts verify INDEX 00/01 and higher indexes through 12, countdown, relative reset and absolute MSF; valid raw Q overrides metadata. Wider formats and hardware remain open.",
         "Live 45-packet TOC verifies all twelve tracks, triplicate points, absolute starts, first/last track and complete A2 lead-out. Physical lead-in and multisession remain open.",
         "Independent bitwise ten-byte/inverted CRC oracle passes all 33 delivered packets; existing production CRC needs no change.",
         "Not implemented as faithful delivery.",
-        "Synthetic mixed audio/data shared BIN/CUE runs through real CDIC commands, timer and SRAM; other image layouts, hardware and retail remain open."
+        "Four synthetic mixed-mode CUE layouts run through real CDIC commands, timer and SRAM. Generic CHD stored/virtual gaps and padding pass; hardware, multisession and retail remain open."
       ],
       "remaining_work": [
         "Track/index/relative position",
@@ -1265,10 +1268,10 @@
         "P/R-W/multisession",
         "Disc reference campaign"
       ],
-      "last_reviewed_commit": "ee18320370b6c7e0abfd901bf0deafa543da0d6b",
-      "last_verified_commit": "ee18320370b6c7e0abfd901bf0deafa543da0d6b",
+      "last_reviewed_commit": "39885b7d304ccd7947be45e643a37d7294b84062",
+      "last_verified_commit": null,
       "last_verification_date": "2026-09-07",
-      "verification_basis": "Final local production build/validity, regenerated-source helper/integration and DMA-liveness gates. See MMU and Q checkpoints; no hardware or retail certification. Final CI 34075842095 also passes helper/integration and generator/liveness gates.",
+      "verification_basis": "Current candidate passes local 17-case integration, 219-case helpers, production build/validity and DMA liveness; see Q checkpoint. Hardware and retail remain unverified.",
       "prior_audio_raw_percent": 38.75,
       "last_test_date": "2026-09-07"
     },
@@ -2196,7 +2199,7 @@
           "weight": 15,
           "prior_grade": 1,
           "grade": 3,
-          "rationale": "Synthetic mixed-mode Q and TOC packet cycle pass with logical track starts and full-disc A2. Separate-file gaps, generic indexes and multisession remain open.",
+          "rationale": "Synthetic Q/TOC, four CUE layouts, normalized higher indexes, payload/subcode offsets and truncated-read errors pass. Generic CHD gaps/padding pass; multisession and physical status remain open.",
           "prior_rationale": "Partial synthesis and concrete position defects."
         },
         {
@@ -2204,21 +2207,21 @@
           "weight": 10,
           "prior_grade": 1,
           "grade": 1,
-          "rationale": "Bounded failed reads without accurate error/status machinery.",
-          "prior_rationale": "Bounded failed reads without accurate error/status machinery."
+          "rationale": "Truncated generic payload/subcode reads fail explicitly; physical CDIC error/status recovery remains unmodeled.",
+          "prior_rationale": "Truncated generic payload/subcode reads fail explicitly; physical CDIC error/status recovery remains unmodeled."
         },
         {
           "scope": "Mixed-mode/multisession",
           "weight": 10,
           "prior_grade": 0,
           "grade": 1,
-          "rationale": "One synthetic shared-file mixed-mode disc passes Q delivery; multisession and broader image layouts remain open.",
+          "rationale": "Four shared/separate stored/virtual-gap CUE layouts pass Q delivery; multisession, other containers and mixed-mode PCM output remain open.",
           "prior_rationale": "No retained reference campaign."
         }
       ],
       "implementation_status": "Sector ingress, data/audio filters and command transport model exist.",
-      "verification_status": "Synthetic mixed-mode Q and TOC packet cycle pass with logical track starts and full-disc A2. Separate-file gaps, generic indexes and multisession remain open.",
-      "next_action": "Reproduce generic CUE higher-index and separate-file/virtual pregap behavior before changing shared CD-ROM code.",
+      "verification_status": "Synthetic Q/TOC, four CUE layouts, normalized higher indexes, payload/subcode offsets and truncated-read errors pass. Generic CHD gaps/padding pass; multisession and physical status remain open.",
+      "next_action": "Establish seek-only completion and data-track PCM handoff with controller/output evidence; expand multisession and malformed-image fixtures.",
       "raw_percent": 60.0,
       "percent": 60,
       "source": [
@@ -2227,7 +2230,8 @@
         "src/mame/philips/cdicdic.cpp",
         "src/mame/philips/cdicdic_memory.h",
         "src/mame/philips/cdicdic_state.h",
-        "src/mame/philips/cdimono2.h"
+        "src/mame/philips/cdimono2.h",
+        "src/lib/util/cdrom.cpp"
       ],
       "tests": [
         "tests/emu/philips/cdi_dvc_edge_integration.cpp",
@@ -2249,9 +2253,9 @@
         "Audio distinguishes CD-DA/header validation and endian word paths.",
         "Audio has exhaustive routing helper; complete device/media proof pending.",
         "Read/stop model; seek-only behavior unresolved.",
-        "Synthetic mixed-mode Q and TOC packet cycle pass with logical track starts and full-disc A2. Separate-file gaps, generic indexes and multisession remain open.",
-        "Bounded failed reads without accurate error/status machinery.",
-        "One synthetic shared-file mixed-mode disc passes Q delivery; multisession and broader image layouts remain open."
+        "Synthetic Q/TOC, four CUE layouts, normalized higher indexes, payload/subcode offsets and truncated-read errors pass. Generic CHD gaps/padding pass; multisession and physical status remain open.",
+        "Truncated generic payload/subcode reads fail explicitly; physical CDIC error/status recovery remains unmodeled.",
+        "Four shared/separate stored/virtual-gap CUE layouts pass Q delivery; multisession, other containers and mixed-mode PCM output remain open."
       ],
       "remaining_work": [
         "Sector ingress",
@@ -2261,10 +2265,10 @@
         "Error recovery",
         "Mixed-mode/multisession"
       ],
-      "last_reviewed_commit": "ee18320370b6c7e0abfd901bf0deafa543da0d6b",
-      "last_verified_commit": "ee18320370b6c7e0abfd901bf0deafa543da0d6b",
+      "last_reviewed_commit": "39885b7d304ccd7947be45e643a37d7294b84062",
+      "last_verified_commit": null,
       "last_verification_date": "2026-09-07",
-      "verification_basis": "Final local production build/validity, regenerated-source helper/integration and DMA-liveness gates. See MMU and Q checkpoints; no hardware or retail certification. Final CI 34075842095 also passes helper/integration and generator/liveness gates.",
+      "verification_basis": "Current candidate passes local 17-case integration, 219-case helpers, production build/validity and DMA liveness; see Q checkpoint. Hardware and retail remain unverified.",
       "prior_audio_raw_percent": 50.0,
       "last_test_date": "2026-09-07"
     },
@@ -2816,20 +2820,23 @@
     "date": "2026-09-07"
   },
   "local_verification": {
-    "commit": "ee18320370b6c7e0abfd901bf0deafa543da0d6b",
+    "commit": null,
     "date": "2026-09-07",
     "helper_cases": 219,
     "helper_assertions": 17393781,
-    "integration_cases": 13,
-    "integration_assertions": 2745,
+    "integration_cases": 17,
+    "integration_assertions": 11718,
     "conclusion": "success",
     "production_build": "make -j6 -C build/projects/sdl/mame/gmake-linux config=release64 mame",
     "production_validity": "./mame -validate: exit 0",
     "generated_musashi": "Explicit m68kmake.py regeneration; committed .cpp/.h match exactly",
     "dma_liveness": "GREEN",
-    "commands_document": "docs/cdi_q_checkpoint_20260907.md"
+    "commands_document": "docs/cdi_q_checkpoint_20260907.md",
+    "candidate_base_commit": "39885b7d304ccd7947be45e643a37d7294b84062",
+    "scope": "Current candidate tree; exact code commit follows in documentation certification"
   },
-  "final_ci": {
+  "candidate_base_commit": "39885b7d304ccd7947be45e643a37d7294b84062",
+  "previous_final_ci": {
     "url": "https://github.com/matt-dawidowicz/mame/actions/runs/34075842095",
     "run_id": 34075842095,
     "tested_commit": "ee18320370b6c7e0abfd901bf0deafa543da0d6b",
@@ -2839,5 +2846,9 @@
     "integration_cases": 13,
     "integration_assertions": 2745,
     "execution_date": "2026-09-07"
+  },
+  "final_ci": {
+    "tested_commit": null,
+    "conclusion": "pending_publication"
   }
 }

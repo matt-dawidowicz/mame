@@ -27,7 +27,7 @@ make -j6 -C build/projects/sdl/mame/gmake-linux config=release64 cdiintegrationt
 ```
 
 MAME `get_track_start()` and TOC supply logical INDEX 01 LBAs and pregap lengths.
-Generic `get_track()` deliberately selects the preceding track until INDEX 01;
+At that baseline, generic `get_track()` selects the preceding track until INDEX 01;
 CDIC Q selects the upcoming track during the TOC-defined pregap. Stored pregap
 payload in this shared file remains accessible through the generic sector path.
 The fallback relative clock counts down toward INDEX 01; absolute time stays
@@ -85,7 +85,7 @@ and data-track PCM handoff evidence.
 
 - Validate stored mode-2/3 packets and additional raw-subcode image containers.
 - Wider TOC inputs: audio-only, data-only, CHD padding, multiple sessions and physical lead-in captures.
-- Generic CUE index normalization, separate-file/virtual pregaps and multisession.
+- Multisession and additional image containers; CUE index/file/pregap fixes are recorded below.
 - Seek-only completion, read errors, physical lead-out signaling and servo timing.
 - CD-DA command crossing into data: the existing PCM handoff may play data sectors;
   no DAC assertion or sufficiently specific controller evidence yet supports a fix.
@@ -114,3 +114,63 @@ MAME systems, a sanitizer run or a firmware/retail playthrough.
 Final Q/TOC CI [34075842095](https://github.com/matt-dawidowicz/mame/actions/runs/34075842095)
 also passed on the exact source above: 219 helper cases / 17,393,781 assertions,
 13 integration cases / 2,745 assertions, generated-source freshness and DMA liveness.
+
+## Generic CUE and CHD follow-up — 2026-09-07
+
+Baseline `39885b7d304ccd7947be45e643a37d7294b84062`. The initial three reproduction cases failed **210 / 3,001
+assertions** on unchanged production code. This exposed file-relative INDEX
+positions compared against track-relative time; pregaps assigned to the previous
+track; an extra pregap added to loose-file physical extraction; a FILE-boundary
+offset carried from the previous BIN into a new multi-track BIN; and truncated
+payload/subcode reads returning success. The FILE-boundary error produced an
+invalid huge lead-out through unsigned length subtraction. Fixing the mapping
+and explicit read failures made that parser defect independently visible.
+
+Logical lookup now selects the upcoming track at INDEX 00 and returns a storage
+offset from its actual start (INDEX 00 if stored, INDEX 01 otherwise). Virtual
+gaps take the existing zero-fill path. Physical extraction uses stored offsets
+without a second pregap adjustment. CUE index comparisons add the file-relative
+INDEX 01 origin to elapsed track time; formats lacking higher-index metadata
+continue to report INDEX 01 after the gap. A new BIN inherits no previous BIN
+offset. Short reads return I/O failure; offsets multiply in 64 bits. CDIC uses the
+generic owner/index, encodes higher indexes as BCD, and retains valid stored-Q
+priority and the existing CRC logic.
+
+Generated fixture layouts: shared/stored, separate/stored, separate/virtual,
+shared/virtual. All retain the same logical twelve-track TOC. Payload byte pairs
+encode sector identity to expose wrong offsets despite audio endian conversion.
+The generic case checks boundaries, INDEX 02/11/12, lead-out, raw subcode alignment,
+virtual silence and physical reads. Live CDIC cases inspect 33 SRAM packets per
+run, across metadata/raw-subcode variants; intentionally different stored Q proves
+it still takes priority. Shared-file cooked/bad-CRC/no-Q cases also retain fallback
+coverage. Two files truncated after opening verify failed payload/subcode reads.
+
+An additional generic CHD case creates uncompressed images directly from generated
+bytes, with explicit CHT2 metadata and 0xd7 track-padding bytes. It checks stored
+and virtual gaps, logical versus physical data/subcode reads, and track-boundary
+padding removal. This is not a chdman compression/extraction round-trip, a claim
+of higher-index preservation in CHD metadata, or live CHD/controller coverage.
+Generic cases share the emulator-linked test executable but instantiate the real
+`cdrom_file` directly, without the CDIC fixture or a fake mapper.
+
+```
+make -j6 -C build/projects/sdl/mame/gmake-linux config=release64 cdiintegrationtests cdihelpertests mame
+./cdiintegrationtests "[cue]"
+./cdiintegrationtests
+./cdihelpertests
+./mame -validate
+python3 scripts/cdi_dvc_dma_liveness_audit.py
+python3 src/devices/cpu/m68000/m68kmake.py src/devices/cpu/m68000/m68k_in.lst src/devices/cpu/m68000/m68kops.h src/devices/cpu/m68000/m68kops.cpp
+git diff --exit-code -- src/devices/cpu/m68000/m68kops.h src/devices/cpu/m68000/m68kops.cpp
+```
+
+After: CUE reproduction **3,436 assertions / 3 cases PASS**. Expanded full suite
+**11,718 assertions / 17 cases PASS**; helpers **17,393,781 / 219 PASS**.
+Production CD-i build and validity exit 0; DMA liveness GREEN; generated sources
+unchanged. Existing worksheet grades/percentages are retained: the broader format,
+controller and physical obligations remain open. No sanitizer or full-system
+MAME build, retail playthrough, measured PCM output or hardware fidelity is claimed.
+
+Next: establish seek-only completion and data-track PCM handoff from controller
+and output evidence. Multisession, first-track special gaps, postgaps, mixed-sector
+pregap types, malformed CUEs and other image containers need separate fixtures.

@@ -8,19 +8,31 @@
 namespace
 {
 
-// No retail assets: twelve tracks in a generated shared BIN/CUE. Track 2 has
-// a stored 150-sector index-0 pregap. Tracks 3-12 are Mode 1, copy permitted.
+// No retail assets: twelve tracks in shared/separate BINs, with stored/virtual
+// pregaps. Track 2 INDEX 01 is always LBA 450; tracks 3-12 are Mode 1.
+// Layout: 0 shared/stored, 1 separate/stored, 2 separate/virtual, 3 shared/virtual.
 class cdi_q_disc
 {
 public:
-	cdi_q_disc(int subcode = 0)
+	cdi_q_disc(int subcode = 0, unsigned layout = 0)
 	{
 		m_dir = std::filesystem::temp_directory_path() / ("mame-cdi-q-" + std::to_string(osd_ticks()));
 		REQUIRE(std::filesystem::create_directory(m_dir));
 		std::ofstream bin(m_dir / "disc.bin", std::ios::binary);
 		for (unsigned lba = 0; lba < 1350; ++lba)
 		{
+			if ((layout == 1 && (lba == 300 || lba == 600)) || (layout == 2 && (lba == 450 || lba == 600)))
+			{
+				REQUIRE(bin.good());
+				bin.close();
+				bin.open(m_dir / (lba == 600 ? "data.bin" : "audio.bin"), std::ios::binary);
+			}
+			if (layout >= 2 && lba >= 300 && lba < 450)
+				continue; // virtual pregap consumes logical time, no file bytes
 			std::array<uint8_t, 2352> sector{};
+			// Paired bytes survive the audio sample endian conversion.
+			sector[32] = sector[33] = uint8_t(lba >> 8);
+			sector[34] = sector[35] = uint8_t(lba);
 			if (lba >= 600)
 			{
 				std::fill(sector.begin() + 1, sector.begin() + 11, 0xff);
@@ -65,11 +77,29 @@ public:
 		bin.close();
 		std::ofstream cue(m_dir / "disc.cue");
 		char const *format = subcode == 1 ? " RW" : subcode >= 2 ? " RW_RAW" : "";
+		auto index = [&cue](unsigned number, unsigned frame)
+		{
+			cue << string_format("    INDEX %02u %02u:%02u:%02u\n", number, frame / 4500, frame / 75 % 60, frame % 75);
+		};
 		cue << "FILE \"disc.bin\" BINARY\n"
-			<< "  TRACK 01 AUDIO" << format << "\n    INDEX 01 00:00:00\n"
-			<< "  TRACK 02 AUDIO" << format << "\n    INDEX 00 00:04:00\n    INDEX 01 00:06:00\n";
+			<< "  TRACK 01 AUDIO" << format << "\n";
+		index(1, 0);
+		index(2, 10);
+		if (layout == 1 || layout == 2) cue << "FILE \"audio.bin\" BINARY\n";
+		cue << "  TRACK 02 AUDIO" << format << "\n";
+		if (layout >= 2) cue << "    PREGAP 00:02:00\n";
+		else index(0, layout == 1 ? 0 : 300);
+		unsigned const origin = layout == 0 ? 450 : layout == 1 ? 150 : layout == 2 ? 0 : 300;
+		index(1, origin);
+		for (unsigned i = 2; i <= 12; ++i) index(i, origin + i + 2);
+		if (layout == 1 || layout == 2) cue << "FILE \"data.bin\" BINARY\n";
 		for (unsigned track = 3; track <= 12; ++track)
-			cue << string_format("  TRACK %02u MODE1/2352%s\n    FLAGS DCP\n    INDEX 01 00:%02u:00\n", track, format, track + 5);
+		{
+			cue << string_format("  TRACK %02u MODE1/2352%s\n    FLAGS DCP\n", track, format);
+			unsigned const frame = (layout == 0 ? 600 : layout == 3 ? 450 : 0) + 75 * (track - 3);
+			index(1, frame);
+			if (track == 3) index(2, frame + 2);
+		}
 		REQUIRE(cue.good());
 	}
 
@@ -78,10 +108,21 @@ public:
 		std::error_code error;
 		std::filesystem::remove(m_dir / "disc.cue", error);
 		std::filesystem::remove(m_dir / "disc.bin", error);
+		std::filesystem::remove(m_dir / "audio.bin", error);
+		std::filesystem::remove(m_dir / "data.bin", error);
+		std::filesystem::remove(m_dir / "disc.chd", error);
 		std::filesystem::remove(m_dir, error);
 	}
 
 	std::string path() const { return (m_dir / "disc.cue").string(); }
+	static unsigned expected_index(unsigned lba)
+	{
+		if (lba < 300) return lba < 10 ? 1 : 2;
+		if (lba < 450) return 0;
+		if (lba < 454) return 1;
+		if (lba < 600) return std::min(12U, lba - 452);
+		return lba >= 602 && lba < 675 ? 2 : 1;
+	}
 	static uint8_t bcd(unsigned value) { return (value / 10) * 16 + value % 10; }
 
 private:
@@ -221,9 +262,9 @@ ROM_END
 GAME(2026, cdiqtest, 0, cdi_q_integration, cdi_dma_integration,
 	cdi_q_integration_state, empty_init, ROT0, "MAME", "CD-i synthetic Q transport fixture", 0)
 
-void run_cdi_q_fixture(int subcode, bool toc = false)
+void run_cdi_q_fixture(int subcode, bool toc = false, unsigned layout = 0)
 {
-	cdi_q_disc disc(subcode);
+	cdi_q_disc disc(subcode, layout);
 	emu_options options;
 	options.set_system_name(std::string(GAME_NAME(cdiqtest).name));
 	cdi_dma_test_osd osd;
@@ -269,12 +310,14 @@ void run_cdi_q_fixture(int subcode, bool toc = false)
 			bool const pregap = result.lba < start;
 			unsigned const relative = pregap ? start - result.lba : result.lba - start;
 			unsigned const absolute = result.lba + 150;
-			// Generic get_track assigns the next track's pregap to the preceding
-			// track for sector access. Q ownership is instead specified by the TOC gap.
-			CHECK(result.generic_track == (pregap ? 0 : track - 1));
+			CHECK(result.generic_track == track - 1);
+			CHECK(result.generic_index == cdi_q_disc::expected_index(result.lba));
 			CHECK(result.q[0] == (track <= 2 ? 0x01 : 0x61));
 			CHECK(result.q[1] == cdi_q_disc::bcd(track));
-			CHECK(result.q[2] == (pregap ? 0 : subcode == 2 && track == 1 && result.lba >= 10 ? 2 : 1));
+			bool const stored_q = subcode == 2 && !(layout >= 2 && pregap);
+			unsigned const index = stored_q ? (pregap ? 0 : track == 1 && result.lba >= 10 ? 2 : 1)
+				: cdi_q_disc::expected_index(result.lba);
+			CHECK(result.q[2] == cdi_q_disc::bcd(index));
 			CHECK(result.q[3] == cdi_q_disc::bcd(relative / 4500));
 			CHECK(result.q[4] == cdi_q_disc::bcd(relative / 75 % 60));
 			CHECK(result.q[5] == cdi_q_disc::bcd(relative % 75));
@@ -324,6 +367,154 @@ TEST_CASE("CDIC falls back to metadata when raw subcode omits Q", "[emu][philips
 TEST_CASE("CDIC TOC includes every track and the complete absolute lead-out", "[emu][philips][cdic][q][toc][integration]")
 {
 	run_cdi_q_fixture(0, true);
+}
+
+TEST_CASE("Generic CUE track/index and payload mapping across file and pregap layouts", "[cdrom][cue][integration]")
+{
+	for (unsigned layout = 0; layout < 4; ++layout)
+	{
+		CAPTURE(layout);
+		cdi_q_disc fixture(2, layout);
+		cdrom_file disc(fixture.path());
+		REQUIRE(disc.get_track_start(1) == 450);
+		REQUIRE(disc.get_track_start(2) == 600);
+		REQUIRE(disc.get_track_start(0xaa) == 1350);
+		for (unsigned lba : {0U, 9U, 10U, 299U, 300U, 449U, 450U, 453U, 454U, 463U, 464U, 599U, 600U, 601U, 602U, 674U, 675U, 1349U})
+		{
+			CAPTURE(lba);
+			unsigned const track = lba < 300 ? 0 : lba < 600 ? 1 : 2 + (lba - 600) / 75;
+			CHECK(disc.get_track(lba) == track);
+			CHECK(disc.get_track_index(lba) == cdi_q_disc::expected_index(lba));
+			std::array<uint8_t, 2352> data;
+			data.fill(0xcd);
+			REQUIRE(disc.read_data(lba, data.data(), cdrom_file::CD_TRACK_RAW_DONTCARE));
+			bool const virtual_gap = layout >= 2 && lba >= 300 && lba < 450;
+			if (virtual_gap)
+				CHECK(std::all_of(data.begin(), data.end(), [](uint8_t v) { return v == 0; }));
+			else
+			{
+				CHECK(data[32] == uint8_t(lba >> 8));
+				CHECK(data[34] == uint8_t(lba));
+			}
+			std::array<uint8_t, 96> sub;
+			sub.fill(0xcd);
+			REQUIRE(disc.read_subcode(lba, sub.data()));
+			if (virtual_gap)
+				CHECK(std::all_of(sub.begin(), sub.end(), [](uint8_t v) { return v == 0; }));
+			else
+			{
+				// Q absolute frame byte proves subcode and data use the same sector.
+				uint8_t frame = 0;
+				for (unsigned bit = 72; bit < 80; ++bit) frame = (frame << 1) | ((sub[bit] >> 6) & 1);
+				CHECK(frame == cdi_q_disc::bcd(lba % 75));
+			}
+		}
+		// Physical extraction must include stored gaps and omit virtual gaps.
+		for (unsigned physical : {299U, 300U, 449U, 450U, 599U, 600U, 1199U})
+		{
+			CAPTURE(physical);
+			unsigned const logical = physical + (layout >= 2 && physical >= 300 ? 150 : 0);
+			std::array<uint8_t, 2352> data{};
+			REQUIRE(disc.read_data(physical, data.data(), cdrom_file::CD_TRACK_RAW_DONTCARE, true));
+			CHECK(data[32] == uint8_t(logical >> 8));
+			CHECK(data[34] == uint8_t(logical));
+		}
+	}
+}
+
+TEST_CASE("CDIC carries CUE higher indexes and pregaps across image layouts", "[emu][philips][cdic][q][cue][integration]")
+{
+	for (unsigned layout = 1; layout < 4; ++layout)
+		for (int subcode : {0, 2})
+		{
+			CAPTURE(layout);
+			CAPTURE(subcode);
+			run_cdi_q_fixture(subcode, false, layout);
+		}
+}
+
+TEST_CASE("Generic CD-ROM rejects truncated payload and subcode reads", "[cdrom][cue][integration]")
+{
+	for (bool subcode : {false, true})
+	{
+		CAPTURE(subcode);
+		cdi_q_disc fixture(2);
+		cdrom_file disc(fixture.path());
+		// Truncate after opening so the TOC still declares the final sector.
+		std::filesystem::resize_file(std::filesystem::path(fixture.path()).parent_path() / "disc.bin",
+			uint64_t(1349) * 2448 + (subcode ? 2352 + 32 : 32));
+		std::array<uint8_t, 2352> data{};
+		if (subcode) CHECK_FALSE(disc.read_subcode(1349, data.data()));
+		else CHECK_FALSE(disc.read_data(1349, data.data(), cdrom_file::CD_TRACK_RAW_DONTCARE));
+	}
+}
+
+TEST_CASE("Generic CHD mapping preserves stored gaps and skips per-track padding", "[cdrom][chd][integration]")
+{
+	for (bool virtual_gap : {false, true})
+	{
+		CAPTURE(virtual_gap);
+		cdi_q_disc fixture(2, virtual_gap ? 3 : 0);
+		auto const directory = std::filesystem::path(fixture.path()).parent_path();
+		std::ifstream bin(directory / "disc.bin", std::ios::binary);
+		chd_file chd;
+		chd_codec_type const compression[4] = { CHD_CODEC_NONE };
+		unsigned const storage_frames = virtual_gap ? 1212 : 1360;
+		REQUIRE_FALSE(chd.create((directory / "disc.chd").string(), uint64_t(storage_frames) * 2448, 4 * 2448, 2448, compression));
+		unsigned storage = 0;
+		for (unsigned track = 0; track < 12; ++track)
+		{
+			unsigned const frames = track == 0 ? 300 : track == 1 ? (virtual_gap ? 150 : 300) : 75;
+			std::string const metadata = string_format(
+				"TRACK:%u TYPE:%s SUBTYPE:RW_RAW FRAMES:%u PREGAP:%u PGTYPE:%s PGSUB:RW_RAW POSTGAP:0",
+				track + 1, track < 2 ? "AUDIO" : "MODE1_RAW", frames,
+				track == 1 ? 150 : 0, virtual_gap ? "AUDIO" : "VAUDIO");
+			REQUIRE_FALSE(chd.write_metadata(CDROM_TRACK_METADATA2_TAG, track, metadata));
+			for (unsigned frame = 0; frame < (frames + 3) / 4 * 4; ++frame)
+			{
+				std::array<uint8_t, 2448> data;
+				data.fill(0xd7); // padding must never be returned as track data
+				if (frame < frames)
+				{
+					bin.read(reinterpret_cast<char *>(data.data()), data.size());
+					REQUIRE(bin.good());
+				}
+				REQUIRE_FALSE(chd.write_bytes(uint64_t(storage++) * data.size(), data.data(), data.size()));
+			}
+		}
+		REQUIRE(storage == storage_frames);
+		cdrom_file disc(&chd);
+		REQUIRE(disc.get_track_start(1) == 450);
+		REQUIRE(disc.get_track_start(0xaa) == 1350);
+		for (unsigned logical : {299U, 300U, 449U, 450U, 599U, 600U, 674U, 675U, 1275U, 1349U})
+		{
+			CAPTURE(logical);
+			unsigned const track = logical < 300 ? 0 : logical < 600 ? 1 : 2 + (logical - 600) / 75;
+			CHECK(disc.get_track(logical) == track);
+			bool const pregap = logical >= 300 && logical < 450;
+			// CHD track metadata stores INDEX 00/01 only; raw Q is separate.
+			CHECK(disc.get_track_index(logical) == (pregap ? 0 : 1));
+			std::array<uint8_t, 2352> data{};
+			REQUIRE(disc.read_data(logical, data.data(), cdrom_file::CD_TRACK_RAW_DONTCARE));
+			CHECK(data[32] == (virtual_gap && pregap ? 0 : uint8_t(logical >> 8)));
+			CHECK(data[34] == (virtual_gap && pregap ? 0 : uint8_t(logical)));
+			std::array<uint8_t, 96> sub{};
+			REQUIRE(disc.read_subcode(logical, sub.data()));
+			uint8_t frame = 0;
+			for (unsigned bit = 72; bit < 80; ++bit) frame = (frame << 1) | ((sub[bit] >> 6) & 1);
+			CHECK(frame == (virtual_gap && pregap ? 0 : cdi_q_disc::bcd(logical % 75)));
+			if (!(virtual_gap && pregap))
+			{
+				unsigned const physical = logical - (virtual_gap && logical >= 450 ? 150 : 0);
+				std::array<uint8_t, 2352> physical_data{};
+				REQUIRE(disc.read_data(physical, physical_data.data(), cdrom_file::CD_TRACK_RAW_DONTCARE, true));
+				CHECK(data == physical_data);
+				std::array<uint8_t, 96> physical_sub{};
+				REQUIRE(disc.read_subcode(physical, physical_sub.data(), true));
+				CHECK(sub == physical_sub);
+			}
+		}
+	}
 }
 
 } // anonymous namespace
