@@ -575,3 +575,14 @@ Before merging any substantive audio batch:
 ## Definition of 100%
 
 For this campaign, 100% does not mean perfection by assertion. It means there is no known unresolved implementation defect in the scoped subsystem, all known edge cases are covered by deterministic regression tests, and hardware-specific behavior is either validated from authoritative evidence or clearly isolated/documented as an evidence limitation rather than silently guessed.
+
+## MPEG sparse-ingress checkpoint — 2026-09-07
+
+Partial-frame audio PTS retention and later picture PTS association are fixed.
+Original full-size I/P/B and stereo references cover starvation/refill, absent,
+late and future refill timestamps, forward/backward video PTS and 33-bit wrap.
+Fifteen scheduled snapshots repeat fields, PCM, callback times and IRQ/status.
+See the [ingress checkpoint](cdi_ingress_pts_checkpoint_20260907.md) for final
+gate certification and the +1 sample MAME boundary contract. Grades remain
+unchanged. Queued-PCM timestamp discontinuities, independent SCR jumps and
+physical/retail output remain open.

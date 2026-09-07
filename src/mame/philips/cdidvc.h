@@ -99,7 +99,7 @@ private:
 	void video_decoder_flush();
 	void video_picture_event(uint8_t picture_type);
 	void video_picture_events_flush();
-	uint16_t video_picture_events_pop();
+	uint16_t video_picture_events_pop(uint64_t &pts);
 
 	// Provisional MPEG-RAM compatibility mechanism.
 	void mpeg_ram_compat_reset();
@@ -268,6 +268,8 @@ private:
 	size_t m_audio_pcm_read = 0;
 	uint32_t m_audio_output_rate = 48000;
 	uint64_t m_audio_wait_samples = 0;
+	uint64_t m_audio_pending_pts90 = 0;
+	bool m_audio_pending_pts_valid = false;
 	uint64_t m_audio_silence_frames = 0;
 	uint32_t m_audio_output_frames = 0;
 	uint32_t m_audio_output_nonzero = 0;
@@ -314,7 +316,14 @@ private:
 	uint64_t m_video_pts_anchor90 = 0;
 	uint64_t m_video_backend_anchor90 = 0;
 	bool m_video_pts_anchor_valid = false;
-	bool m_video_pts_pending = false;
+	// PTS belongs to the first picture start code beginning in its PES payload.
+	// Preserve the source packet of all four prefix bytes across fragmented DMA/PES.
+	uint64_t m_video_packet_serial = 0;
+	uint64_t m_video_packet_pts = UINT64_MAX;
+	std::array<uint64_t, 4> m_video_prefix_pts{};
+	std::array<uint64_t, 4> m_video_prefix_serial{};
+	uint64_t m_video_picture_pts = UINT64_MAX;
+	uint64_t m_video_reference_pts = UINT64_MAX;
 
 	std::vector<uint32_t> m_video_present_frame;
 	uint16_t m_video_present_width = 0;
@@ -379,7 +388,8 @@ private:
 	uint16_t m_video_picture_marker_interrupts = 0;
 	uint16_t m_video_reference_interrupts = 0;
 	bool m_video_reference_valid = false;
-	std::vector<uint16_t> m_video_picture_event_queue;
+	// Packed host metadata: interrupts [15:0], PTS-valid [16], PTS [49:17].
+	std::vector<uint64_t> m_video_picture_event_queue;
 	size_t m_video_picture_event_read = 0;
 	uint32_t m_video_decoded_frames = 0;
 	uint16_t m_video_width = 0;
@@ -426,7 +436,7 @@ private:
 	std::array<uint16_t, cdi_dvc::SAVE_VIDEO_QUEUE_FRAMES> m_save_video_queue_interrupts{};
 	std::array<uint64_t, cdi_dvc::SAVE_VIDEO_QUEUE_FRAMES> m_save_video_queue_timestamp90{};
 	std::array<uint8_t, cdi_dvc::SAVE_VIDEO_QUEUE_FRAMES> m_save_video_queue_timestamp_valid{};
-	std::array<uint16_t, cdi_dvc::SAVE_PICTURE_EVENTS> m_save_picture_events{};
+	std::array<uint64_t, cdi_dvc::SAVE_PICTURE_EVENTS> m_save_picture_events{};
 	std::array<uint64_t, cdi_dvc::SAVE_VIDEO_REPLAY_PUMP_EVENTS> m_save_video_replay_pump_events{};
 
 	// 512 KiB MPEG/DVC RAM at E80000-EFFFFF.

@@ -28,7 +28,111 @@ class cdi_motion_state : public cdi_state
 	}
 	unsigned initial_profile = 0, long_seconds = 0;
 	bool capacity_mode = false, synchronized_branches = false, deferred_video = false;
-	unsigned display_mode = 0;
+	unsigned display_mode = 0, ingress_mode = 0;
+	struct delivery
+	{
+		unsigned ms;
+		bool audio;
+		std::vector<uint8_t> bytes;
+	};
+	std::vector<delivery> deliveries;
+	std::vector<int64_t> presentation_times;
+	void prepare_ingress()
+	{
+		// Timestamp origin is independent of delivery time. Mode 3 crosses 33-bit wrap.
+		uint64_t const origin = ingress_mode == 3 ? (1ULL << 33) - 18000 : 0;
+		auto timestamp = [](std::vector<uint8_t> &bytes, uint64_t value)
+		{
+			bytes.insert(bytes.end(), {uint8_t(0x21 | ((value >> 29) & 14)), uint8_t(value >> 22),
+									   uint8_t((value >> 14) | 1), uint8_t(value >> 7), uint8_t((value << 1) | 1)});
+		};
+		for (bool audio : {false, true})
+		{
+			std::vector<uint8_t> pack{0, 0, 1, 0xba};
+			timestamp(pack, origin);
+			pack.insert(pack.end(), {0x80, 0, 1});
+			deliveries.push_back({0, audio, pack});
+		}
+		auto pes = [&](bool audio, uint8_t const *data, unsigned size, int64_t pts, unsigned ms, bool fragmented)
+		{
+			unsigned const length = size + (pts >= 0 ? 5 : 1);
+			std::vector<uint8_t> bytes{0, 0, 1, uint8_t(audio ? 0xc0 : 0xe0), uint8_t(length >> 8), uint8_t(length)};
+			if (pts >= 0)
+				timestamp(bytes, origin + pts);
+			else
+				bytes.push_back(0x0f);
+			bytes.insert(bytes.end(), data, data + size);
+			if (fragmented)
+			{
+				// DMA splits stay word aligned; only the complete PES may have scan padding.
+				deliveries.push_back({ms, audio, {bytes.begin(), bytes.begin() + 8}});
+				deliveries.push_back({ms + 100, audio, {bytes.begin() + 8, bytes.end()}});
+			}
+			else
+				deliveries.push_back({ms, audio, bytes});
+		};
+		auto const &es = video[0];
+		std::vector<unsigned> starts;
+		for (unsigned i = 0; i + 6 < es.size(); ++i)
+			if (!es[i] && !es[i + 1] && es[i + 2] == 1 && es[i + 3] == 0)
+				starts.push_back(i);
+		unsigned gop_base = 0;
+		presentation_times.resize(formats[0].frames);
+		for (unsigned i = 0; i < starts.size(); ++i)
+		{
+			unsigned const tr = (unsigned(es[starts[i] + 4]) << 2) | (es[starts[i] + 5] >> 6);
+			if (i && tr == 0)
+				gop_base = i;
+			unsigned const frame = gop_base + tr;
+			int64_t const pts = 27000 + frame * 3600 +
+								(ingress_mode >= 2 ? (frame >= 24	? 27000
+													  : frame >= 12 ? 45000
+																	: 0)
+												   : 0);
+			presentation_times.at(frame) = pts;
+			unsigned const begin = i ? starts[i] : 0;
+			unsigned const end = i + 1 < starts.size() ? starts[i + 1] : es.size();
+			// The first closed GOP contains ten pictures. The final B and reference
+			// await the next picture delimiter/reference; resume before queue catch-up.
+			unsigned const ms = ingress_mode == 1 && i >= 10 ? 1200 : 200;
+			unsigned first = begin;
+			if (!i)
+			{
+				// Save inside the PES timestamp, then after only the first byte of the
+				// picture prefix. Its other three bytes begin a different PES at 200 ms.
+				first = starts[0] + 1;
+				pes(false, es.data(), first, pts, 0, true);
+			}
+			for (unsigned off = first; off < end; off += 8000)
+				pes(false, es.data() + off, std::min(8000U, end - off),
+					i && off == begin && (ingress_mode != 3 || frame == 12 || frame == 24) ? pts : -1, ms, false);
+		}
+		unsigned offset = 0;
+		for (unsigned i = 0; i < 98; ++i)
+		{
+			unsigned const size = 144 * 192000 / 44100 + ((cdi_av_reference::AUDIO[offset + 2] >> 1) & 1);
+			// A timestamped partial first frame must keep its 300 ms start after refill.
+			if (!i)
+			{
+				pes(true, cdi_av_reference::AUDIO.data(), 200, 27000, 0, false);
+				pes(true, cdi_av_reference::AUDIO.data() + 200, size - 200, -1, 100, false);
+			}
+			else
+				pes(true, cdi_av_reference::AUDIO.data() + offset, size,
+					i == 49 ? (ingress_mode == 1   ? -1
+							   : ingress_mode == 2 ? 171000
+												   : 216000)
+							: -1,
+					i < 49	  ? 100
+					: i == 49 ? 1900
+							  : 2000,
+					i == 49);
+			offset += size;
+		}
+		std::stable_sort(deliveries.begin(), deliveries.end(),
+						 [](auto const &a, auto const &b) { return a.ms < b.ms; });
+	}
+
 	std::array<cdi_motion_reference::profile, 3> formats;
 	std::vector<unsigned> branch_times;
 	std::string directory;
@@ -36,7 +140,7 @@ class cdi_motion_state : public cdi_state
 	std::array<std::vector<uint8_t>, 3> video, rgb, types;
 	std::vector<uint8_t> pcm, steady_pcm;
 	std::vector<std::string> failures;
-	bool completed = false;
+	bool completed = false, queue_telemetry_seen = false;
 	unsigned saves = 0, loads = 0, fields = 0, restored_fields = 0, max_rgb_error = 0, max_pcm_error = 0,
 			 max_native_error = 0;
 	uint64_t reference_pixels = 0, reference_samples = 0, restored_samples = 0, pcm_error_squared = 0,
@@ -77,7 +181,19 @@ class cdi_motion_state : public cdi_state
 				for (unsigned boundary : branch_times)
 					if (pos > int64_t(boundary) * 44100 / 1000)
 						relative = pos - (int64_t(boundary) * 44100 / 1000 + 1 + 4410);
-			bool const active = relative >= 0 && (long_seconds || relative < (synchronized_branches ? 1 : 2) * 112896);
+			if (ingress_mode)
+			{
+				// Refill updates through the current sample before queuing a future wait.
+				// Match the existing stream-boundary contract: the next sample is +1.
+				--relative;
+				int64_t const refill_start = (ingress_mode == 3 ? 2400 : 2000) * 44100 / 1000 + 1;
+				if (pos >= refill_start)
+					relative = pos - refill_start + 56448;
+				else if (relative >= 56448)
+					relative = -1;
+			}
+			bool const active =
+				relative >= 0 && (long_seconds || relative < (synchronized_branches || ingress_mode ? 1 : 2) * 112896);
 			auto const &reference = long_seconds && relative >= 112896 ? steady_pcm : pcm;
 			for (unsigned ch = 0; ch < 2; ++ch)
 			{
@@ -111,13 +227,21 @@ class cdi_motion_state : public cdi_state
 	void machine_start() override
 	{
 		cdi_state::machine_start();
-		if (capacity_mode)
+		if (capacity_mode || ingress_mode)
 			machine().add_logerror_callback(
 				[this](char const *message)
 				{
-					if (std::strstr(message, "DVC_SAVE_STATE"))
+					if (ingress_mode && std::strstr(message, "DVC_PRESENTATION_QUEUE_TELEMETRY"))
+					{
+						queue_telemetry_seen = true;
 						std::fputs(message, stdout);
-					if (std::strstr(message, "DVC_SAVE_STATE_SNAPSHOT"))
+						expect(std::strstr(message, "decoded=36 ") && std::strstr(message, "max_depth=26 ") &&
+								   std::strstr(message, "fallback=0 ") && std::strstr(message, "queued=0"),
+							   "bounded decode-ahead queue did not fill and drain with timestamped output");
+					}
+					if (capacity_mode && std::strstr(message, "DVC_SAVE_STATE"))
+						std::fputs(message, stdout);
+					if (capacity_mode && std::strstr(message, "DVC_SAVE_STATE_SNAPSHOT"))
 					{
 						unsigned const index = saves;
 						expect(index < 4, "unexpected capacity snapshot");
@@ -129,6 +253,7 @@ class cdi_motion_state : public cdi_state
 				});
 		m_timer = timer_alloc(FUNC(cdi_motion_state::step), this);
 		save_item(NAME(m_ms));
+		save_item(NAME(m_next_delivery));
 		save_item(NAME(m_branch_ms));
 		save_item(NAME(m_branch));
 		save_item(NAME(m_paused));
@@ -291,6 +416,11 @@ class cdi_motion_state : public cdi_state
 				   "current audio stream changed before requested header current=" +
 					   std::to_string(space.read_word(0xe0300a)) + " requested=" + std::to_string(stream));
 		}
+		if (ingress_mode)
+		{
+			space.write_word(0xe040c0, 0x0008);
+			return;
+		}
 		int const pts = m_branch ? (synchronized_branches ? 9000 : 0) : 27000;
 		if (deferred_video && !m_branch)
 			packet(false, video[profile].data(), 32, pts, stream);
@@ -316,6 +446,15 @@ class cdi_motion_state : public cdi_state
 				m_field_time - (m_branch ? int64_t(m_branch_ms) * 90 + (synchronized_branches ? 9000 : 0) : 27000);
 			int const due = elapsed < 0 ? -1 : int(elapsed * p.rate_num / (90000ULL * p.rate_den));
 			m_field_frame = m_paused ? m_last_frame : (long_seconds ? due : std::min<int>(due, p.frames - 1));
+			if (ingress_mode)
+			{
+				int due_frame = -1;
+				for (unsigned i = 0; i < presentation_times.size() && presentation_times[i] <= m_field_time; ++i)
+					due_frame = i;
+				if (ingress_mode == 1 && m_field_time < 1200 * 90)
+					due_frame = std::min(due_frame, 7);
+				m_field_frame = due_frame;
+			}
 			m_last_frame = m_field_frame;
 		}
 		if (clip.max_y < bottom || m_field_time < 9000)
@@ -402,9 +541,19 @@ class cdi_motion_state : public cdi_state
 			m_started = true;
 			display_setup(space);
 			begin_scene(space);
+			while (m_next_delivery < deliveries.size() && !deliveries[m_next_delivery].ms)
+			{
+				auto const &d = deliveries[m_next_delivery++];
+				feed(d.audio, d.bytes);
+			}
 			return;
 		}
 		++m_ms;
+		while (m_next_delivery < deliveries.size() && deliveries[m_next_delivery].ms <= m_ms)
+		{
+			auto const &d = deliveries[m_next_delivery++];
+			feed(d.audio, d.bytes);
+		}
 		if (deferred_video && m_ms == 100)
 			video_chunk(initial_profile, -1, 0, 32);
 		if (long_seconds && (max_rgb_error > 12 || max_pcm_error > 600 || max_native_error || !failures.empty()))
@@ -432,19 +581,19 @@ class cdi_motion_state : public cdi_state
 		}
 		else
 		{
-			if (m_ms == 875)
+			if (!ingress_mode && m_ms == 875)
 			{
 				space.write_word(0xe040c0, 0x0010);
 				m_paused = true;
 			}
-			if (m_ms == 1035)
+			if (!ingress_mode && m_ms == 1035)
 			{
 				space.write_word(0xe040c0, 0x0020);
 				m_paused = false;
 			}
 			auto const &screen = *subdevice<screen_device>("screen");
 			bool const blank = screen.vpos() < screen.visible_area().min_y;
-			if (m_branch < (synchronized_branches ? 2U : 1U) && m_ms >= 1600 * (m_branch + 1) && blank)
+			if (!ingress_mode && m_branch < (synchronized_branches ? 2U : 1U) && m_ms >= 1600 * (m_branch + 1) && blank)
 			{
 				if (!m_pass)
 					branch_times.push_back(m_ms);
@@ -510,6 +659,7 @@ class cdi_motion_state : public cdi_state
 		}
 	}
 	emu_timer *m_timer = nullptr;
+	unsigned m_next_delivery = 0;
 	unsigned m_ms = 0, m_branch_ms = 0, m_branch = 0, m_pass = 0, m_field_profile = 0, m_video_chunks = 1,
 			 m_audio_chunks = 1;
 	int m_field_frame = -1, m_last_frame = -1;
@@ -530,7 +680,7 @@ GAME(2026, cdimotion, 0, motion, cdi_dma_integration, cdi_motion_state, empty_in
 	 "CD-i composed moving A/V fixture", MACHINE_SUPPORTS_SAVE)
 
 void run_cdi_motion(unsigned profile, unsigned seconds, bool capacity = false, bool full_size = false,
-					unsigned mode = 0, bool synchronized = false, bool deferred = false)
+					unsigned mode = 0, bool synchronized = false, bool deferred = false, unsigned ingress = 0)
 {
 	cdi_q_disc temp;
 	emu_options options;
@@ -548,6 +698,7 @@ void run_cdi_motion(unsigned profile, unsigned seconds, bool capacity = false, b
 	state.display_mode = mode;
 	state.synchronized_branches = synchronized;
 	state.deferred_video = deferred;
+	state.ingress_mode = ingress;
 	std::copy(std::begin(cdi_motion_reference::PROFILES), std::end(cdi_motion_reference::PROFILES),
 			  state.formats.begin());
 	state.directory = std::filesystem::path(temp.path()).parent_path().string();
@@ -583,17 +734,23 @@ void run_cdi_motion(unsigned profile, unsigned seconds, bool capacity = false, b
 	}
 	if (deferred)
 		state.snapshots = {50, 900, 1600};
+	if (ingress)
+	{
+		state.snapshots = {50, 150, 1800, 1950, 2300};
+		state.prepare_ingress();
+	}
 	state.pcm = cdi_av_inflate(cdi_av_reference::PCM_Z, 112896 * 4);
 	state.steady_pcm = cdi_av_inflate(cdi_motion_reference::PCM_STEADY_Z, 112896 * 4);
 	cdi_motion_capture = &state;
 	int const error = machine.run(true);
 	cdi_motion_capture = nullptr;
 	manager.set_machine(nullptr);
-	std::printf("MOTION_METRICS profile=%u full=%u mode=%u sync=%u deferred=%u seconds=%u saves=%u loads=%u fields=%u "
+	std::printf("MOTION_METRICS ingress=%u profile=%u full=%u mode=%u sync=%u deferred=%u seconds=%u saves=%u loads=%u "
+				"fields=%u "
 				"restored_fields=%u samples=%llu restored_samples=%llu decoded_values=%llu rgb_squared=%llu "
 				"pcm_squared=%llu max_rgb=%u max_pcm=%u native=%u\n",
-				profile, full_size, mode, synchronized, deferred, seconds, state.saves, state.loads, state.fields,
-				state.restored_fields, (unsigned long long)state.reference_samples,
+				ingress, profile, full_size, mode, synchronized, deferred, seconds, state.saves, state.loads,
+				state.fields, state.restored_fields, (unsigned long long)state.reference_samples,
 				(unsigned long long)state.restored_samples, (unsigned long long)state.decoded_values,
 				(unsigned long long)state.rgb_error_squared, (unsigned long long)state.pcm_error_squared,
 				state.max_rgb_error, state.max_pcm_error, state.max_native_error);
@@ -622,6 +779,8 @@ void run_cdi_motion(unsigned profile, unsigned seconds, bool capacity = false, b
 	}
 	REQUIRE(error == EMU_ERR_NONE);
 	REQUIRE(state.completed);
+	if (ingress)
+		CHECK(state.queue_telemetry_seen);
 	CHECK(state.max_rgb_error <= 12);
 	CHECK(state.max_pcm_error <= 600);
 	CHECK(state.max_native_error == 0);
@@ -667,6 +826,13 @@ TEST_CASE("DVC saves retain the first picture timestamp across incomplete PES in
 		  "[emu][philips][dvc][motion-pending-pts][integration]")
 {
 	run_cdi_motion(0, 0, false, true, 0, false, true);
+}
+
+TEST_CASE("DVC sparse PES refill and discontinuous wrapped timestamps preserve composed AV and saves",
+		  "[emu][philips][dvc][motion-ingress][integration]")
+{
+	for (unsigned mode = 1; mode <= 3; ++mode)
+		run_cdi_motion(0, 0, false, true, 0, false, false, mode);
 }
 
 TEST_CASE("DVC composed moving video and changing audio remain continuous for thirty minutes",

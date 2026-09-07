@@ -179,6 +179,8 @@ void cdi_dvc_device::device_start()
 	// block above. Dynamic containers are handled by presave/postload mirrors.
 	save_item(NAME(m_audio_output_rate));
 	save_item(NAME(m_audio_wait_samples));
+	save_item(NAME(m_audio_pending_pts90));
+	save_item(NAME(m_audio_pending_pts_valid));
 	save_item(NAME(m_audio_silence_frames));
 	save_item(NAME(m_audio_output_frames));
 	save_item(NAME(m_audio_output_nonzero));
@@ -217,7 +219,12 @@ void cdi_dvc_device::device_start()
 	save_item(NAME(m_video_pts_anchor90));
 	save_item(NAME(m_video_backend_anchor90));
 	save_item(NAME(m_video_pts_anchor_valid));
-	save_item(NAME(m_video_pts_pending));
+	save_item(NAME(m_video_packet_serial));
+	save_item(NAME(m_video_packet_pts));
+	save_item(NAME(m_video_prefix_pts));
+	save_item(NAME(m_video_prefix_serial));
+	save_item(NAME(m_video_picture_pts));
+	save_item(NAME(m_video_reference_pts));
 	save_item(NAME(m_video_present_width));
 	save_item(NAME(m_video_present_height));
 	save_item(NAME(m_video_present_generation));
@@ -1400,6 +1407,7 @@ void cdi_dvc_device::audio_decoder_stream_change()
 void cdi_dvc_device::audio_decoder_recreate(
 		bool reset_output, bool reset_event_counters)
 {
+	m_audio_pending_pts_valid = false;
 	if (reset_output)
 		audio_output_reset();
 	audio_decoder_destroy();
@@ -1595,20 +1603,24 @@ void cdi_dvc_device::audio_decoder_pump()
 	if (queue_was_empty)
 	{
 		m_audio_wait_samples = 0;
-		if (m_mpeg_schedule_valid[MPEG_FMA] && m_mpeg_schedule_play_delta45[MPEG_FMA] > 0)
+		if (m_audio_pending_pts_valid && m_mpeg_have_scr[MPEG_FMA])
 		{
-			uint64_t const ticks45 = uint64_t(uint32_t(m_mpeg_schedule_play_delta45[MPEG_FMA]));
-			m_audio_wait_samples = (ticks45 * m_audio_output_rate + 44999U) / 45000U;
+			// Refill may occur well after the timestamp-bearing PES completed.
+			int32_t const ticks45 = cdi_dvc::mpeg_dclk_delta(
+					m_audio_pending_pts90, current_mpeg_clock90(MPEG_FMA));
+			if (ticks45 > 0)
+				m_audio_wait_samples = (uint64_t(ticks45) * m_audio_output_rate + 44999U) / 45000U;
 		}
 	}
 
 	++m_audio_queue_events;
-	if (m_mpeg_packet_have_pts[MPEG_FMA])
+	if (m_audio_pending_pts_valid)
 	{
-		m_av_last_audio_pts90 = m_mpeg_packet_pts[MPEG_FMA];
+		m_av_last_audio_pts90 = m_audio_pending_pts90;
 		m_av_audio_pts_valid = true;
 		av_clock_observe();
 	}
+	m_audio_pending_pts_valid = false;
 	uint32_t const pending = uint32_t((m_audio_pcm_queue.size() - m_audio_pcm_read) / 2);
 	LOGMASKED(LOG_AUDIO,
 			"%s: DVC AUDIO queue event=%u added=%u pending=%u rate=%u play45=%d wait=%llu\n",
@@ -1643,7 +1655,12 @@ void cdi_dvc_device::video_frame_clear()
 	m_video_pts_anchor90 = 0;
 	m_video_backend_anchor90 = 0;
 	m_video_pts_anchor_valid = false;
-	m_video_pts_pending = false;
+	m_video_packet_serial = 0;
+	m_video_packet_pts = UINT64_MAX;
+	m_video_prefix_pts.fill(UINT64_MAX);
+	m_video_prefix_serial.fill(0);
+	m_video_picture_pts = UINT64_MAX;
+	m_video_reference_pts = UINT64_MAX;
 	m_video_present_frame.clear();
 	m_video_present_width = 0;
 	m_video_present_height = 0;
@@ -1985,6 +2002,13 @@ void cdi_dvc_device::video_decoder_feed(uint8_t data)
 			video_picture_event((data >> 3) & 0x07);
 	}
 
+	for (unsigned i = 0; i < 3; ++i)
+	{
+		m_video_prefix_pts[i] = m_video_prefix_pts[i + 1];
+		m_video_prefix_serial[i] = m_video_prefix_serial[i + 1];
+	}
+	m_video_prefix_pts[3] = m_video_packet_pts;
+	m_video_prefix_serial[3] = m_video_packet_serial;
 	m_video_es_prefix = ((m_video_es_prefix << 8) | data) & 0xffffffffU;
 
 	if (m_video_es_prefix == 0x000001b3U)
@@ -2018,6 +2042,9 @@ void cdi_dvc_device::video_decoder_feed(uint8_t data)
 	}
 	else if (m_video_es_prefix == 0x00000100U)
 	{
+		m_video_picture_pts = m_video_prefix_pts[0];
+		if (m_video_prefix_serial[0] == m_video_packet_serial)
+			m_video_packet_pts = UINT64_MAX;
 		++m_video_picture_headers;
 		m_video_picture_header_bytes = 2;
 		// More picture data after a flushed sequence means the previously
@@ -2057,10 +2084,14 @@ void cdi_dvc_device::video_picture_event(uint8_t picture_type)
 
 	cdi_dvc::picture_event_reorder_result const result = cdi_dvc::reorder_picture_events(
 			{ m_video_reference_interrupts, m_video_reference_valid }, picture_type, picture_interrupts);
+	uint64_t const output_pts = picture_type == 3 ? m_video_picture_pts : m_video_reference_pts;
+	if (picture_type == 1 || picture_type == 2)
+		m_video_reference_pts = m_video_picture_pts;
 	m_video_reference_interrupts = result.state.reference_interrupts;
 	m_video_reference_valid = result.state.reference_valid;
 	if (result.output_valid)
-		m_video_picture_event_queue.push_back(result.output_interrupts);
+		m_video_picture_event_queue.push_back(uint64_t(result.output_interrupts)
+				| (output_pts != UINT64_MAX ? ((output_pts << 17) | 0x10000U) : 0));
 }
 
 void cdi_dvc_device::video_picture_events_flush()
@@ -2070,11 +2101,14 @@ void cdi_dvc_device::video_picture_events_flush()
 	m_video_reference_interrupts = result.state.reference_interrupts;
 	m_video_reference_valid = result.state.reference_valid;
 	if (result.output_valid)
-		m_video_picture_event_queue.push_back(result.output_interrupts);
+		m_video_picture_event_queue.push_back(uint64_t(result.output_interrupts)
+				| (m_video_reference_pts != UINT64_MAX ? ((m_video_reference_pts << 17) | 0x10000U) : 0));
+	m_video_reference_pts = UINT64_MAX;
 }
 
-uint16_t cdi_dvc_device::video_picture_events_pop()
+uint16_t cdi_dvc_device::video_picture_events_pop(uint64_t &pts)
 {
+	pts = UINT64_MAX;
 	if (m_video_picture_event_read >= m_video_picture_event_queue.size())
 	{
 		LOGMASKED(LOG_VIDEO, "%s: DVC VIDEO picture-event metadata underflow\n",
@@ -2082,7 +2116,10 @@ uint16_t cdi_dvc_device::video_picture_events_pop()
 		return 0;
 	}
 
-	uint16_t const interrupts = m_video_picture_event_queue[m_video_picture_event_read++];
+	uint64_t const metadata = m_video_picture_event_queue[m_video_picture_event_read++];
+	if (metadata & 0x10000U)
+		pts = metadata >> 17;
+	uint16_t const interrupts = uint16_t(metadata);
 	if (m_video_picture_event_read == m_video_picture_event_queue.size())
 	{
 		m_video_picture_event_queue.clear();
@@ -2156,17 +2193,18 @@ void cdi_dvc_device::video_decoder_pump(bool end_signalled)
 		queued.width = uint16_t(frame->width);
 		queued.height = uint16_t(frame->height);
 		queued.generation = m_video_decoded_frames;
-		queued.interrupts = video_picture_events_pop();
+		uint64_t picture_pts;
+		queued.interrupts = video_picture_events_pop(picture_pts);
 
 		// PL_MPEG advances its raw-video decoder clock by one coded-frame
-		// duration per returned frame.  Use only that *relative* cadence here,
-		// anchored once to the first video PES PTS seen after decoder reset.
+		// duration per returned frame. Each explicitly timestamped picture renews
+		// the anchor in presentation order; untimestamped pictures retain cadence.
 		// This is an emulator presentation model, not a VMPEG FIFO claim.
 		uint64_t const backend_time90 = uint64_t(
 			frame->time * double(cdi_dvc::MPEG_SYSTEM_CLOCK_HZ) + 0.5);
-		if (!m_video_pts_anchor_valid && m_video_pts_pending)
+		if (picture_pts != UINT64_MAX)
 		{
-			m_video_pts_pending = false;
+			m_video_pts_anchor90 = picture_pts;
 			m_video_backend_anchor90 = backend_time90;
 			m_video_pts_anchor_valid = true;
 			LOGMASKED(LOG_VIDEO,
@@ -2525,13 +2563,15 @@ void cdi_dvc_device::mpeg_begin_payload(unsigned target)
 	{
 		++m_mpeg_selected_packets[target];
 		m_mpeg_packet_counted[target] = true;
-		// The first timestamp can precede a picture spanning several PES packets.
-		// Preserve it until that picture is returned, including across save/load.
-		if (target == MPEG_FMV && m_mpeg_packet_have_pts[target]
-				&& !m_video_pts_anchor_valid && !m_video_pts_pending)
+		if (target == MPEG_FMV)
 		{
-			m_video_pts_anchor90 = m_mpeg_packet_pts[target];
-			m_video_pts_pending = true;
+			++m_video_packet_serial;
+			m_video_packet_pts = m_mpeg_packet_have_pts[target] ? m_mpeg_packet_pts[target] : UINT64_MAX;
+		}
+		else if (m_mpeg_packet_have_pts[target] && !m_audio_pending_pts_valid)
+		{
+			m_audio_pending_pts90 = m_mpeg_packet_pts[target];
+			m_audio_pending_pts_valid = true;
 		}
 	}
 }

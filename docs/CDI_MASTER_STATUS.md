@@ -14,7 +14,25 @@ verified status updates affected worksheets; development resumes the next action
 [AGENTS.md](../AGENTS.md) defines those modes. The audio campaign remains the
 detailed audio ledger on this unified branch.
 
-## Active capacity and full-size A/V checkpoint — 2026-09-07
+## Active MPEG ingress and timestamp checkpoint — 2026-09-07
+
+Reproduced partial-audio timestamp loss and ignored later video timestamps are
+fixed. Picture PTS now follows I/P/B presentation reordering, including a start
+code split between PES packets. Audio retains an initial pending timestamp until
+refill can produce PCM and recomputes its wait against the current stream clock.
+Original full-size video and stereo PCM references exercise sparse delivery,
+starvation/refill, forward/backward PTS changes and 33-bit wraparound. Fifteen
+scheduled saves repeat composed output, PCM, callback timing and IRQ/status exactly.
+The host 26-picture decode-ahead queue fills and drains; this is not a physical
+VMPEG buffer claim. Local/CI certification is recorded in the
+[ingress checkpoint](cdi_ingress_pts_checkpoint_20260907.md).
+
+Weighted grades remain unchanged: DVC 75%, MPEG video 70%, DVC audio 80%, A/V sync
+60%, saves 65%, cross-system audio 70% and video 65%. Timestamped audio behind
+already queued PCM, independently discontinuous SCR, wider malformed/GOP/rate
+input and physical/retail validation remain open.
+
+## Previous capacity and full-size A/V checkpoint — 2026-09-07
 
 Two reproduced failures are fixed: replay-history overflow no longer invalidates
 otherwise bounded DVC saves, and the first video timestamp survives a picture
@@ -168,25 +186,25 @@ fidelity percentage is invented when evidence is insufficient.
 | [SCC68070 MMU](cdi_unified_verified_status_20260907.md#mmu) | 65% | **75%** | Medium | Executed read/write/fetch/boundary fault/retry, format-F read frame and active-MMU save/load pass; full SSW and internal-cycle semantics remain open. |
 | [CDIC](cdi_unified_verified_status_20260907.md#cdic) | 55% | **70%** | Medium | Live Q/TOC and four shared/separate CUE layouts with stored/virtual pregaps pass; CUE higher indexes reach SRAM in BCD. Physical status and timing remain open. |
 | [MCD212 display](cdi_unified_verified_status_20260907.md#mcd) | 65% | **70%** | Medium | Four native configurations pass exact native pixels with full-size composed video and saves; interlace/QHY, other combinations and physical output remain open. |
-| [DVC overall](cdi_unified_verified_status_20260907.md#dvc) | 70% | **75%** | Medium | Full-size MPEG and synchronized explicit reset branches pass; bounded decoder snapshots fix history overflow. All four history-boundary continuations pass on the exact certified source. |
-| [MPEG video decode and presentation](cdi_unified_verified_status_20260907.md#mpeg_video) | 55% | **70%** | Low | Six small/full-size formats pass independent RGB references; fragmented first-picture PTS is fixed and survives save/load. GOP/error breadth and retail/hardware evidence remain open. |
-| [DVC audio](cdi_unified_verified_status_20260907.md#dvc_audio) | 80% | **80%** | Medium | Explicit reset branches and full-size/mode snapshots pass PCM references and exact continuations; hardware flush/gain and host output remain open. |
+| [DVC overall](cdi_unified_verified_status_20260907.md#dvc) | 70% | **75%** | Medium | Live ingress/PTS references and fifteen saved continuations pass; final gate certification is in the ingress checkpoint. Historical capacity/30-minute evidence retains its original code scope. |
+| [MPEG video decode and presentation](cdi_unified_verified_status_20260907.md#mpeg_video) | 55% | **70%** | Low | Live ingress/PTS references and fifteen saved continuations pass; final gate certification is in the ingress checkpoint. Historical capacity/30-minute evidence retains its original code scope. |
+| [DVC audio](cdi_unified_verified_status_20260907.md#dvc_audio) | 80% | **80%** | Medium | Live ingress/PTS references and fifteen saved continuations pass; final gate certification is in the ingress checkpoint. Historical capacity/30-minute evidence retains its original code scope. |
 | [XA routing and ADPCM](cdi_unified_verified_status_20260907.md#xa) | 75% | **75%** | Medium | Exhaustive helpers and retained exact 4-bit stereo reference exist; other independent modes, silicon and retail evidence remain incomplete. |
 | [CD-DA playback and transport](cdi_unified_verified_status_20260907.md#cdda) | 50% | **65%** | Low | Live seek, exact mixed-mode PCM counts and four active CD-DA save/load continuations pass; physical output and broader transport/save semantics remain unverified. |
 | [CD-DA Q and other subcode](cdi_unified_verified_status_20260907.md#q) | 40% | **70%** | Low | Live 45-packet TOC verifies all twelve tracks, triplicate points, absolute starts, first/last track and complete A2 lead-out. Physical lead-in and multisession remain open. |
 | [DMA integration](cdi_unified_verified_status_20260907.md#dma) | 60% | **70%** | Medium | Live DVC transfers and both CDIC SRAM boundary/error directions pass; advanced modes and physical arbitration remain open. |
 | [Interrupts](cdi_unified_verified_status_20260907.md#irq) | 65% | **70%** | Medium | Moving DVC snapshots and continuous status/acknowledgement pass alongside existing MMU/CDIC gates; wider event combinations and physical timing remain open. |
 | [Device timing](cdi_unified_verified_status_20260907.md#timing) | 60% | **60%** | Medium | Varied-rate composed fields and 30-minute decoded timing pass; host output, CPU/bus cycles and physical calibration remain unverified. |
-| [A/V synchronization](cdi_unified_verified_status_20260907.md#av) | 45% | **60%** | Medium | Two explicit reset branches share future audio/video timestamps with verified composed pixels and PCM; physical latency, host drift and seamless selection remain open. |
-| [Save states](cdi_unified_verified_status_20260907.md#save) | 60% | **65%** | Medium | Fifteen further short snapshots and pointer-free decoder-state tests pass; all four history-boundary continuations pass on the certified source. Other active peripherals and arbitrary mid-field saves remain open. |
+| [A/V synchronization](cdi_unified_verified_status_20260907.md#av) | 45% | **60%** | Medium | Live ingress/PTS references and fifteen saved continuations pass; final gate certification is in the ingress checkpoint. Historical capacity/30-minute evidence retains its original code scope. |
+| [Save states](cdi_unified_verified_status_20260907.md#save) | 60% | **65%** | Medium | Live ingress/PTS references and fifteen saved continuations pass; final gate certification is in the ingress checkpoint. Historical capacity/30-minute evidence retains its original code scope. |
 | [SLAVE HLE](cdi_unified_verified_status_20260907.md#slave) | 55% | **55%** | Medium | Command/pointer/readiness helpers pass; several protocols remain stubs and physical mailbox timing is modeled. |
 | [Input and peripherals](cdi_unified_verified_status_20260907.md#input) | 45% | **45%** | Medium | Pointer helpers pass; keyboard event delivery, controller breadth and serial waveforms are incomplete. |
 | [SERVO and MCU integration](cdi_unified_verified_status_20260907.md#servo) | 15% | **15%** | Low | Structural evidence only for much of the scope; live protocol, feedback and complete firmware runtime remain absent. |
 | [Disc handling](cdi_unified_verified_status_20260907.md#disc) | 50% | **60%** | Low | Synthetic Q/TOC, four CUE layouts, normalized higher indexes, payload/subcode offsets and truncated-read errors pass. Generic CHD gaps/padding pass; multisession and physical status remain open. |
 | [Mono-I/II board glue](cdi_unified_verified_status_20260907.md#glue) | 50% | **50%** | Low | Presence/IRQ helpers and live optional-DVC fixture pass; disabled DSP and unmapped MCU interfaces still block Mono-II. |
 | [Mono-II functional system](cdi_unified_verified_status_20260907.md#mono2) | 20% | **20%** | Low | Structural tests pass; host DTACK, SPI, enabled DSP and matching-ROM runtime remain absent. |
-| [Cross-system audio](cdi_unified_verified_status_20260907.md#all_audio) | 70% | **70%** | Medium | Explicit common-PTS reset branches and prior queued-selection/30-minute PCM gates pass; seamless cross-device, host and physical output remain open. |
-| [Cross-system video](cdi_unified_verified_status_20260907.md#all_video) | 55% | **65%** | Low | Full-size MPEG composes with four native modes and exact saved continuations; interlace/QHY, wider error/GOP coverage and hardware/title captures remain open. |
+| [Cross-system audio](cdi_unified_verified_status_20260907.md#all_audio) | 70% | **70%** | Medium | Live ingress/PTS references and fifteen saved continuations pass; final gate certification is in the ingress checkpoint. Historical capacity/30-minute evidence retains its original code scope. |
+| [Cross-system video](cdi_unified_verified_status_20260907.md#all_video) | 55% | **65%** | Low | Live ingress/PTS references and fifteen saved continuations pass; final gate certification is in the ingress checkpoint. Historical capacity/30-minute evidence retains its original code scope. |
 | [DSP56000/56001 standalone core](cdi_unified_verified_status_20260907.md#dsp) | New row | **40%** | Low | Three helper test files cover host words, bootstrap relocation, masks, loops and wrapping. No emulator-linked complete firmware, interrupt, ALU or cycle-accuracy campaign. |
 | [Compatibility](cdi_audio_compatibility_matrix_20260906.md) | Not estimated | **Not estimated** | Low | Retained retail-runtime certification is missing for required XA/DVC/CD-DA categories; this does not mean no games work. |
 
@@ -214,10 +232,9 @@ fidelity percentage is invented when evidence is insufficient.
    active PCM save/load now passes four live scenarios. Continue with broader
    transport error semantics and other active modes.
 
-2. **Broader A/V after capacity certification:** test sparse PES
-   delivery, decoder starvation/refill, discontinuous timestamps and actual queue
-   limits with reference output. Extend MCD212 interlace/QHY/DYUV/RGB555 and
-   overlay geometry; calibrate host and physical behavior separately.
+2. **Queued audio and independent clock changes:** reproduce timestamped PES
+   behind already queued PCM and independent SCR jumps with reference output.
+   Keep wider malformed/GOP/input limits separate from physical buffer claims.
 3. **Newly merged peripheral verification:** live timer match/capture/count IRQs,
    UART mode/break/overrun, active peripheral saves and DMA error injection.
 4. **Mono-II/DSP:** complete standalone architectural/firmware execution and
