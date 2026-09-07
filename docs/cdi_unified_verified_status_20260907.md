@@ -17,6 +17,14 @@ output after a trailing B picture, and periodic IRQ phase shifting after load.
 See the [decoded A/V checkpoint](cdi_decoded_av_checkpoint_20260907.md) for reference
 provenance, decoder tolerances, commands and remaining scope.
 
+Exact-source [CI 34085809119](https://github.com/matt-dawidowicz/mame/actions/runs/34085809119)
+passes for `ee2a74166d8ffa54bf7602bbf4cb47889e43eb62`: 21 integration cases / 11,912
+assertions and 221 helper cases / 17,394,016 assertions, generated Musashi freshness
+and DVC DMA liveness. The local production CD-i build/validity and focused decoder
+ASan check also pass. This subsequent documentation-only certification changes no
+production or test behavior; full all-system/Windows/macOS and physical/retail
+validation are outside this gate.
+
 Only two previously absent evidence obligations gain limited credit: MPEG video
 55% to 60% (raw 56.25 to 58.75), and A/V synchronization 45% to 50% (raw 46.25 to
 51.25). Other grades are carried unchanged with updated evidence. These remain

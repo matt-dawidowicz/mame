@@ -2,8 +2,8 @@
   "schema_version": 2,
   "audit_date": "2026-09-07",
   "branch": "cdi-unified",
-  "reviewed_head": "adf57f583a861e5573e73fa0519e6d5fc76f288a",
-  "verified_code_commit": "adf57f583a861e5573e73fa0519e6d5fc76f288a",
+  "reviewed_head": "ee2a74166d8ffa54bf7602bbf4cb47889e43eb62",
+  "verified_code_commit": "ee2a74166d8ffa54bf7602bbf4cb47889e43eb62",
   "upstream_commit": "1fb001f9bfab5cf0148fdfe8755659c4a869831b",
   "prior_report": "cdi_verified_status_20260906.json",
   "prior_audio_baseline": "442e5050846e680ed653fc1297b66df588b314e2",
@@ -650,10 +650,10 @@
         "Save reconstruction",
         "Physical board fidelity"
       ],
-      "last_reviewed_commit": "85ff4e7560b662a36b5089b628c48f6105e17bdf",
-      "last_verified_commit": null,
+      "last_reviewed_commit": "ee2a74166d8ffa54bf7602bbf4cb47889e43eb62",
+      "last_verified_commit": "ee2a74166d8ffa54bf7602bbf4cb47889e43eb62",
       "last_verification_date": "2026-09-07",
-      "verification_basis": "Fresh local decoded A/V regression on changes from the reviewed baseline; exact code/CI certification follows in the checkpoint. No physical or retail claim.",
+      "verification_basis": "Fresh local decoded A/V source/fixture review and full local/CI gates on this code; CI 34085809119. Scope and limits in decoded checkpoint; no physical or retail claim.",
       "prior_audio_raw_percent": 70.0,
       "last_test_date": "2026-09-07"
     },
@@ -779,10 +779,10 @@
         "MCD212 composition",
         "Independent frame/title certification"
       ],
-      "last_reviewed_commit": "85ff4e7560b662a36b5089b628c48f6105e17bdf",
-      "last_verified_commit": null,
+      "last_reviewed_commit": "ee2a74166d8ffa54bf7602bbf4cb47889e43eb62",
+      "last_verified_commit": "ee2a74166d8ffa54bf7602bbf4cb47889e43eb62",
       "last_verification_date": "2026-09-07",
-      "verification_basis": "Fresh local decoded A/V regression on changes from the reviewed baseline; exact code/CI certification follows in the checkpoint. No physical or retail claim.",
+      "verification_basis": "Fresh local decoded A/V source/fixture review and full local/CI gates on this code; CI 34085809119. Scope and limits in decoded checkpoint; no physical or retail claim.",
       "prior_audio_raw_percent": 56.25,
       "last_test_date": "2026-09-07"
     },
@@ -928,10 +928,10 @@
         "Audio save/load",
         "Physical DSP/DAC attribution"
       ],
-      "last_reviewed_commit": "85ff4e7560b662a36b5089b628c48f6105e17bdf",
-      "last_verified_commit": null,
+      "last_reviewed_commit": "ee2a74166d8ffa54bf7602bbf4cb47889e43eb62",
+      "last_verified_commit": "ee2a74166d8ffa54bf7602bbf4cb47889e43eb62",
       "last_verification_date": "2026-09-07",
-      "verification_basis": "Fresh local decoded A/V regression on changes from the reviewed baseline; exact code/CI certification follows in the checkpoint. No physical or retail claim.",
+      "verification_basis": "Fresh local decoded A/V source/fixture review and full local/CI gates on this code; CI 34085809119. Scope and limits in decoded checkpoint; no physical or retail claim.",
       "prior_audio_raw_percent": 80.0,
       "last_test_date": "2026-09-07"
     },
@@ -1499,10 +1499,10 @@
         "All fault/error sources",
         "Physical IACK edge timing"
       ],
-      "last_reviewed_commit": "85ff4e7560b662a36b5089b628c48f6105e17bdf",
-      "last_verified_commit": null,
+      "last_reviewed_commit": "ee2a74166d8ffa54bf7602bbf4cb47889e43eb62",
+      "last_verified_commit": "ee2a74166d8ffa54bf7602bbf4cb47889e43eb62",
       "last_verification_date": "2026-09-07",
-      "verification_basis": "Fresh local decoded A/V regression on changes from the reviewed baseline; exact code/CI certification follows in the checkpoint. No physical or retail claim.",
+      "verification_basis": "Fresh local decoded A/V source/fixture review and full local/CI gates on this code; CI 34085809119. Scope and limits in decoded checkpoint; no physical or retail claim.",
       "prior_audio_raw_percent": 66.25,
       "last_test_date": "2026-09-07"
     },
@@ -1612,10 +1612,10 @@
         "CPU/bus service timing",
         "Physical cross-device calibration"
       ],
-      "last_reviewed_commit": "85ff4e7560b662a36b5089b628c48f6105e17bdf",
-      "last_verified_commit": null,
+      "last_reviewed_commit": "ee2a74166d8ffa54bf7602bbf4cb47889e43eb62",
+      "last_verified_commit": "ee2a74166d8ffa54bf7602bbf4cb47889e43eb62",
       "last_verification_date": "2026-09-07",
-      "verification_basis": "Fresh local decoded A/V regression on changes from the reviewed baseline; exact code/CI certification follows in the checkpoint. No physical or retail claim.",
+      "verification_basis": "Fresh local decoded A/V source/fixture review and full local/CI gates on this code; CI 34085809119. Scope and limits in decoded checkpoint; no physical or retail claim.",
       "prior_audio_raw_percent": 60.0,
       "last_test_date": "2026-09-07"
     },
@@ -1721,10 +1721,10 @@
         "Host output drift",
         "Physical clock/branch latency"
       ],
-      "last_reviewed_commit": "85ff4e7560b662a36b5089b628c48f6105e17bdf",
-      "last_verified_commit": null,
+      "last_reviewed_commit": "ee2a74166d8ffa54bf7602bbf4cb47889e43eb62",
+      "last_verified_commit": "ee2a74166d8ffa54bf7602bbf4cb47889e43eb62",
       "last_verification_date": "2026-09-07",
-      "verification_basis": "Fresh local decoded A/V regression on changes from the reviewed baseline; exact code/CI certification follows in the checkpoint. No physical or retail claim.",
+      "verification_basis": "Fresh local decoded A/V source/fixture review and full local/CI gates on this code; CI 34085809119. Scope and limits in decoded checkpoint; no physical or retail claim.",
       "prior_audio_raw_percent": 46.25,
       "last_test_date": "2026-09-07"
     },
@@ -1847,10 +1847,10 @@
         "Active UART/I2C/DMA",
         "Capacity/error policy"
       ],
-      "last_reviewed_commit": "85ff4e7560b662a36b5089b628c48f6105e17bdf",
-      "last_verified_commit": null,
+      "last_reviewed_commit": "ee2a74166d8ffa54bf7602bbf4cb47889e43eb62",
+      "last_verified_commit": "ee2a74166d8ffa54bf7602bbf4cb47889e43eb62",
       "last_verification_date": "2026-09-07",
-      "verification_basis": "Fresh local decoded A/V regression on changes from the reviewed baseline; exact code/CI certification follows in the checkpoint. No physical or retail claim.",
+      "verification_basis": "Fresh local decoded A/V source/fixture review and full local/CI gates on this code; CI 34085809119. Scope and limits in decoded checkpoint; no physical or retail claim.",
       "prior_audio_raw_percent": 57.5,
       "last_test_date": "2026-09-07"
     },
@@ -2616,10 +2616,10 @@
         "Gain/emphasis/control",
         "Cross-stream/output continuity"
       ],
-      "last_reviewed_commit": "85ff4e7560b662a36b5089b628c48f6105e17bdf",
-      "last_verified_commit": null,
+      "last_reviewed_commit": "ee2a74166d8ffa54bf7602bbf4cb47889e43eb62",
+      "last_verified_commit": "ee2a74166d8ffa54bf7602bbf4cb47889e43eb62",
       "last_verification_date": "2026-09-07",
-      "verification_basis": "Fresh local decoded A/V regression on changes from the reviewed baseline; exact code/CI certification follows in the checkpoint. No physical or retail claim.",
+      "verification_basis": "Fresh local decoded A/V source/fixture review and full local/CI gates on this code; CI 34085809119. Scope and limits in decoded checkpoint; no physical or retail claim.",
       "prior_audio_raw_percent": 68.75,
       "last_test_date": "2026-09-07"
     },
@@ -2725,10 +2725,10 @@
         "Presentation",
         "Hardware/title captures"
       ],
-      "last_reviewed_commit": "85ff4e7560b662a36b5089b628c48f6105e17bdf",
-      "last_verified_commit": null,
+      "last_reviewed_commit": "ee2a74166d8ffa54bf7602bbf4cb47889e43eb62",
+      "last_verified_commit": "ee2a74166d8ffa54bf7602bbf4cb47889e43eb62",
       "last_verification_date": "2026-09-07",
-      "verification_basis": "Fresh local decoded A/V regression on changes from the reviewed baseline; exact code/CI certification follows in the checkpoint. No physical or retail claim.",
+      "verification_basis": "Fresh local decoded A/V source/fixture review and full local/CI gates on this code; CI 34085809119. Scope and limits in decoded checkpoint; no physical or retail claim.",
       "prior_audio_raw_percent": 53.75,
       "last_test_date": "2026-09-07"
     },
@@ -2846,6 +2846,53 @@
     "date": "2026-09-07"
   },
   "local_verification": {
+    "commit": "ee2a74166d8ffa54bf7602bbf4cb47889e43eb62",
+    "date": "2026-09-07",
+    "helper_cases": 221,
+    "helper_assertions": 17394016,
+    "integration_cases": 21,
+    "integration_assertions": 11912,
+    "conclusion": "success",
+    "production_build": "make -j6 -C build/projects/sdl/mame/gmake-linux config=release64 cdiintegrationtests cdihelpertests mame",
+    "production_validity": "./mame -validate: exit 0",
+    "generated_musashi": "Freshness passed in exact-source CI 34085809119",
+    "dma_liveness": "GREEN",
+    "reference_regeneration": "Byte-identical with FFmpeg 8.0.1-3ubuntu2",
+    "asan": "Focused standalone 64-picture ring EOF decode only; no finding",
+    "commands_document": "docs/cdi_decoded_av_checkpoint_20260907.md",
+    "scope": "Original 31-second live DVC reference and active save/load; no full MCD212 composition, host/physical output or retail claim"
+  },
+  "previous_final_ci": {
+    "url": "https://github.com/matt-dawidowicz/mame/actions/runs/34080100953",
+    "run_id": 34080100953,
+    "tested_commit": "adf57f583a861e5573e73fa0519e6d5fc76f288a",
+    "conclusion": "success",
+    "helper_cases": 219,
+    "helper_assertions": 17393781,
+    "integration_cases": 19,
+    "integration_assertions": 11796,
+    "execution_date": "2026-09-07"
+  },
+  "final_ci": {
+    "url": "https://github.com/matt-dawidowicz/mame/actions/runs/34085809119",
+    "run_id": 34085809119,
+    "tested_commit": "ee2a74166d8ffa54bf7602bbf4cb47889e43eb62",
+    "conclusion": "success",
+    "helper_cases": 221,
+    "helper_assertions": 17394016,
+    "integration_cases": 21,
+    "integration_assertions": 11912,
+    "execution_date": "2026-09-07"
+  },
+  "decoded_av_checkpoint": {
+    "baseline": "85ff4e7560b662a36b5089b628c48f6105e17bdf",
+    "code_commit": "ee2a74166d8ffa54bf7602bbf4cb47889e43eb62",
+    "date": "2026-09-07",
+    "document": "docs/cdi_decoded_av_checkpoint_20260907.md",
+    "status": "Local and exact-source CI gates pass",
+    "ci_run_id": 34085809119
+  },
+  "previous_local_verification": {
     "commit": "adf57f583a861e5573e73fa0519e6d5fc76f288a",
     "date": "2026-09-07",
     "helper_cases": 219,
@@ -2859,34 +2906,5 @@
     "dma_liveness": "GREEN",
     "commands_document": "docs/cdi_transport_checkpoint_20260907.md",
     "scope": "Exact committed production code, synthetic live seek/DAC tests and private driver disassembly; no executed firmware or physical/retail claim"
-  },
-  "previous_final_ci": {
-    "url": "https://github.com/matt-dawidowicz/mame/actions/runs/34077601590",
-    "run_id": 34077601590,
-    "tested_commit": "fe5aabb5089aedb6cbb3a9dc8eac587886cf33e2",
-    "conclusion": "success",
-    "helper_cases": 219,
-    "helper_assertions": 17393781,
-    "integration_cases": 17,
-    "integration_assertions": 11718,
-    "execution_date": "2026-09-07"
-  },
-  "final_ci": {
-    "url": "https://github.com/matt-dawidowicz/mame/actions/runs/34080100953",
-    "run_id": 34080100953,
-    "tested_commit": "adf57f583a861e5573e73fa0519e6d5fc76f288a",
-    "conclusion": "success",
-    "helper_cases": 219,
-    "helper_assertions": 17393781,
-    "integration_cases": 19,
-    "integration_assertions": 11796,
-    "execution_date": "2026-09-07"
-  },
-  "decoded_av_checkpoint": {
-    "baseline": "85ff4e7560b662a36b5089b628c48f6105e17bdf",
-    "code_commit": null,
-    "date": "2026-09-07",
-    "document": "docs/cdi_decoded_av_checkpoint_20260907.md",
-    "status": "Local gates; exact-source CI certification pending"
   }
 }
