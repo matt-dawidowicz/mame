@@ -93,3 +93,11 @@ sustained decoded video/audio continuity; other firmware/seek error paths;
 physical status/servo/output transitions; multisession and additional containers.
 No sanitizer, all-system MAME build, retail playthrough or physical-fidelity proof
 is claimed by these results.
+
+## Exact-source certification
+
+Code `adf57f583a861e5573e73fa0519e6d5fc76f288a` passes [CI 34080100953](https://github.com/matt-dawidowicz/mame/actions/runs/34080100953):
+219 helper cases / 17,393,781 assertions and 19 integration cases / 11,796
+assertions, generated-source freshness and DMA liveness. The local production
+build and validity gate also pass. This documentation-only update certifies its
+code parent without changing production/test behavior.

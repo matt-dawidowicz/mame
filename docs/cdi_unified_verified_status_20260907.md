@@ -6,8 +6,7 @@ synthetic Q/TOC evidence. The current source certification is below. Historical 
 
 ## Current certification — 2026-09-07
 
-Transport candidate based on `b742233acc64e368e59ffc5bc3f65be11758d99c`; exact code certification follows the
-code/test/documentation commit. Local gates pass:
+Verified source: `adf57f583a861e5573e73fa0519e6d5fc76f288a`. Local gates pass:
 
 - Production CD-i emulator build and `./mame -validate` (exit 0).
 - 17,393,781 assertions / 219 helper cases.
@@ -22,8 +21,9 @@ bytes entering both DACs; the fix gates PCM handoff by image track type while
 retaining Q delivery. Exact audio sample counts and data-to-audio resumption pass.
 See the [transport checkpoint](cdi_transport_checkpoint_20260907.md).
 
-Prior exact-source CI [34077601590](https://github.com/matt-dawidowicz/mame/actions/runs/34077601590)
-remains historical; transport CI is pending publication. No new physical capture,
+Exact-source transport CI [34080100953](https://github.com/matt-dawidowicz/mame/actions/runs/34080100953)
+also passes: 219 helper cases / 17,393,781 assertions and 19 integration cases /
+11,796 assertions, DMA liveness and generated-source freshness. No new physical capture,
 executed firmware playthrough, sanitizer or full all-system MAME build is claimed.
 
 Scoped estimates remain SCC **75%**, MMU **75%**, CDIC **70%**, DMA **70%**,

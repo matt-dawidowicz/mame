@@ -2,8 +2,8 @@
   "schema_version": 2,
   "audit_date": "2026-09-07",
   "branch": "cdi-unified",
-  "reviewed_head": "b742233acc64e368e59ffc5bc3f65be11758d99c",
-  "verified_code_commit": null,
+  "reviewed_head": "adf57f583a861e5573e73fa0519e6d5fc76f288a",
+  "verified_code_commit": "adf57f583a861e5573e73fa0519e6d5fc76f288a",
   "upstream_commit": "1fb001f9bfab5cf0148fdfe8755659c4a869831b",
   "prior_report": "cdi_verified_status_20260906.json",
   "prior_audio_baseline": "442e5050846e680ed653fc1297b66df588b314e2",
@@ -396,10 +396,10 @@
         "Error/status fidelity",
         "Active save/load"
       ],
-      "last_reviewed_commit": "b742233acc64e368e59ffc5bc3f65be11758d99c",
-      "last_verified_commit": null,
+      "last_reviewed_commit": "adf57f583a861e5573e73fa0519e6d5fc76f288a",
+      "last_verified_commit": "adf57f583a861e5573e73fa0519e6d5fc76f288a",
       "last_verification_date": "2026-09-07",
-      "verification_basis": "Live driver-style seek and DAC sample capture pass in the current candidate, with 19 integration cases and production build/validity. Firmware was disassembled, not executed; physical behavior remains unverified.",
+      "verification_basis": "Exact source passes local production build/validity and CI (19 integration cases, 219 helpers, DMA liveness and generated-source freshness). Live seek/PCM checks use synthetic media; driver evidence is static; hardware remains unverified.",
       "prior_audio_raw_percent": 56.25,
       "last_test_date": "2026-09-07"
     },
@@ -1165,10 +1165,10 @@
         "Mixed-mode runtime",
         "Physical alignment/servo"
       ],
-      "last_reviewed_commit": "b742233acc64e368e59ffc5bc3f65be11758d99c",
-      "last_verified_commit": null,
+      "last_reviewed_commit": "adf57f583a861e5573e73fa0519e6d5fc76f288a",
+      "last_verified_commit": "adf57f583a861e5573e73fa0519e6d5fc76f288a",
       "last_verification_date": "2026-09-07",
-      "verification_basis": "Live driver-style seek and DAC sample capture pass in the current candidate, with 19 integration cases and production build/validity. Firmware was disassembled, not executed; physical behavior remains unverified.",
+      "verification_basis": "Exact source passes local production build/validity and CI (19 integration cases, 219 helpers, DMA liveness and generated-source freshness). Live seek/PCM checks use synthetic media; driver evidence is static; hardware remains unverified.",
       "prior_audio_raw_percent": 48.75,
       "last_test_date": "2026-09-07"
     },
@@ -1274,10 +1274,10 @@
         "P/R-W/multisession",
         "Disc reference campaign"
       ],
-      "last_reviewed_commit": "b742233acc64e368e59ffc5bc3f65be11758d99c",
-      "last_verified_commit": null,
+      "last_reviewed_commit": "adf57f583a861e5573e73fa0519e6d5fc76f288a",
+      "last_verified_commit": "adf57f583a861e5573e73fa0519e6d5fc76f288a",
       "last_verification_date": "2026-09-07",
-      "verification_basis": "Live driver-style seek and DAC sample capture pass in the current candidate, with 19 integration cases and production build/validity. Firmware was disassembled, not executed; physical behavior remains unverified.",
+      "verification_basis": "Exact source passes local production build/validity and CI (19 integration cases, 219 helpers, DMA liveness and generated-source freshness). Live seek/PCM checks use synthetic media; driver evidence is static; hardware remains unverified.",
       "prior_audio_raw_percent": 38.75,
       "last_test_date": "2026-09-07"
     },
@@ -2273,10 +2273,10 @@
         "Error recovery",
         "Mixed-mode/multisession"
       ],
-      "last_reviewed_commit": "b742233acc64e368e59ffc5bc3f65be11758d99c",
-      "last_verified_commit": null,
+      "last_reviewed_commit": "adf57f583a861e5573e73fa0519e6d5fc76f288a",
+      "last_verified_commit": "adf57f583a861e5573e73fa0519e6d5fc76f288a",
       "last_verification_date": "2026-09-07",
-      "verification_basis": "Live driver-style seek and DAC sample capture pass in the current candidate, with 19 integration cases and production build/validity. Firmware was disassembled, not executed; physical behavior remains unverified.",
+      "verification_basis": "Exact source passes local production build/validity and CI (19 integration cases, 219 helpers, DMA liveness and generated-source freshness). Live seek/PCM checks use synthetic media; driver evidence is static; hardware remains unverified.",
       "prior_audio_raw_percent": 50.0,
       "last_test_date": "2026-09-07"
     },
@@ -2828,7 +2828,7 @@
     "date": "2026-09-07"
   },
   "local_verification": {
-    "commit": null,
+    "commit": "adf57f583a861e5573e73fa0519e6d5fc76f288a",
     "date": "2026-09-07",
     "helper_cases": 219,
     "helper_assertions": 17393781,
@@ -2840,8 +2840,7 @@
     "generated_musashi": "Regenerated to scratch; both .h and .cpp compare byte-identical",
     "dma_liveness": "GREEN",
     "commands_document": "docs/cdi_transport_checkpoint_20260907.md",
-    "scope": "Current transport candidate; generated media and driver-disassembly evidence, exact code certification follows",
-    "candidate_base_commit": "b742233acc64e368e59ffc5bc3f65be11758d99c"
+    "scope": "Exact committed production code, synthetic live seek/DAC tests and private driver disassembly; no executed firmware or physical/retail claim"
   },
   "previous_final_ci": {
     "url": "https://github.com/matt-dawidowicz/mame/actions/runs/34077601590",
@@ -2855,8 +2854,14 @@
     "execution_date": "2026-09-07"
   },
   "final_ci": {
-    "tested_commit": null,
-    "conclusion": "pending_publication"
-  },
-  "candidate_base_commit": "b742233acc64e368e59ffc5bc3f65be11758d99c"
+    "url": "https://github.com/matt-dawidowicz/mame/actions/runs/34080100953",
+    "run_id": 34080100953,
+    "tested_commit": "adf57f583a861e5573e73fa0519e6d5fc76f288a",
+    "conclusion": "success",
+    "helper_cases": 219,
+    "helper_assertions": 17393781,
+    "integration_cases": 19,
+    "integration_assertions": 11796,
+    "execution_date": "2026-09-07"
+  }
 }
