@@ -7,7 +7,7 @@ at the user's request after its last complete progress report at **960 seconds
 locally; publication and exact-source CI remain pending.
 
 Baseline: `a5b2ff9050352461da5d323cc550767d379e8197`, branch `cdi-unified`.
-The code checkpoint hash is recorded by the subsequent documentation-only save.
+Code checkpoint: `eb4fbe922c06d79eae0e48d08d3d2ae4356e091b`. This subsequent documentation-only save records the exact local source; it does not certify pending CI or the interrupted duration gate.
 No production emulator changes were needed in this batch. Initial fixture
 failures came from incorrect geometry, palette and queued-audio assumptions;
 they are not reported as emulator defects.

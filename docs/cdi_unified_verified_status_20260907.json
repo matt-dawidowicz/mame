@@ -2909,7 +2909,7 @@
   },
   "motion_av_checkpoint": {
     "baseline": "a5b2ff9050352461da5d323cc550767d379e8197",
-    "code_commit": null,
+    "code_commit": "eb4fbe922c06d79eae0e48d08d3d2ae4356e091b",
     "date": "2026-09-07",
     "document": "docs/cdi_motion_av_checkpoint_20260907.md",
     "status": "Paused by user for shutdown; local short gates pass; 30-minute gate, publication and exact-source CI pending",
