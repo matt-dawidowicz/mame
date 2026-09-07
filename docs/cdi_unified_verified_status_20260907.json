@@ -2,8 +2,8 @@
   "schema_version": 2,
   "audit_date": "2026-09-07",
   "branch": "cdi-unified",
-  "reviewed_head": "39885b7d304ccd7947be45e643a37d7294b84062",
-  "verified_code_commit": null,
+  "reviewed_head": "fe5aabb5089aedb6cbb3a9dc8eac587886cf33e2",
+  "verified_code_commit": "fe5aabb5089aedb6cbb3a9dc8eac587886cf33e2",
   "upstream_commit": "1fb001f9bfab5cf0148fdfe8755659c4a869831b",
   "prior_report": "cdi_verified_status_20260906.json",
   "prior_audio_baseline": "442e5050846e680ed653fc1297b66df588b314e2",
@@ -394,10 +394,10 @@
         "Error/status fidelity",
         "Active save/load"
       ],
-      "last_reviewed_commit": "39885b7d304ccd7947be45e643a37d7294b84062",
-      "last_verified_commit": null,
+      "last_reviewed_commit": "fe5aabb5089aedb6cbb3a9dc8eac587886cf33e2",
+      "last_verified_commit": "fe5aabb5089aedb6cbb3a9dc8eac587886cf33e2",
       "last_verification_date": "2026-09-07",
-      "verification_basis": "Current candidate passes local 17-case integration, 219-case helpers, production build/validity and DMA liveness; see Q checkpoint. Hardware and retail remain unverified.",
+      "verification_basis": "Exact source passes local production build/validity and CI with 17-case integration, 219-case helpers, generated-source freshness and DMA liveness; see Q checkpoint. Hardware and retail remain unverified.",
       "prior_audio_raw_percent": 56.25,
       "last_test_date": "2026-09-07"
     },
@@ -1161,10 +1161,10 @@
         "Mixed-mode runtime",
         "Physical alignment/servo"
       ],
-      "last_reviewed_commit": "39885b7d304ccd7947be45e643a37d7294b84062",
-      "last_verified_commit": null,
+      "last_reviewed_commit": "fe5aabb5089aedb6cbb3a9dc8eac587886cf33e2",
+      "last_verified_commit": "fe5aabb5089aedb6cbb3a9dc8eac587886cf33e2",
       "last_verification_date": "2026-09-07",
-      "verification_basis": "Current candidate passes local 17-case integration, 219-case helpers, production build/validity and DMA liveness; see Q checkpoint. Hardware and retail remain unverified.",
+      "verification_basis": "Exact source passes local production build/validity and CI with 17-case integration, 219-case helpers, generated-source freshness and DMA liveness; see Q checkpoint. Hardware and retail remain unverified.",
       "prior_audio_raw_percent": 48.75,
       "last_test_date": "2026-09-07"
     },
@@ -1268,10 +1268,10 @@
         "P/R-W/multisession",
         "Disc reference campaign"
       ],
-      "last_reviewed_commit": "39885b7d304ccd7947be45e643a37d7294b84062",
-      "last_verified_commit": null,
+      "last_reviewed_commit": "fe5aabb5089aedb6cbb3a9dc8eac587886cf33e2",
+      "last_verified_commit": "fe5aabb5089aedb6cbb3a9dc8eac587886cf33e2",
       "last_verification_date": "2026-09-07",
-      "verification_basis": "Current candidate passes local 17-case integration, 219-case helpers, production build/validity and DMA liveness; see Q checkpoint. Hardware and retail remain unverified.",
+      "verification_basis": "Exact source passes local production build/validity and CI with 17-case integration, 219-case helpers, generated-source freshness and DMA liveness; see Q checkpoint. Hardware and retail remain unverified.",
       "prior_audio_raw_percent": 38.75,
       "last_test_date": "2026-09-07"
     },
@@ -2265,10 +2265,10 @@
         "Error recovery",
         "Mixed-mode/multisession"
       ],
-      "last_reviewed_commit": "39885b7d304ccd7947be45e643a37d7294b84062",
-      "last_verified_commit": null,
+      "last_reviewed_commit": "fe5aabb5089aedb6cbb3a9dc8eac587886cf33e2",
+      "last_verified_commit": "fe5aabb5089aedb6cbb3a9dc8eac587886cf33e2",
       "last_verification_date": "2026-09-07",
-      "verification_basis": "Current candidate passes local 17-case integration, 219-case helpers, production build/validity and DMA liveness; see Q checkpoint. Hardware and retail remain unverified.",
+      "verification_basis": "Exact source passes local production build/validity and CI with 17-case integration, 219-case helpers, generated-source freshness and DMA liveness; see Q checkpoint. Hardware and retail remain unverified.",
       "prior_audio_raw_percent": 50.0,
       "last_test_date": "2026-09-07"
     },
@@ -2820,7 +2820,7 @@
     "date": "2026-09-07"
   },
   "local_verification": {
-    "commit": null,
+    "commit": "fe5aabb5089aedb6cbb3a9dc8eac587886cf33e2",
     "date": "2026-09-07",
     "helper_cases": 219,
     "helper_assertions": 17393781,
@@ -2832,10 +2832,8 @@
     "generated_musashi": "Explicit m68kmake.py regeneration; committed .cpp/.h match exactly",
     "dma_liveness": "GREEN",
     "commands_document": "docs/cdi_q_checkpoint_20260907.md",
-    "candidate_base_commit": "39885b7d304ccd7947be45e643a37d7294b84062",
-    "scope": "Current candidate tree; exact code commit follows in documentation certification"
+    "scope": "Exact committed production code; generated media only, CD-i-targeted build, no sanitizer/hardware/retail claim"
   },
-  "candidate_base_commit": "39885b7d304ccd7947be45e643a37d7294b84062",
   "previous_final_ci": {
     "url": "https://github.com/matt-dawidowicz/mame/actions/runs/34075842095",
     "run_id": 34075842095,
@@ -2848,7 +2846,14 @@
     "execution_date": "2026-09-07"
   },
   "final_ci": {
-    "tested_commit": null,
-    "conclusion": "pending_publication"
+    "url": "https://github.com/matt-dawidowicz/mame/actions/runs/34077601590",
+    "run_id": 34077601590,
+    "tested_commit": "fe5aabb5089aedb6cbb3a9dc8eac587886cf33e2",
+    "conclusion": "success",
+    "helper_cases": 219,
+    "helper_assertions": 17393781,
+    "integration_cases": 17,
+    "integration_assertions": 11718,
+    "execution_date": "2026-09-07"
   }
 }

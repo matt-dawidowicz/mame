@@ -77,14 +77,14 @@ universal CD-ROM disc-type claim. No physical lead-in address is modeled.
 Recalculated grades: Q TOC 1→3 gives 61.25→71.25 raw (60→70%); CDIC TOC 2→3
 gives 67.5→71.25 raw (70% unchanged); disc TOC 2→3 gives 56.25→60 (55→60%).
 CD-DA remains 65%. All retain Low/Medium confidence and their wider gaps.
-Next: generic CUE higher-index
-normalization and separate-file/virtual pregap fixtures; then seek-only completion
-and data-track PCM handoff evidence.
+The next task at that checkpoint was generic CUE index/file/pregap coverage,
+completed in the follow-up below. Seek-only completion and data-track PCM
+handoff evidence remain open.
 
 ## Remaining work
 
 - Validate stored mode-2/3 packets and additional raw-subcode image containers.
-- Wider TOC inputs: audio-only, data-only, CHD padding, multiple sessions and physical lead-in captures.
+- Wider live TOC inputs: audio-only, data-only, CHD images, multiple sessions and physical lead-in captures.
 - Multisession and additional image containers; CUE index/file/pregap fixes are recorded below.
 - Seek-only completion, read errors, physical lead-out signaling and servo timing.
 - CD-DA command crossing into data: the existing PCM handoff may play data sectors;
@@ -174,3 +174,8 @@ MAME build, retail playthrough, measured PCM output or hardware fidelity is clai
 Next: establish seek-only completion and data-track PCM handoff from controller
 and output evidence. Multisession, first-track special gaps, postgaps, mixed-sector
 pregap types, malformed CUEs and other image containers need separate fixtures.
+
+Exact code certification: `fe5aabb5089aedb6cbb3a9dc8eac587886cf33e2`. CI [34077601590](https://github.com/matt-dawidowicz/mame/actions/runs/34077601590)
+passes the same 219 helper cases / 17,393,781 assertions and 17 integration cases /
+11,718 assertions, generated-source freshness and DMA liveness. This document-only
+certification uses its code parent; it does not change production or test code.

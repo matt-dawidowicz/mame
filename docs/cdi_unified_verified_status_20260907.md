@@ -6,8 +6,7 @@ synthetic Q/TOC evidence. The current source certification is below. Historical 
 
 ## Current certification — 2026-09-07
 
-Candidate code is based on `39885b7d304ccd7947be45e643a37d7294b84062`; its exact committed source is certified
-in the subsequent documentation-only update. The generic CUE follow-up reproduces
+Verified code: `fe5aabb5089aedb6cbb3a9dc8eac587886cf33e2`. The generic CUE follow-up reproduces
 210 failed assertions before the fix (3 cases / 3,001 assertions), then passes
 3,436 assertions in those cases. Full expanded local gates pass:
 
@@ -20,8 +19,8 @@ The reader now normalizes CUE indexes, owns pregaps in the upcoming track,
 distinguishes logical/physical storage offsets, resets offsets across FILE changes,
 and rejects short payload/subcode reads. CDIC uses these indexes for fallback Q.
 Four generated CUE layouts and padded CHDs exercise this without retail assets.
-The prior Q/TOC CI run [34075842095](https://github.com/matt-dawidowicz/mame/actions/runs/34075842095)
-is historical; new-source CI is pending publication. No sanitizer, all-system build,
+Exact-source CI [34077601590](https://github.com/matt-dawidowicz/mame/actions/runs/34077601590) also passes: 219 helper cases / 17,393,781 assertions,
+17 integration cases / 11,718 assertions, DMA liveness and generated-source freshness. No sanitizer, all-system build,
 physical hardware or retail playthrough is claimed.
 
 Same weighted worksheet: SCC **75%**, MMU **75%**, CDIC **70%**, DMA **70%**,
