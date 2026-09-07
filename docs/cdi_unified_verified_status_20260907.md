@@ -5,7 +5,30 @@ available project branches and the 60-commit upstream synchronization. It replac
 the pre-merge numbers as the current assessment. Historical figures remain in
 [the earlier audit](cdi_verified_status_20260906.md).
 
-## Method and evidence boundary
+## Publication certification — 2026-09-07
+
+Verified production source: `6785ea148341de1bf54fdd8e70cec0ab4115d24e`. Local regenerated-source gate passes
+17,393,781 assertions / 219 helper cases and 24 top-level assertions / 7
+emulator-linked cases; DVC DMA liveness GREEN. Exact commands and limitations:
+[MMU checkpoint](cdi_scc68070_mmu_checkpoint_20260906.md).
+CDIC bounds were already published at `f330c0901c7d1aaf5581f50735ee03c6b8aeaa1f`,
+supported by CI run [34070663002](https://github.com/matt-dawidowicz/mame/actions/runs/34070663002)
+and rerun in this local integration gate. MMU staging run 34073320088 failed;
+there was no green candidate to fast-forward. Explicit regeneration of tracked
+Musashi output supplied the missing RTE branch, now committed with a CI freshness gate.
+
+Weighted changes (same worksheet, no added denominator): SCC 63.75→72.5 raw
+(65→75%), MMU 62.5→75 (65→75%), CDIC 56.25→63.75 (55→65%),
+DMA 61.25→71.25 (60→70%), interrupts 66.25→68.75 (65→70%).
+SCC CPU/MMU packages rise 2→3, MMU exception/restart 1→3,
+CDIC SRAM and DMA channel-1 packages 1→3, all fault/error sources 1→2.
+Remaining rows keep their historical grades, evidence dates and gaps.
+Emulator-safe CDIC clipping/error behavior is not a silicon claim. MMU recovery
+is whole-instruction retry; exact internal-cycle behavior, complete SSW/lane forms,
+RR=1, ambiguous CAM and timing remain open. No hardware-fidelity or compatibility
+percentage is invented. Next substantive task: synthetic multi-track CD-DA/Q.
+
+## Historical consolidation method and evidence boundary
 
 The 23 existing subsystem rows retain their exact A2 obligation weights, grading
 scale and five-point rounding. Each worksheet shows old and current grades so
@@ -22,8 +45,8 @@ and fixture boundaries for retained defects, and checked the audio/compatibility
 ledgers. Unchanged scopes were reconciled by source/test diffs and existing evidence,
 not independently re-audited line by line or against every hardware manual.
 
-Verified production baseline: `ade0f78abf4367f07c9d2fd3d383f448110c4cb2`. Current HEAD differs from that commit
-only in documentation. [CI run 34066705811](https://github.com/matt-dawidowicz/mame/actions/runs/34066705811)
+Verified production baseline: `ade0f78abf4367f07c9d2fd3d383f448110c4cb2`. At the consolidation assessment, HEAD differed from that commit
+only in documentation; the current certification above supersedes this baseline. [CI run 34066705811](https://github.com/matt-dawidowicz/mame/actions/runs/34066705811)
 was rechecked as successful: **17,393,781 assertions / 219 helper cases** and
 **21 assertions / 6 emulator-linked cases**, plus the DVC DMA liveness check.
 CI tested `3f3acf4d9c42aa9d73db863106b733e9ff433a71`; its tree exactly matches
@@ -41,7 +64,7 @@ and native-video improvements were already present in A2; merging branch names
 does not create additive subsystem progress. The changed raw DMA score remains
 within the same five-point reporting band.
 
-## What consolidation changes
+## Historical consolidation changes
 
 - **SCC68070: 55% → 65%.** Timer 1/2 scheduling/capture/count, UART frame/mode/
   break/receive handling and controller semantics are substantive implementation
@@ -72,14 +95,10 @@ within the same five-point reporting band.
 
 ## Open findings and corrected stale claims
 
-1. **CDIC SRAM bounds:** the DMACTL loop still increments `device_index` without
-   bounding the next SRAM access. Starting at 0x3ffe with two operands exceeds
-   the 0x4000-byte allocation. This remains source-confirmed, not newly reproduced
-   in an executed CDIC fixture. It is the next development task.
-2. **MMU exception delivery:** the SCC fault path still calls restartable
-   `set_buserror_details` without enabling the Musashi restart mechanism. The
-   passing MMU fixture disables the CPU and queries translation/save state.
-   Full executed faults, exception frames and RTE remain open.
+1. **CDIC SRAM bounds: closed software safety defect.** Both live DMA directions
+   and boundary/error behavior pass; physical clipping/wrap policy is unmeasured.
+2. **MMU executed fault delivery: closed tested software gap.** Regenerated format-F
+   RTE, guest repair and instruction retry pass. Full silicon semantics remain open.
 3. **CD-DA/Q:** non-TOC track/index remain 01 and relative slots reuse absolute
    MSF; TOC lead-out construction remains incomplete. A synthetic multi-track
    disc fixture and actual transport/error corrections remain software work.
@@ -107,9 +126,9 @@ de-emphasis or recovered-Q22 work is reopened by this reassessment.
 
 | Subsystem | Previous A2 | Unified | Confidence |
 | --- | ---: | ---: | --- |
-| [SCC68070 CPU and internal peripherals](#scc) | 55% | 65% | Medium |
-| [SCC68070 MMU](#mmu) | 65% | 65% | Medium |
-| [CDIC](#cdic) | 55% | 55% | Medium |
+| [SCC68070 CPU and internal peripherals](#scc) | 55% | 75% | Medium |
+| [SCC68070 MMU](#mmu) | 65% | 75% | Medium |
+| [CDIC](#cdic) | 55% | 65% | Medium |
 | [MCD212 display](#mcd) | 65% | 65% | Medium |
 | [DVC overall](#dvc) | 70% | 70% | Medium |
 | [MPEG video decode and presentation](#mpeg_video) | 55% | 55% | Low |
@@ -117,8 +136,8 @@ de-emphasis or recovered-Q22 work is reopened by this reassessment.
 | [XA routing and ADPCM](#xa) | 75% | 75% | Medium |
 | [CD-DA playback and transport](#cdda) | 50% | 50% | Low |
 | [CD-DA Q and other subcode](#q) | 40% | 40% | Low |
-| [DMA integration](#dma) | 60% | 60% | Medium |
-| [Interrupts](#irq) | 65% | 65% | Medium |
+| [DMA integration](#dma) | 60% | 70% | Medium |
+| [Interrupts](#irq) | 65% | 70% | Medium |
 | [Device timing](#timing) | 60% | 60% | Medium |
 | [A/V synchronization](#av) | 45% | 45% | Medium |
 | [Save states](#save) | 60% | 60% | Medium |
@@ -135,7 +154,8 @@ de-emphasis or recovered-Q22 work is reopened by this reassessment.
 
 ## Subsystem worksheets
 
-All rows inherit the exact reviewed HEAD, verified code commit and date above.
+Changed SCC/MMU/CDIC/DMA/interrupt rows use the publication certification above;
+other rows retain their historical evidence dates as recorded in JSON.
 Linked implementation, tests and documentation are repository paths at that HEAD.
 Each below-grade-4 rationale is also an explicit remaining obligation/evidence gap.
 
@@ -143,21 +163,21 @@ Each below-grade-4 rationale is also an explicit remaining obligation/evidence g
 
 ### SCC68070 CPU and internal peripherals
 
-**65% — Medium confidence; raw weighted score 63.75.**
+**75% — Medium confidence; raw weighted score 72.5.**
 
 Implementation: CPU/MMU access integration, Timer 0/1/2, expanded UART and DMA are implemented.
 
-Verification: Helper tests and live DVC DMA pass; timer/UART production event sequences and executed MMU faults are not covered.
+Verification: Executed MMU recovery and live CDIC/DVC DMA pass; live timer/UART event sequences remain open.
 
 | Obligation | Weight | Previous grade | Current grade | Rationale and remaining gaps |
 | --- | ---: | ---: | ---: | --- |
-| CPU access integration | 15 | 2 | 2 | Musashi access callbacks exist; SCC-specific execution/fault corpus is missing. |
+| CPU access integration | 15 | 2 | 3 | Executed protected read/write/fetch and segment-boundary fault/retry pass; the complete SCC instruction corpus remains open. |
 | Timers | 10 | 2 | 3 | Timer 1/2 match timers and capture/count input callbacks are implemented. Exhaustive mode, edge, overflow and status helpers pass; live timer callback/IRQ timing remains untested. |
-| DMA controller | 15 | 2 | 3 | Controller START, retained reset counters, address masks, active MTC=0 as 65536 and error/termination APIs are implemented. Helpers and real SCC/DVC transfers pass; CDIC and advanced modes remain open. |
+| DMA controller | 15 | 2 | 3 | Helpers and live SCC/DVC and CDIC boundary/error transfers pass; advanced request modes and arbitration remain open. |
 | Interrupt controller | 10 | 3 | 3 | Priority helpers and acknowledgements; physical IACK incomplete. |
 | UART | 10 | 2 | 3 | Mode-dependent frames, character completion, receive overrun, break and echo/loopback behavior are implemented. Frame/mask/status helpers pass; live serial modes, overrun and break timing need fixtures. |
 | I2C | 10 | 2 | 2 | Master state machine exists; slave and multi-master incomplete. |
-| MMU integration | 20 | 2 | 2 | Translation and descriptor integration exist, but the restartable exception mechanism remains disabled on the reviewed SCC path. |
+| MMU integration | 20 | 2 | 3 | Restart armed across reset/postload; live format-F/RTE whole-instruction recovery passes. Internal-cycle restart and complete SSW fidelity remain open. |
 | Reset and persistent state | 10 | 3 | 3 | Timer inputs/outputs, UART break state and DMA state are registered/reset. Active peripheral save/load fixtures remain incomplete. |
 
 Implementation: [src/devices/cpu/m68000/m68kcpu.cpp](../src/devices/cpu/m68000/m68kcpu.cpp), [src/devices/cpu/m68000/scc68070.cpp](../src/devices/cpu/m68000/scc68070.cpp), [src/devices/machine/scc68070.cpp](../src/devices/machine/scc68070.cpp), [src/devices/machine/scc68070.h](../src/devices/machine/scc68070.h), [src/devices/machine/scc68070_helpers.h](../src/devices/machine/scc68070_helpers.h), [src/mame/philips/cdi.cpp](../src/mame/philips/cdi.cpp), [src/mame/philips/cdi_dvc_dma_service.h](../src/mame/philips/cdi_dvc_dma_service.h), [src/mame/philips/cdicdic.cpp](../src/mame/philips/cdicdic.cpp), [src/mame/philips/cdidvc.cpp](../src/mame/philips/cdidvc.cpp), [src/mame/philips/cdislavehle.cpp](../src/mame/philips/cdislavehle.cpp).
@@ -166,25 +186,25 @@ Tests: [tests/emu/machine/scc68070.cpp](../tests/emu/machine/scc68070.cpp), [tes
 
 Documentation: [docs/cdi_branch_consolidation_20260906.md](../docs/cdi_branch_consolidation_20260906.md), [docs/cdi_dma_av_optional_dvc_checkpoint_20260906.md](../docs/cdi_dma_av_optional_dvc_checkpoint_20260906.md), [docs/cdi_modernization_status.md](../docs/cdi_modernization_status.md), [docs/cdi_scc68070_mmu_checkpoint_20260906.md](../docs/cdi_scc68070_mmu_checkpoint_20260906.md).
 
-Next action: Execute-test and repair MMU exception delivery; add live Timer 1/2 and UART mode/break/overrun fixtures, then I2C gaps.
+Next action: Add live Timer 1/2 and UART mode/break/overrun fixtures, then I2C gaps.
 
 <a id="mmu"></a>
 
 ### SCC68070 MMU
 
-**65% — Medium confidence; raw weighted score 62.5.**
+**75% — Medium confidence; raw weighted score 75.**
 
 Implementation: Descriptor translation, permissions and access preflight exist.
 
-Verification: Helpers and CPU-suspended translation/save queries pass; exception stack, RTE and actual protected instructions remain unverified.
+Verification: Executed read/write/fetch/boundary fault/retry, format-F read frame and active-MMU save/load pass; full SSW and internal-cycle semantics remain open.
 
 | Obligation | Weight | Previous grade | Current grade | Rationale and remaining gaps |
 | --- | ---: | ---: | ---: | --- |
 | Register interface | 15 | 4 | 4 | Masked descriptor/control state has helpers and live register round trip. |
-| Translation and CAM | 25 | 3 | 3 | Audio has descriptor translation; instruction execution is not integration-tested. |
-| Permissions and operand boundaries | 20 | 3 | 3 | Helper permissions/preflight exist; live protected writes are not exercised. |
-| Exception and restart | 25 | 1 | 1 | Fault metadata call exists but m_can_instruction_restart stays false on this path. |
-| Save/load | 10 | 3 | 3 | Audio ram_state round trip tests translation queries with the CPU suspended. |
+| Translation and CAM | 25 | 3 | 3 | Live executed translation and descriptor repair pass; duplicate CAM silicon behavior remains unproven. |
+| Permissions and operand boundaries | 20 | 3 | 3 | Executed read/write/fetch protection and segment-limit crossing/retry pass; exhaustive transfer forms and lanes remain open. |
+| Exception and restart | 25 | 1 | 3 | Live 17-word format-F read frame, fault address/SSW/MSR, guest repair and RTE whole-instruction recovery pass; RR=1, full SSW and internal-cycle restart remain open. |
+| Save/load | 10 | 3 | 3 | Active-MMU register/query ram_state round trip followed by executed fault recovery passes; snapshots inside a partial fault cycle remain untested. |
 | Silicon timing and ambiguous CAM edges | 5 | 0 | 0 | No distinguishing physical oracle. |
 
 Implementation: [src/devices/cpu/m68000/m68kcpu.cpp](../src/devices/cpu/m68000/m68kcpu.cpp), [src/devices/cpu/m68000/scc68070.cpp](../src/devices/cpu/m68000/scc68070.cpp), [src/devices/machine/scc68070.h](../src/devices/machine/scc68070.h), [src/devices/machine/scc68070_helpers.h](../src/devices/machine/scc68070_helpers.h).
@@ -193,17 +213,17 @@ Tests: [tests/emu/machine/scc68070.cpp](../tests/emu/machine/scc68070.cpp), [tes
 
 Documentation: [docs/cdi_scc68070_mmu_checkpoint_20260906.md](../docs/cdi_scc68070_mmu_checkpoint_20260906.md).
 
-Next action: Enable the correct fault path and test executed fetch/read/write faults and RTE.
+Next action: Extend transfer-form/SSW coverage, RR=1 and internal-cycle restart only with authoritative evidence.
 
 <a id="cdic"></a>
 
 ### CDIC
 
-**55% — Medium confidence; raw weighted score 56.25.**
+**65% — Medium confidence; raw weighted score 63.75.**
 
 Implementation: Commands, sector routing, double buffers, XA and AUDCTL are implemented.
 
-Verification: Routing/control helpers and retained buffer evidence exist; live SRAM-boundary and multi-track transport fixtures are missing.
+Verification: Live SRAM boundaries and both DMA directions pass; multi-track Q/transport fixtures remain missing.
 
 | Obligation | Weight | Previous grade | Current grade | Rationale and remaining gaps |
 | --- | ---: | ---: | ---: | --- |
@@ -211,7 +231,7 @@ Verification: Routing/control helpers and retained buffer evidence exist; live S
 | Mode-2 routing and coding | 15 | 4 | 4 | Audio exhausts standards routing, coding and selected parameter policy. |
 | Buffers and delivery | 15 | 3 | 3 | Measured double-buffer behavior; no full disc-device campaign. |
 | Audio control and handoff | 15 | 3 | 3 | Audio fixes AUDCTL/playback/sector ownership; physical edges remain. |
-| DMA SRAM boundaries | 15 | 1 | 1 | Unbounded device_index can leave the 16 KiB allocation on both branches. |
+| DMA SRAM boundaries | 15 | 1 | 3 | Both live DMA directions stop safely at 16 KiB and report SCC device bus error; clipping/error policy is emulator safety, not measured silicon behavior. |
 | TOC and subcode | 15 | 1 | 1 | Hard-coded position fields and partial TOC synthesis. |
 | Error/status fidelity | 5 | 1 | 1 | Read failure is bounded; hardware error response incomplete. |
 | Active save/load | 5 | 2 | 2 | Fields are registered; CDIC live transport snapshot fixture missing. |
@@ -222,7 +242,7 @@ Tests: [tests/emu/machine/scc68070_peripherals.cpp](../tests/emu/machine/scc6807
 
 Documentation: [docs/cdi_audio_compatibility_matrix_20260906.md](../docs/cdi_audio_compatibility_matrix_20260906.md), [docs/cdi_audio_fidelity.md](../docs/cdi_audio_fidelity.md), [docs/cdi_audio_fidelity_campaign.md](../docs/cdi_audio_fidelity_campaign.md), [docs/cdi_audio_final_certification_20260906.md](../docs/cdi_audio_final_certification_20260906.md), [docs/cdi_dma_av_optional_dvc_checkpoint_20260906.md](../docs/cdi_dma_av_optional_dvc_checkpoint_20260906.md).
 
-Next action: Repair the channel-1 SRAM boundary before more audio-fidelity work.
+Next action: Implement synthetic multi-track CD-DA/Q coverage and correct track/index/relative time.
 
 <a id="mcd"></a>
 
@@ -429,18 +449,18 @@ Next action: Implement correct track/index/relative time and independently check
 
 ### DMA integration
 
-**60% — Medium confidence; raw weighted score 61.25.**
+**70% — Medium confidence; raw weighted score 71.25.**
 
 Implementation: SCC-owned transfers, START, full counts, held-request re-arm and error APIs exist.
 
-Verification: Real DVC boundary passes; CDIC SRAM safety, actual error injection and bus arbitration remain open.
+Verification: Live DVC transfers and both CDIC SRAM boundary/error directions pass; advanced modes and physical arbitration remain open.
 
 | Obligation | Weight | Previous grade | Current grade | Rationale and remaining gaps |
 | --- | ---: | ---: | ---: | --- |
 | Controller registers | 20 | 3 | 3 | Masks/start/abort/COC implemented; remaining register ambiguity. |
 | Address/count sequencing | 15 | 3 | 3 | Pure modes/wrap tested; device-specific coverage incomplete. |
 | DVC channel 2 | 25 | 4 | 4 | Existing normal/audio ingress fixtures plus merged explicit START, held-request re-arm, immediate abort and 65536-word live transfer pass. |
-| CDIC channel 1 | 20 | 1 | 1 | Synchronous unbounded SRAM loop; guest can cross allocation. |
+| CDIC channel 1 | 20 | 1 | 3 | Real DMACTL transfers exercise both directions, final legal word, oversized count, preserved remaining count and device bus error. Physical wrap/arbitration remain open. |
 | Advanced request/error modes | 10 | 1 | 2 | Device-termination and memory/device-error APIs now set status and update IPL. Their helper status rules pass; actual bus-error wiring, chaining/burst and error-injection fixtures remain open. |
 | Bus timing | 10 | 0 | 0 | No cycle-exact arbitration/IACK/DREQ proof. |
 
@@ -450,17 +470,17 @@ Tests: [tests/emu/machine/scc68070_peripherals.cpp](../tests/emu/machine/scc6807
 
 Documentation: [docs/cdi_audio_fidelity_campaign.md](../docs/cdi_audio_fidelity_campaign.md), [docs/cdi_dma_av_optional_dvc_checkpoint_20260906.md](../docs/cdi_dma_av_optional_dvc_checkpoint_20260906.md).
 
-Next action: Fix and live-test CDIC SRAM boundaries; then inject controller errors and test request/bus modes.
+Next action: Extend controller error/request-mode and bus-arbitration coverage.
 
 <a id="irq"></a>
 
 ### Interrupts
 
-**65% — Medium confidence; raw weighted score 66.25.**
+**70% — Medium confidence; raw weighted score 68.75.**
 
 Implementation: Priority arbitration, acknowledgements and device IRQ sources exist.
 
-Verification: Helpers and live DVC abort/completion pass; expanded UART/timer/error-source sequences and physical IACK remain unverified.
+Verification: Live DVC events, executed MMU fault/recovery and CDIC error status pass; expanded peripheral IRQ sequences remain open.
 
 | Obligation | Weight | Previous grade | Current grade | Rationale and remaining gaps |
 | --- | ---: | ---: | ---: | --- |
@@ -468,7 +488,7 @@ Verification: Helpers and live DVC abort/completion pass; expanded UART/timer/er
 | CDIC source control | 20 | 3 | 3 | Audio measured AUDCTL/XBUF/ABUF gating. |
 | SLAVE response IRQ | 20 | 3 | 3 | Readiness/replacement helpers; mailbox timing still a model. |
 | DVC status/IRQ | 20 | 3 | 3 | Audio integration sees synchronized completion/CSU. |
-| All fault/error sources | 10 | 1 | 1 | MMU exception delivery and broader error sources incomplete. |
+| All fault/error sources | 10 | 1 | 2 | Executed MMU exceptions and CDIC device-error status pass; expanded UART/timer/error-source and physical IACK sequences remain open. |
 | Physical IACK edge timing | 5 | 0 | 0 | No trace-derived closure. |
 
 Implementation: [src/devices/machine/scc68070.cpp](../src/devices/machine/scc68070.cpp), [src/mame/philips/cdi.cpp](../src/mame/philips/cdi.cpp), [src/mame/philips/cdi_dvc_dma_service.h](../src/mame/philips/cdi_dvc_dma_service.h), [src/mame/philips/cdicdic.cpp](../src/mame/philips/cdicdic.cpp), [src/mame/philips/cdidvc.cpp](../src/mame/philips/cdidvc.cpp), [src/mame/philips/cdislavehle.cpp](../src/mame/philips/cdislavehle.cpp).
@@ -477,7 +497,7 @@ Tests: [tests/emu/machine/scc68070.cpp](../tests/emu/machine/scc68070.cpp), [tes
 
 Documentation: [docs/cdi_dma_av_optional_dvc_checkpoint_20260906.md](../docs/cdi_dma_av_optional_dvc_checkpoint_20260906.md), [docs/cdi_modernization_status.md](../docs/cdi_modernization_status.md).
 
-Next action: Add live error-source assertions alongside each new transfer/fault fixture.
+Next action: Add live timer/UART/error-source and acknowledgement sequences.
 
 <a id="timing"></a>
 

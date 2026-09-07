@@ -2,6 +2,18 @@
 
 > Historical audio-branch checkpoint. Unified START/MTC=0 (65536 operands), held-request re-arm and immediate abort behavior supersede the zero-count/abort descriptions below; see [the unified audit](cdi_unified_verified_status_20260907.md) and [merge record](cdi_branch_consolidation_20260906.md).
 
+## CDIC channel-1 safety certification — 2026-09-07
+
+Production `f330c0901c7d1aaf5581f50735ee03c6b8aeaa1f` bounds every SRAM
+operand before pointer formation and reports SCC device bus error at exhaustion.
+`tests/emu/philips/cdi_cdic_dma_integration.cpp` exercises both directions through
+real DMACTL/registers, the last legal words, oversized counts and error/status.
+CI 34070663002 passed 219 helper cases / 17,393,781 assertions and 7 integration
+cases / 24 top-level assertions. The same corpus passed locally with the executed
+MMU changes on 2026-09-07; see the MMU checkpoint for exact commands.
+This is emulator safety policy, not proof of physical CDIC clipping/wrap/error
+behavior. Channel-1 bus arbitration, timing and advanced request modes remain open.
+
 Branch: `audio/cdi-fidelity-100-campaign-20260905`
 
 ## Scope

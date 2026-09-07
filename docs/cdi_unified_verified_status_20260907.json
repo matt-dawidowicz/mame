@@ -2,8 +2,8 @@
   "schema_version": 2,
   "audit_date": "2026-09-07",
   "branch": "cdi-unified",
-  "reviewed_head": "ad950937b72f258afe087bc2aa65cdb298e4e46b",
-  "verified_code_commit": "ade0f78abf4367f07c9d2fd3d383f448110c4cb2",
+  "reviewed_head": "6785ea148341de1bf54fdd8e70cec0ab4115d24e",
+  "verified_code_commit": "6785ea148341de1bf54fdd8e70cec0ab4115d24e",
   "upstream_commit": "1fb001f9bfab5cf0148fdfe8755659c4a869831b",
   "prior_report": "cdi_verified_status_20260906.json",
   "prior_audio_baseline": "442e5050846e680ed653fc1297b66df588b314e2",
@@ -25,7 +25,8 @@
     "integration_cases": 6,
     "integration_assertions": 21,
     "conclusion": "success",
-    "execution_date": "2026-09-06"
+    "execution_date": "2026-09-06",
+    "scope": "Historical consolidation CI; current local gate recorded separately."
   },
   "subsystems": [
     {
@@ -44,8 +45,8 @@
           "scope": "CPU access integration",
           "weight": 15,
           "prior_grade": 2,
-          "grade": 2,
-          "rationale": "Musashi access callbacks exist; SCC-specific execution/fault corpus is missing.",
+          "grade": 3,
+          "rationale": "Executed protected read/write/fetch and segment-boundary fault/retry pass; the complete SCC instruction corpus remains open.",
           "prior_rationale": "Musashi access callbacks exist; SCC-specific execution/fault corpus is missing."
         },
         {
@@ -61,7 +62,7 @@
           "weight": 15,
           "prior_grade": 2,
           "grade": 3,
-          "rationale": "Controller START, retained reset counters, address masks, active MTC=0 as 65536 and error/termination APIs are implemented. Helpers and real SCC/DVC transfers pass; CDIC and advanced modes remain open.",
+          "rationale": "Helpers and live SCC/DVC and CDIC boundary/error transfers pass; advanced request modes and arbitration remain open.",
           "prior_rationale": "Basic transfer engine; CDIC boundary defect and advanced modes remain."
         },
         {
@@ -92,8 +93,8 @@
           "scope": "MMU integration",
           "weight": 20,
           "prior_grade": 2,
-          "grade": 2,
-          "rationale": "Translation and descriptor integration exist, but the restartable exception mechanism remains disabled on the reviewed SCC path.",
+          "grade": 3,
+          "rationale": "Restart armed across reset/postload; live format-F/RTE whole-instruction recovery passes. Internal-cycle restart and complete SSW fidelity remain open.",
           "prior_rationale": "Canonical stores registers; audio translates but restart enable is missing."
         },
         {
@@ -106,10 +107,10 @@
         }
       ],
       "implementation_status": "CPU/MMU access integration, Timer 0/1/2, expanded UART and DMA are implemented.",
-      "verification_status": "Helper tests and live DVC DMA pass; timer/UART production event sequences and executed MMU faults are not covered.",
-      "next_action": "Execute-test and repair MMU exception delivery; add live Timer 1/2 and UART mode/break/overrun fixtures, then I2C gaps.",
-      "raw_percent": 63.75,
-      "percent": 65,
+      "verification_status": "Executed MMU recovery and live CDIC/DVC DMA pass; live timer/UART event sequences remain open.",
+      "next_action": "Add live Timer 1/2 and UART mode/break/overrun fixtures, then I2C gaps.",
+      "raw_percent": 72.5,
+      "percent": 75,
       "source": [
         "src/devices/cpu/m68000/m68kcpu.cpp",
         "src/devices/cpu/m68000/scc68070.cpp",
@@ -125,6 +126,7 @@
       "tests": [
         "tests/emu/machine/scc68070.cpp",
         "tests/emu/machine/scc68070_peripherals.cpp",
+        "tests/emu/philips/cdi_cdic_dma_integration.cpp",
         "tests/emu/philips/cdi_dvc_audio_dma_integration.cpp",
         "tests/emu/philips/cdi_dvc_dma_integration.cpp",
         "tests/emu/philips/cdi_dvc_edge_integration.cpp",
@@ -140,13 +142,13 @@
         "docs/cdi_unified_verified_status_20260907.md#scc"
       ],
       "known_inaccuracies_and_evidence_gaps": [
-        "Musashi access callbacks exist; SCC-specific execution/fault corpus is missing.",
+        "Executed protected read/write/fetch and segment-boundary fault/retry pass; the complete SCC instruction corpus remains open.",
         "Timer 1/2 match timers and capture/count input callbacks are implemented. Exhaustive mode, edge, overflow and status helpers pass; live timer callback/IRQ timing remains untested.",
-        "Controller START, retained reset counters, address masks, active MTC=0 as 65536 and error/termination APIs are implemented. Helpers and real SCC/DVC transfers pass; CDIC and advanced modes remain open.",
+        "Helpers and live SCC/DVC and CDIC boundary/error transfers pass; advanced request modes and arbitration remain open.",
         "Priority helpers and acknowledgements; physical IACK incomplete.",
         "Mode-dependent frames, character completion, receive overrun, break and echo/loopback behavior are implemented. Frame/mask/status helpers pass; live serial modes, overrun and break timing need fixtures.",
         "Master state machine exists; slave and multi-master incomplete.",
-        "Translation and descriptor integration exist, but the restartable exception mechanism remains disabled on the reviewed SCC path.",
+        "Restart armed across reset/postload; live format-F/RTE whole-instruction recovery passes. Internal-cycle restart and complete SSW fidelity remain open.",
         "Timer inputs/outputs, UART break state and DMA state are registered/reset. Active peripheral save/load fixtures remain incomplete."
       ],
       "remaining_work": [
@@ -159,12 +161,12 @@
         "MMU integration",
         "Reset and persistent state"
       ],
-      "last_reviewed_commit": "ad950937b72f258afe087bc2aa65cdb298e4e46b",
-      "last_verified_commit": "ade0f78abf4367f07c9d2fd3d383f448110c4cb2",
+      "last_reviewed_commit": "6785ea148341de1bf54fdd8e70cec0ab4115d24e",
+      "last_verified_commit": "6785ea148341de1bf54fdd8e70cec0ab4115d24e",
       "last_verification_date": "2026-09-07",
-      "verification_basis": "Fresh unified source/delta and fixture-scope review; existing passing CI on identical production/test code, not a new runtime or hardware measurement.",
+      "verification_basis": "Local regenerated-source CD-i helper and full-machine integration gate; no hardware or retail certification.",
       "prior_audio_raw_percent": 55.0,
-      "last_test_date": "2026-09-06"
+      "last_test_date": "2026-09-07"
     },
     {
       "id": "mmu",
@@ -188,7 +190,7 @@
           "weight": 25,
           "prior_grade": 3,
           "grade": 3,
-          "rationale": "Audio has descriptor translation; instruction execution is not integration-tested.",
+          "rationale": "Live executed translation and descriptor repair pass; duplicate CAM silicon behavior remains unproven.",
           "prior_rationale": "Audio has descriptor translation; instruction execution is not integration-tested."
         },
         {
@@ -196,15 +198,15 @@
           "weight": 20,
           "prior_grade": 3,
           "grade": 3,
-          "rationale": "Helper permissions/preflight exist; live protected writes are not exercised.",
+          "rationale": "Executed read/write/fetch protection and segment-limit crossing/retry pass; exhaustive transfer forms and lanes remain open.",
           "prior_rationale": "Helper permissions/preflight exist; live protected writes are not exercised."
         },
         {
           "scope": "Exception and restart",
           "weight": 25,
           "prior_grade": 1,
-          "grade": 1,
-          "rationale": "Fault metadata call exists but m_can_instruction_restart stays false on this path.",
+          "grade": 3,
+          "rationale": "Live 17-word format-F read frame, fault address/SSW/MSR, guest repair and RTE whole-instruction recovery pass; RR=1, full SSW and internal-cycle restart remain open.",
           "prior_rationale": "Fault metadata call exists but m_can_instruction_restart stays false on this path."
         },
         {
@@ -212,7 +214,7 @@
           "weight": 10,
           "prior_grade": 3,
           "grade": 3,
-          "rationale": "Audio ram_state round trip tests translation queries with the CPU suspended.",
+          "rationale": "Active-MMU register/query ram_state round trip followed by executed fault recovery passes; snapshots inside a partial fault cycle remain untested.",
           "prior_rationale": "Audio ram_state round trip tests translation queries with the CPU suspended."
         },
         {
@@ -225,10 +227,10 @@
         }
       ],
       "implementation_status": "Descriptor translation, permissions and access preflight exist.",
-      "verification_status": "Helpers and CPU-suspended translation/save queries pass; exception stack, RTE and actual protected instructions remain unverified.",
-      "next_action": "Enable the correct fault path and test executed fetch/read/write faults and RTE.",
-      "raw_percent": 62.5,
-      "percent": 65,
+      "verification_status": "Executed read/write/fetch/boundary fault/retry, format-F read frame and active-MMU save/load pass; full SSW and internal-cycle semantics remain open.",
+      "next_action": "Extend transfer-form/SSW coverage, RR=1 and internal-cycle restart only with authoritative evidence.",
+      "raw_percent": 75.0,
+      "percent": 75,
       "source": [
         "src/devices/cpu/m68000/m68kcpu.cpp",
         "src/devices/cpu/m68000/scc68070.cpp",
@@ -244,10 +246,10 @@
         "docs/cdi_unified_verified_status_20260907.md#mmu"
       ],
       "known_inaccuracies_and_evidence_gaps": [
-        "Audio has descriptor translation; instruction execution is not integration-tested.",
-        "Helper permissions/preflight exist; live protected writes are not exercised.",
-        "Fault metadata call exists but m_can_instruction_restart stays false on this path.",
-        "Audio ram_state round trip tests translation queries with the CPU suspended.",
+        "Live executed translation and descriptor repair pass; duplicate CAM silicon behavior remains unproven.",
+        "Executed read/write/fetch protection and segment-limit crossing/retry pass; exhaustive transfer forms and lanes remain open.",
+        "Live 17-word format-F read frame, fault address/SSW/MSR, guest repair and RTE whole-instruction recovery pass; RR=1, full SSW and internal-cycle restart remain open.",
+        "Active-MMU register/query ram_state round trip followed by executed fault recovery passes; snapshots inside a partial fault cycle remain untested.",
         "No distinguishing physical oracle."
       ],
       "remaining_work": [
@@ -257,12 +259,12 @@
         "Save/load",
         "Silicon timing and ambiguous CAM edges"
       ],
-      "last_reviewed_commit": "ad950937b72f258afe087bc2aa65cdb298e4e46b",
-      "last_verified_commit": "ade0f78abf4367f07c9d2fd3d383f448110c4cb2",
+      "last_reviewed_commit": "6785ea148341de1bf54fdd8e70cec0ab4115d24e",
+      "last_verified_commit": "6785ea148341de1bf54fdd8e70cec0ab4115d24e",
       "last_verification_date": "2026-09-07",
-      "verification_basis": "Fresh unified source/delta and fixture-scope review; existing passing CI on identical production/test code, not a new runtime or hardware measurement.",
+      "verification_basis": "Local regenerated-source CD-i helper and full-machine integration gate; no hardware or retail certification.",
       "prior_audio_raw_percent": 62.5,
-      "last_test_date": "2026-09-06"
+      "last_test_date": "2026-09-07"
     },
     {
       "id": "cdic",
@@ -312,8 +314,8 @@
           "scope": "DMA SRAM boundaries",
           "weight": 15,
           "prior_grade": 1,
-          "grade": 1,
-          "rationale": "Unbounded device_index can leave the 16 KiB allocation on both branches.",
+          "grade": 3,
+          "rationale": "Both live DMA directions stop safely at 16 KiB and report SCC device bus error; clipping/error policy is emulator safety, not measured silicon behavior.",
           "prior_rationale": "Unbounded device_index can leave the 16 KiB allocation on both branches."
         },
         {
@@ -342,10 +344,10 @@
         }
       ],
       "implementation_status": "Commands, sector routing, double buffers, XA and AUDCTL are implemented.",
-      "verification_status": "Routing/control helpers and retained buffer evidence exist; live SRAM-boundary and multi-track transport fixtures are missing.",
-      "next_action": "Repair the channel-1 SRAM boundary before more audio-fidelity work.",
-      "raw_percent": 56.25,
-      "percent": 55,
+      "verification_status": "Live SRAM boundaries and both DMA directions pass; multi-track Q/transport fixtures remain missing.",
+      "next_action": "Implement synthetic multi-track CD-DA/Q coverage and correct track/index/relative time.",
+      "raw_percent": 63.75,
+      "percent": 65,
       "source": [
         "src/devices/machine/scc68070.cpp",
         "src/mame/philips/cdi.cpp",
@@ -356,6 +358,7 @@
       ],
       "tests": [
         "tests/emu/machine/scc68070_peripherals.cpp",
+        "tests/emu/philips/cdi_cdic_dma_integration.cpp",
         "tests/emu/philips/cdi_dvc_audio_dma_integration.cpp",
         "tests/emu/philips/cdi_dvc_dma_integration.cpp",
         "tests/emu/philips/cdi_dvc_edge_integration.cpp",
@@ -374,7 +377,7 @@
         "Read/stop state exists; seek-only completion and errors remain modeled.",
         "Measured double-buffer behavior; no full disc-device campaign.",
         "Audio fixes AUDCTL/playback/sector ownership; physical edges remain.",
-        "Unbounded device_index can leave the 16 KiB allocation on both branches.",
+        "Both live DMA directions stop safely at 16 KiB and report SCC device bus error; clipping/error policy is emulator safety, not measured silicon behavior.",
         "Hard-coded position fields and partial TOC synthesis.",
         "Read failure is bounded; hardware error response incomplete.",
         "Fields are registered; CDIC live transport snapshot fixture missing."
@@ -388,12 +391,12 @@
         "Error/status fidelity",
         "Active save/load"
       ],
-      "last_reviewed_commit": "ad950937b72f258afe087bc2aa65cdb298e4e46b",
-      "last_verified_commit": "ade0f78abf4367f07c9d2fd3d383f448110c4cb2",
+      "last_reviewed_commit": "6785ea148341de1bf54fdd8e70cec0ab4115d24e",
+      "last_verified_commit": "6785ea148341de1bf54fdd8e70cec0ab4115d24e",
       "last_verification_date": "2026-09-07",
-      "verification_basis": "Fresh unified source/delta and fixture-scope review; existing passing CI on identical production/test code, not a new runtime or hardware measurement.",
+      "verification_basis": "Local regenerated-source CD-i helper and full-machine integration gate; no hardware or retail certification.",
       "prior_audio_raw_percent": 56.25,
-      "last_test_date": "2026-09-06"
+      "last_test_date": "2026-09-07"
     },
     {
       "id": "mcd",
@@ -1301,8 +1304,8 @@
           "scope": "CDIC channel 1",
           "weight": 20,
           "prior_grade": 1,
-          "grade": 1,
-          "rationale": "Synchronous unbounded SRAM loop; guest can cross allocation.",
+          "grade": 3,
+          "rationale": "Real DMACTL transfers exercise both directions, final legal word, oversized count, preserved remaining count and device bus error. Physical wrap/arbitration remain open.",
           "prior_rationale": "Synchronous unbounded SRAM loop; guest can cross allocation."
         },
         {
@@ -1323,10 +1326,10 @@
         }
       ],
       "implementation_status": "SCC-owned transfers, START, full counts, held-request re-arm and error APIs exist.",
-      "verification_status": "Real DVC boundary passes; CDIC SRAM safety, actual error injection and bus arbitration remain open.",
-      "next_action": "Fix and live-test CDIC SRAM boundaries; then inject controller errors and test request/bus modes.",
-      "raw_percent": 61.25,
-      "percent": 60,
+      "verification_status": "Live DVC transfers and both CDIC SRAM boundary/error directions pass; advanced modes and physical arbitration remain open.",
+      "next_action": "Extend controller error/request-mode and bus-arbitration coverage.",
+      "raw_percent": 71.25,
+      "percent": 70,
       "source": [
         "src/devices/machine/scc68070.cpp",
         "src/mame/philips/cdi.cpp",
@@ -1337,6 +1340,7 @@
       ],
       "tests": [
         "tests/emu/machine/scc68070_peripherals.cpp",
+        "tests/emu/philips/cdi_cdic_dma_integration.cpp",
         "tests/emu/philips/cdi_dvc_audio_dma_integration.cpp",
         "tests/emu/philips/cdi_dvc_dma_integration.cpp",
         "tests/emu/philips/cdi_dvc_edge_integration.cpp",
@@ -1351,7 +1355,7 @@
       "known_inaccuracies_and_evidence_gaps": [
         "Masks/start/abort/COC implemented; remaining register ambiguity.",
         "Pure modes/wrap tested; device-specific coverage incomplete.",
-        "Synchronous unbounded SRAM loop; guest can cross allocation.",
+        "Real DMACTL transfers exercise both directions, final legal word, oversized count, preserved remaining count and device bus error. Physical wrap/arbitration remain open.",
         "Device-termination and memory/device-error APIs now set status and update IPL. Their helper status rules pass; actual bus-error wiring, chaining/burst and error-injection fixtures remain open.",
         "No cycle-exact arbitration/IACK/DREQ proof."
       ],
@@ -1362,12 +1366,12 @@
         "Advanced request/error modes",
         "Bus timing"
       ],
-      "last_reviewed_commit": "ad950937b72f258afe087bc2aa65cdb298e4e46b",
-      "last_verified_commit": "ade0f78abf4367f07c9d2fd3d383f448110c4cb2",
+      "last_reviewed_commit": "6785ea148341de1bf54fdd8e70cec0ab4115d24e",
+      "last_verified_commit": "6785ea148341de1bf54fdd8e70cec0ab4115d24e",
       "last_verification_date": "2026-09-07",
-      "verification_basis": "Fresh unified source/delta and fixture-scope review; existing passing CI on identical production/test code, not a new runtime or hardware measurement.",
+      "verification_basis": "Local regenerated-source CD-i helper and full-machine integration gate; no hardware or retail certification.",
       "prior_audio_raw_percent": 58.75,
-      "last_test_date": "2026-09-06"
+      "last_test_date": "2026-09-07"
     },
     {
       "id": "irq",
@@ -1415,8 +1419,8 @@
           "scope": "All fault/error sources",
           "weight": 10,
           "prior_grade": 1,
-          "grade": 1,
-          "rationale": "MMU exception delivery and broader error sources incomplete.",
+          "grade": 2,
+          "rationale": "Executed MMU exceptions and CDIC device-error status pass; expanded UART/timer/error-source and physical IACK sequences remain open.",
           "prior_rationale": "MMU exception delivery and broader error sources incomplete."
         },
         {
@@ -1429,10 +1433,10 @@
         }
       ],
       "implementation_status": "Priority arbitration, acknowledgements and device IRQ sources exist.",
-      "verification_status": "Helpers and live DVC abort/completion pass; expanded UART/timer/error-source sequences and physical IACK remain unverified.",
-      "next_action": "Add live error-source assertions alongside each new transfer/fault fixture.",
-      "raw_percent": 66.25,
-      "percent": 65,
+      "verification_status": "Live DVC events, executed MMU fault/recovery and CDIC error status pass; expanded peripheral IRQ sequences remain open.",
+      "next_action": "Add live timer/UART/error-source and acknowledgement sequences.",
+      "raw_percent": 68.75,
+      "percent": 70,
       "source": [
         "src/devices/machine/scc68070.cpp",
         "src/mame/philips/cdi.cpp",
@@ -1444,6 +1448,7 @@
       "tests": [
         "tests/emu/machine/scc68070.cpp",
         "tests/emu/machine/scc68070_peripherals.cpp",
+        "tests/emu/philips/cdi_cdic_dma_integration.cpp",
         "tests/emu/philips/cdi_dvc_audio_dma_integration.cpp",
         "tests/emu/philips/cdi_dvc_dma_integration.cpp",
         "tests/emu/philips/cdi_dvc_edge_integration.cpp",
@@ -1460,7 +1465,7 @@
         "Audio measured AUDCTL/XBUF/ABUF gating.",
         "Readiness/replacement helpers; mailbox timing still a model.",
         "Audio integration sees synchronized completion/CSU.",
-        "MMU exception delivery and broader error sources incomplete.",
+        "Executed MMU exceptions and CDIC device-error status pass; expanded UART/timer/error-source and physical IACK sequences remain open.",
         "No trace-derived closure."
       ],
       "remaining_work": [
@@ -1471,12 +1476,12 @@
         "All fault/error sources",
         "Physical IACK edge timing"
       ],
-      "last_reviewed_commit": "ad950937b72f258afe087bc2aa65cdb298e4e46b",
-      "last_verified_commit": "ade0f78abf4367f07c9d2fd3d383f448110c4cb2",
+      "last_reviewed_commit": "6785ea148341de1bf54fdd8e70cec0ab4115d24e",
+      "last_verified_commit": "6785ea148341de1bf54fdd8e70cec0ab4115d24e",
       "last_verification_date": "2026-09-07",
-      "verification_basis": "Fresh unified source/delta and fixture-scope review; existing passing CI on identical production/test code, not a new runtime or hardware measurement.",
+      "verification_basis": "Local regenerated-source CD-i helper and full-machine integration gate; no hardware or retail certification.",
       "prior_audio_raw_percent": 66.25,
-      "last_test_date": "2026-09-06"
+      "last_test_date": "2026-09-07"
     },
     {
       "id": "timing",
@@ -2801,5 +2806,16 @@
     "documentation": "docs/cdi_audio_compatibility_matrix_20260906.md",
     "last_reviewed_commit": "ad950937b72f258afe087bc2aa65cdb298e4e46b",
     "date": "2026-09-07"
+  },
+  "local_verification": {
+    "commit": "6785ea148341de1bf54fdd8e70cec0ab4115d24e",
+    "date": "2026-09-07",
+    "helper_cases": 219,
+    "helper_assertions": 17393781,
+    "integration_cases": 7,
+    "integration_assertions": 24,
+    "conclusion": "success",
+    "generated_musashi": "Explicit m68kmake.py; tracked output included",
+    "commands_document": "docs/cdi_scc68070_mmu_checkpoint_20260906.md"
   }
 }

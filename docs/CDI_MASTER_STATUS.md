@@ -11,21 +11,28 @@ verified status updates affected worksheets; development resumes the next action
 [AGENTS.md](../AGENTS.md) defines those modes. The audio campaign remains the
 detailed audio ledger on this unified branch.
 
-## Assessment and verification
+## Publication certification — 2026-09-07
 
-- Source HEAD reviewed: `ad950937b72f258afe087bc2aa65cdb298e4e46b`.
-- Last verified production commit: `ade0f78abf4367f07c9d2fd3d383f448110c4cb2`; source/evidence review: 2026-09-07.
-- [CI run 34066705811](https://github.com/matt-dawidowicz/mame/actions/runs/34066705811)
-  Executed 2026-09-06; **PASS:** 17,393,781 assertions / 219 helper cases; production build and
-  emulator-linked integration 21 assertions / 6 cases; DMA liveness GREEN.
-- CI's PR merge tree matches the published code merge. Current source/test code
-  is unchanged since that gate. This assessment freshly reviews merge deltas and
-  evidence scope; it does not claim a new emulator run, hardware measurement or
-  retail-title playthrough. Documentation-only changes need no repeat build.
-- All matrix rows inherit these exact commits/date. Each linked worksheet records
-  implementation, verification, inaccuracies, remaining work, tests, documentation
-  and next action. [Machine-readable weights and grades](cdi_unified_verified_status_20260907.json) reproduce
-  every estimate.
+Verified production source: `6785ea148341de1bf54fdd8e70cec0ab4115d24e`. Local regenerated-source gate passes
+17,393,781 assertions / 219 helper cases and 24 top-level assertions / 7
+emulator-linked cases; DVC DMA liveness GREEN. Exact commands and limitations:
+[MMU checkpoint](cdi_scc68070_mmu_checkpoint_20260906.md).
+CDIC bounds were already published at `f330c0901c7d1aaf5581f50735ee03c6b8aeaa1f`,
+supported by CI run [34070663002](https://github.com/matt-dawidowicz/mame/actions/runs/34070663002)
+and rerun in this local integration gate. MMU staging run 34073320088 failed;
+there was no green candidate to fast-forward. Explicit regeneration of tracked
+Musashi output supplied the missing RTE branch, now committed with a CI freshness gate.
+
+Weighted changes (same worksheet, no added denominator): SCC 63.75→72.5 raw
+(65→75%), MMU 62.5→75 (65→75%), CDIC 56.25→63.75 (55→65%),
+DMA 61.25→71.25 (60→70%), interrupts 66.25→68.75 (65→70%).
+SCC CPU/MMU packages rise 2→3, MMU exception/restart 1→3,
+CDIC SRAM and DMA channel-1 packages 1→3, all fault/error sources 1→2.
+Remaining rows keep their historical grades, evidence dates and gaps.
+Emulator-safe CDIC clipping/error behavior is not a silicon claim. MMU recovery
+is whole-instruction retry; exact internal-cycle behavior, complete SSW/lane forms,
+RR=1, ambiguous CAM and timing remain open. No hardware-fidelity or compatibility
+percentage is invented. Next substantive task: synthetic multi-track CD-DA/Q.
 
 ## Meaning of the percentages
 
@@ -48,9 +55,9 @@ fidelity percentage is invented when evidence is insufficient.
 
 | Subsystem | Prior A2 | Unified | Confidence | Implementation / verification boundary |
 | --- | ---: | ---: | --- | --- |
-| [SCC68070 CPU and internal peripherals](cdi_unified_verified_status_20260907.md#scc) | 55% | **65%** | Medium | Helper tests and live DVC DMA pass; timer/UART production event sequences and executed MMU faults are not covered. |
-| [SCC68070 MMU](cdi_unified_verified_status_20260907.md#mmu) | 65% | **65%** | Medium | Helpers and CPU-suspended translation/save queries pass; exception stack, RTE and actual protected instructions remain unverified. |
-| [CDIC](cdi_unified_verified_status_20260907.md#cdic) | 55% | **55%** | Medium | Routing/control helpers and retained buffer evidence exist; live SRAM-boundary and multi-track transport fixtures are missing. |
+| [SCC68070 CPU and internal peripherals](cdi_unified_verified_status_20260907.md#scc) | 55% | **75%** | Medium | Executed MMU recovery and live CDIC/DVC DMA pass; live timer/UART event sequences remain open. |
+| [SCC68070 MMU](cdi_unified_verified_status_20260907.md#mmu) | 65% | **75%** | Medium | Executed read/write/fetch/boundary fault/retry, format-F read frame and active-MMU save/load pass; full SSW and internal-cycle semantics remain open. |
+| [CDIC](cdi_unified_verified_status_20260907.md#cdic) | 55% | **65%** | Medium | Live SRAM boundaries and both DMA directions pass; multi-track Q/transport fixtures remain missing. |
 | [MCD212 display](cdi_unified_verified_status_20260907.md#mcd) | 65% | **65%** | Medium | Mode/control/QHY helpers pass; independent full frames and combined overlay remain unverified. |
 | [DVC overall](cdi_unified_verified_status_20260907.md#dvc) | 70% | **70%** | Medium | Live ingress/handshake and control-state tests pass; full decoded movie/physical board fidelity remains open. |
 | [MPEG video decode and presentation](cdi_unified_verified_status_20260907.md#mpeg_video) | 55% | **55%** | Low | Packet/event/conversion helpers pass; no retained independent full I/P/B picture corpus or combined displayed-frame oracle. |
@@ -58,8 +65,8 @@ fidelity percentage is invented when evidence is insufficient.
 | [XA routing and ADPCM](cdi_unified_verified_status_20260907.md#xa) | 75% | **75%** | Medium | Exhaustive helpers and retained exact 4-bit stereo reference exist; other independent modes, silicon and retail evidence remain incomplete. |
 | [CD-DA playback and transport](cdi_unified_verified_status_20260907.md#cdda) | 50% | **50%** | Low | Helper/reference response tests pass; track/index/relative position defects and mixed-mode transport validation remain. |
 | [CD-DA Q and other subcode](cdi_unified_verified_status_20260907.md#q) | 40% | **40%** | Low | Control/placement helpers pass; fixed track/index and incorrect relative/lead-out construction remain. |
-| [DMA integration](cdi_unified_verified_status_20260907.md#dma) | 60% | **60%** | Medium | Real DVC boundary passes; CDIC SRAM safety, actual error injection and bus arbitration remain open. |
-| [Interrupts](cdi_unified_verified_status_20260907.md#irq) | 65% | **65%** | Medium | Helpers and live DVC abort/completion pass; expanded UART/timer/error-source sequences and physical IACK remain unverified. |
+| [DMA integration](cdi_unified_verified_status_20260907.md#dma) | 60% | **70%** | Medium | Live DVC transfers and both CDIC SRAM boundary/error directions pass; advanced modes and physical arbitration remain open. |
+| [Interrupts](cdi_unified_verified_status_20260907.md#irq) | 65% | **70%** | Medium | Live DVC events, executed MMU fault/recovery and CDIC error status pass; expanded peripheral IRQ sequences remain open. |
 | [Device timing](cdi_unified_verified_status_20260907.md#timing) | 60% | **60%** | Medium | Arithmetic and DMA cadence tests pass; cycle-exact CPU/bus and physical cross-device calibration remain unverified. |
 | [A/V synchronization](cdi_unified_verified_status_20260907.md#av) | 45% | **45%** | Medium | Long-run arithmetic passes; it is not a 30-minute decoded/presented movie or host-output drift measurement. |
 | [Save states](cdi_unified_verified_status_20260907.md#save) | 60% | **60%** | Medium | Live audio/control and MMU query snapshots pass; decoded pictures and active peripheral continuation lack complete fixtures. |
@@ -74,7 +81,7 @@ fidelity percentage is invented when evidence is insufficient.
 | [DSP56000/56001 standalone core](cdi_unified_verified_status_20260907.md#dsp) | New row | **40%** | Low | Three helper test files cover host words, bootstrap relocation, masks, loops and wrapping. No emulator-linked complete firmware, interrupt, ALU or cycle-accuracy campaign. |
 | [Compatibility](cdi_audio_compatibility_matrix_20260906.md) | Not estimated | **Not estimated** | Low | Retained retail-runtime certification is missing for required XA/DVC/CD-DA categories; this does not mean no games work. |
 
-## Progress since the pre-merge assessment
+## Historical consolidation progress (superseded for changed rows above)
 
 - **SCC68070 55% → 65%:** Timer 1/2, UART and DMA controller packages now receive
   credit for their merged implementation and helper/live-boundary evidence.
@@ -92,20 +99,14 @@ fidelity percentage is invented when evidence is insufficient.
 
 ## Known gaps and next substantive tasks
 
-1. **CDIC SRAM DMA safety:** bound accesses beyond the last SRAM word; reproduce
-   and test both directions and oversized transfers through the real device.
-   Distinguish the chosen safe policy from unmeasured hardware wrap/error behavior.
-2. **MMU exception delivery:** execute protected fetch/read/write and boundary
-   accesses; fix reset/enable/postload ownership of the restartable fault path;
-   verify exception frames and RTE. Current tests suspend the CPU for queries.
-3. **CD-DA/Q:** synthetic multi-track/mixed-mode fixtures; correct fixed track/index,
+1. **CD-DA/Q:** synthetic multi-track/mixed-mode fixtures; correct fixed track/index,
    relative-time and incomplete lead-out construction; verify CRC and transport.
-4. **Decoded A/V and save continuity:** retain decoded pictures and PCM across
+2. **Decoded A/V and save continuity:** retain decoded pictures and PCM across
    sustained presentation, interactive branches and save/load. Timestamp arithmetic
    and a video sequence header do not close this gate.
-5. **Newly merged peripheral verification:** live timer match/capture/count IRQs,
+3. **Newly merged peripheral verification:** live timer match/capture/count IRQs,
    UART mode/break/overrun, active peripheral saves and DMA error injection.
-6. **Mono-II/DSP:** complete standalone architectural/firmware execution and
+4. **Mono-II/DSP:** complete standalone architectural/firmware execution and
    address-space integration, then required board interfaces; do not enable an
    incomplete device to manufacture system completion.
 
