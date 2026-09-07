@@ -1124,6 +1124,18 @@ void cdicdic_device::regs_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 			// CDIC supplies or consumes only the device-side operand.
 			while (m_scc->dma_channel1_active())
 			{
+				// DMACTL exposes a 14-bit CDIC byte address.  The HLE owns exactly
+				// 0x4000 bytes of SRAM, so an incrementing transfer that reaches the
+				// word after 0x3ffe must not form or dereference an out-of-allocation
+				// pointer.  Report a device-side bus error through the SCC controller
+				// as the conservative emulator safety policy.  Physical CDIC behavior
+				// (wrap, clip, or error) remains unmeasured and is not asserted here.
+				if (device_index >= 0x2000)
+				{
+					m_scc->dma_channel_device_bus_error(0);
+					break;
+				}
+
 				uint8_t *const ram_word = &m_ram[device_index << 1];
 				uint16_t operand = cdic_hle::read_ram_word(ram_word);
 
