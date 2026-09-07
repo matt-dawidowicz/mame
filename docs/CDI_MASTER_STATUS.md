@@ -27,11 +27,16 @@ audio and video with the same 100 ms future timestamp. Fifteen additional short
 saves, including incomplete first-picture input, reproduce output exactly.
 Local gates pass: 12120 assertions / 25 integration cases, 17405336 / 225 helper
 cases, production build/validity, focused ASan, Musashi freshness and DMA liveness.
-Final-source long-capacity and CI certification are in progress.
+Final-source capacity passes: 67,017 composed fields and
+118,038,062 channel samples checked, with all four saves repeating
+100 fields and 176400 samples exactly. [CI 34164448976](https://github.com/matt-dawidowicz/mame/actions/runs/34164448976)
+passes on `30246e5f846ff13a44b9c261051081f273ee0f94`, whose production and tests match `7d3b17b91d25d31ea98e810a79464de91e25d9d0`.
+This subsequent certification changes documentation only.
 See the [capacity and full-size checkpoint](cdi_capacity_full_av_checkpoint_20260907.md).
 
 MCD212 is now 70%, MPEG video 70% and cross-system video 65%; other grades remain
-unchanged pending capacity certification. These are scoped engineering judgments.
+unchanged after rounding. Save-state capacity policy gains limited credit
+(raw 62.5 to 63.75; still 65%). These are scoped engineering judgments.
 Interlace/QHY, starvation/refill, arbitrary timestamps, host output and physical
 or retained retail validation remain open.
 
@@ -163,7 +168,7 @@ fidelity percentage is invented when evidence is insufficient.
 | [SCC68070 MMU](cdi_unified_verified_status_20260907.md#mmu) | 65% | **75%** | Medium | Executed read/write/fetch/boundary fault/retry, format-F read frame and active-MMU save/load pass; full SSW and internal-cycle semantics remain open. |
 | [CDIC](cdi_unified_verified_status_20260907.md#cdic) | 55% | **70%** | Medium | Live Q/TOC and four shared/separate CUE layouts with stored/virtual pregaps pass; CUE higher indexes reach SRAM in BCD. Physical status and timing remain open. |
 | [MCD212 display](cdi_unified_verified_status_20260907.md#mcd) | 65% | **70%** | Medium | Four native configurations pass exact native pixels with full-size composed video and saves; interlace/QHY, other combinations and physical output remain open. |
-| [DVC overall](cdi_unified_verified_status_20260907.md#dvc) | 70% | **75%** | Medium | Full-size MPEG and synchronized explicit reset branches pass; bounded decoder snapshots fix history overflow. Final-source long-capacity certification is pending. |
+| [DVC overall](cdi_unified_verified_status_20260907.md#dvc) | 70% | **75%** | Medium | Full-size MPEG and synchronized explicit reset branches pass; bounded decoder snapshots fix history overflow. All four history-boundary continuations pass on the exact certified source. |
 | [MPEG video decode and presentation](cdi_unified_verified_status_20260907.md#mpeg_video) | 55% | **70%** | Low | Six small/full-size formats pass independent RGB references; fragmented first-picture PTS is fixed and survives save/load. GOP/error breadth and retail/hardware evidence remain open. |
 | [DVC audio](cdi_unified_verified_status_20260907.md#dvc_audio) | 80% | **80%** | Medium | Explicit reset branches and full-size/mode snapshots pass PCM references and exact continuations; hardware flush/gain and host output remain open. |
 | [XA routing and ADPCM](cdi_unified_verified_status_20260907.md#xa) | 75% | **75%** | Medium | Exhaustive helpers and retained exact 4-bit stereo reference exist; other independent modes, silicon and retail evidence remain incomplete. |
@@ -173,7 +178,7 @@ fidelity percentage is invented when evidence is insufficient.
 | [Interrupts](cdi_unified_verified_status_20260907.md#irq) | 65% | **70%** | Medium | Moving DVC snapshots and continuous status/acknowledgement pass alongside existing MMU/CDIC gates; wider event combinations and physical timing remain open. |
 | [Device timing](cdi_unified_verified_status_20260907.md#timing) | 60% | **60%** | Medium | Varied-rate composed fields and 30-minute decoded timing pass; host output, CPU/bus cycles and physical calibration remain unverified. |
 | [A/V synchronization](cdi_unified_verified_status_20260907.md#av) | 45% | **60%** | Medium | Two explicit reset branches share future audio/video timestamps with verified composed pixels and PCM; physical latency, host drift and seamless selection remain open. |
-| [Save states](cdi_unified_verified_status_20260907.md#save) | 60% | **65%** | Medium | Fifteen further short snapshots and pointer-free decoder-state tests pass; final-source history-capacity certification is pending. Other active peripherals and arbitrary mid-field saves remain open. |
+| [Save states](cdi_unified_verified_status_20260907.md#save) | 60% | **65%** | Medium | Fifteen further short snapshots and pointer-free decoder-state tests pass; all four history-boundary continuations pass on the certified source. Other active peripherals and arbitrary mid-field saves remain open. |
 | [SLAVE HLE](cdi_unified_verified_status_20260907.md#slave) | 55% | **55%** | Medium | Command/pointer/readiness helpers pass; several protocols remain stubs and physical mailbox timing is modeled. |
 | [Input and peripherals](cdi_unified_verified_status_20260907.md#input) | 45% | **45%** | Medium | Pointer helpers pass; keyboard event delivery, controller breadth and serial waveforms are incomplete. |
 | [SERVO and MCU integration](cdi_unified_verified_status_20260907.md#servo) | 15% | **15%** | Low | Structural evidence only for much of the scope; live protocol, feedback and complete firmware runtime remain absent. |
@@ -209,8 +214,7 @@ fidelity percentage is invented when evidence is insufficient.
    active PCM save/load now passes four live scenarios. Continue with broader
    transport error semantics and other active modes.
 
-2. **Capacity and broader A/V:** finish final-source long-boundary and CI
-   certification for the current snapshot/timestamp fixes. Then test sparse PES
+2. **Broader A/V after capacity certification:** test sparse PES
    delivery, decoder starvation/refill, discontinuous timestamps and actual queue
    limits with reference output. Extend MCD212 interlace/QHY/DYUV/RGB555 and
    overlay geometry; calibrate host and physical behavior separately.

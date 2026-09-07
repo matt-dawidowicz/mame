@@ -1,8 +1,11 @@
 # DVC capacity, full-size composition and synchronized branches
 
 Date: 2026-09-07. Branch: `cdi-unified`. Reviewed baseline:
-`c9d4027d69d80c76c55a09c431cc782d7b2f8296`. This code/test checkpoint records local short gates;
-final-source long-capacity and CI certification are in progress.
+`c9d4027d69d80c76c55a09c431cc782d7b2f8296`. Verified code:
+`7d3b17b91d25d31ea98e810a79464de91e25d9d0`. [CI 34164448976](https://github.com/matt-dawidowicz/mame/actions/runs/34164448976)
+passes on `30246e5f846ff13a44b9c261051081f273ee0f94`, with production and tests identical to the code commit.
+The final-source local long-capacity gate also passes. This subsequent certification
+changes documentation only; the code commit contains the implementation and tests.
 
 ## Reproduced failures and changes
 
@@ -91,7 +94,39 @@ snapshots are captured on one uninterrupted baseline before any load: restoring
 earlier would clear replay journals and move the later crossing. Each snapshot
 then replays 500 ms against baseline field hashes/times, PCM, callback timing and
 IRQ/status/acknowledgement events. The pump-event limit is also reached on that
-baseline. Final-source long-capacity certification is in progress.
+baseline. The final-source capacity run passes all 26 assertions.
+
+## Completed capacity evidence
+
+The 1336-active-second baseline plus four 500 ms continuations passes on the
+production code above. All snapshots are valid; the initial one uses replay and
+the latter three use DVA1/DVV1 images. Audio/video overflow flags are explicitly
+checked as 0/0, 1/0, 1/0 and 1/1. The 16384-event pump limit is also reached.
+
+| Snapshot | Audio history overflow | Video history overflow | Saved audio bytes | Saved video bytes |
+| --- | ---: | ---: | ---: | ---: |
+| 1 | 0 | 0 | 8355840 | 8790600 |
+| 2 | 1 | 0 | 24024 | 27519 |
+| 3 | 1 | 0 | 24024 | 15018 |
+| 4 | 1 | 1 | 24024 | 32916 |
+
+Byte lengths after the first snapshot are serialized current state, not historical
+stream length. The last snapshot's small size is expected after history overflow.
+The run checks 67,017 complete fields and 118,038,062
+channel samples. All 100 restored fields, 176400 channel samples, callback
+time/count/order and timed IRQ/status/ack observations equal baseline exactly.
+Maximum RGB/PCM errors are 9/537; native error
+is zero. Both input and presentation remain bounded throughout this fixture.
+
+- Binary SHA-256: `05da09607bccd2d362029ee44b2186dd72779beecb50c8e6bc575f7ed01600b8`.
+- Complete log SHA-256: `1ff655510ccbb67e4c4990af3a03bc058f6cd8f776564168ca61cad78e48e496`.
+- Command: `/tmp/cdi-capacity-certified "[motion-capacity]" -s`, an unchanged copy
+  of the repository integration binary. The temporary copy was removed after the
+  run; the retained repository binary still matches the recorded launch hash.
+  Production-source hashes also match the committed files.
+
+An earlier corrected-capacity run also passed but preceded the PTS and checked
+allocation changes. The final-source run above supersedes it for certification.
 
 ## Local gates
 
@@ -106,7 +141,7 @@ baseline. Final-source long-capacity certification is in progress.
 | Focused snapshot ASan with leak detection | PASS: 11320 assertions / 4 cases |
 | Full-size standalone PL_MPEG ASan | PASS: all 117 pictures |
 | Small/full reference regeneration | Byte-identical |
-| Final-source capacity and CI | In progress; subsequent certification follows |
+| Final-source capacity and CI | PASS: 26 capacity assertions; [CI 34164448976](https://github.com/matt-dawidowicz/mame/actions/runs/34164448976) |
 
 The ASan snapshot harness compiles production decoder/bridge code with the actual
 snapshot test source. Catch 1.7 needs a harness-local constant SIGSTKSZ=65536 with
@@ -119,12 +154,13 @@ Other commands: `./cdiintegrationtests`, `./cdihelpertests`, `./mame -validate`,
 
 ## Assessment and remaining scope
 
-Established weights and 0-4 grades are preserved. Exact multi-mode native pixels,
+Established weights and the 0-4 rubric are preserved. Exact multi-mode native pixels,
 composition and corresponding short saves justify limited grade-2-to-3 credit:
 MCD212 66.25 to 71.25 raw (65 to 70 rounded), MPEG video 66.25 to 68.75 (65 to 70),
-and cross-system video 60 to 65. Other grades remain unchanged until capacity
-certification; no grade reaches 4 from this work. No overall/hardware/compatibility
-percentage is calculated.
+and cross-system video 60 to 65. Save-state capacity/error policy also gains grade
+2 to 3 (raw 62.5 to 63.75, still 65% rounded). Other grades remain unchanged;
+no grade reaches 4 from this work. No overall/hardware/compatibility percentage
+is calculated.
 
 Next: sparse ingress and starvation/refill, discontinuous/arbitrary PTS and actual
 queue limits; additional MCD212 interlace/QHY/DYUV/RGB555 and geometry; active
@@ -145,5 +181,4 @@ was reported, but this is not a passing CI result.
 
 The job now permits 18 minutes for the expanded suite. Tests, production code,
 compiler settings and cache policy are unchanged. The final local 1336-second
-capacity run also passes all 26 assertions on the code commit; exact-source CI
-certification follows once the rerun completes.
+capacity run also passes all 26 assertions on the code commit; the rerun [CI 34164448976](https://github.com/matt-dawidowicz/mame/actions/runs/34164448976) now passes on `30246e5f846ff13a44b9c261051081f273ee0f94` with identical production/tests.

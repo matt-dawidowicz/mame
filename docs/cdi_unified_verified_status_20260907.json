@@ -2,8 +2,8 @@
   "schema_version": 2,
   "audit_date": "2026-09-07",
   "branch": "cdi-unified",
-  "reviewed_head": "d07ba8c1768ad6814f042696c00ab24fbf72ff76",
-  "verified_code_commit": "eb4fbe922c06d79eae0e48d08d3d2ae4356e091b",
+  "reviewed_head": "30246e5f846ff13a44b9c261051081f273ee0f94",
+  "verified_code_commit": "7d3b17b91d25d31ea98e810a79464de91e25d9d0",
   "upstream_commit": "1fb001f9bfab5cf0148fdfe8755659c4a869831b",
   "prior_report": "cdi_verified_status_20260906.json",
   "prior_audio_baseline": "442e5050846e680ed653fc1297b66df588b314e2",
@@ -520,10 +520,10 @@
         "Save state",
         "Physical output certification"
       ],
-      "last_reviewed_commit": "c9d4027d69d80c76c55a09c431cc782d7b2f8296",
-      "last_verified_commit": null,
+      "last_reviewed_commit": "30246e5f846ff13a44b9c261051081f273ee0f94",
+      "last_verified_commit": "7d3b17b91d25d31ea98e810a79464de91e25d9d0",
       "last_verification_date": "2026-09-07",
-      "verification_basis": "Fresh local full-size, pending-PTS and decoder snapshot tests. Final-source long-capacity and CI certification follow separately; no hardware or retail claim.",
+      "verification_basis": "Exact-source CD-i fast CI and local production/ASan/full-size/long-capacity gates pass; scope and limits in the capacity checkpoint. No physical or retail claim.",
       "prior_audio_raw_percent": 65.0,
       "last_test_date": "2026-09-07"
     },
@@ -591,7 +591,7 @@
           "weight": 5,
           "prior_grade": 3,
           "grade": 3,
-          "rationale": "Replay overflow now selects a bounded pointer-free decoder snapshot preserving reference planes, ring input and audio synthesis history. Short continuations pass; final-source long-boundary certification is pending in the capacity checkpoint.",
+          "rationale": "Replay overflow now selects a bounded pointer-free decoder snapshot preserving reference planes, ring input and audio synthesis history. All four before/after history-boundary continuations pass exactly on the certified source, including the pump-event limit.",
           "prior_rationale": "Live state/queued audio/video header tested, no real decoded A/V continuation."
         },
         {
@@ -604,8 +604,8 @@
         }
       ],
       "implementation_status": "Ingress, registers, audio/video backend, scheduling and DMA operate as a model.",
-      "verification_status": "Full-size MPEG and synchronized explicit reset branches pass; bounded decoder snapshots fix history overflow. Final-source long-capacity certification is pending.",
-      "next_action": "Complete final-source capacity certification; then exercise sparse ingress, starvation/refill, discontinuous timestamps and queue limits.",
+      "verification_status": "Full-size MPEG and synchronized explicit reset branches pass; bounded decoder snapshots fix history overflow. All four history-boundary continuations pass on the exact certified source.",
+      "next_action": "Exercise sparse ingress, starvation/refill, discontinuous timestamps and queue limits.",
       "raw_percent": 75.0,
       "percent": 75,
       "source": [
@@ -647,7 +647,7 @@
         "Reference-tested audio; physical arithmetic/output limits remain.",
         "Six original small/full-size moving I/P/B formats pass FFmpeg reference comparisons; prior 25 Hz playback passes 30 minutes uninterrupted. Further GOP/error/profile breadth and physical fidelity remain open.",
         "First-picture PTS now survives fragmented PES input and a save while that picture is incomplete. Two explicit audio/video reset branches share a future 100 ms PTS with reference-checked output. Arbitrary PTS, underflow and hardware command timing remain open.",
-        "Replay overflow now selects a bounded pointer-free decoder snapshot preserving reference planes, ring input and audio synthesis history. Short continuations pass; final-source long-boundary certification is pending in the capacity checkpoint.",
+        "Replay overflow now selects a bounded pointer-free decoder snapshot preserving reference planes, ring input and audio synthesis history. All four before/after history-boundary continuations pass exactly on the certified source, including the pump-event limit.",
         "No full VMPEG timing/analogue certification."
       ],
       "remaining_work": [
@@ -658,10 +658,10 @@
         "Save reconstruction",
         "Physical board fidelity"
       ],
-      "last_reviewed_commit": "c9d4027d69d80c76c55a09c431cc782d7b2f8296",
-      "last_verified_commit": null,
+      "last_reviewed_commit": "30246e5f846ff13a44b9c261051081f273ee0f94",
+      "last_verified_commit": "7d3b17b91d25d31ea98e810a79464de91e25d9d0",
       "last_verification_date": "2026-09-07",
-      "verification_basis": "Fresh local full-size, pending-PTS and decoder snapshot tests. Final-source long-capacity and CI certification follow separately; no hardware or retail claim.",
+      "verification_basis": "Exact-source CD-i fast CI and local production/ASan/full-size/long-capacity gates pass; scope and limits in the capacity checkpoint. No physical or retail claim.",
       "prior_audio_raw_percent": 70.0,
       "last_test_date": "2026-09-07"
     },
@@ -791,10 +791,10 @@
         "MCD212 composition",
         "Independent frame/title certification"
       ],
-      "last_reviewed_commit": "c9d4027d69d80c76c55a09c431cc782d7b2f8296",
-      "last_verified_commit": null,
+      "last_reviewed_commit": "30246e5f846ff13a44b9c261051081f273ee0f94",
+      "last_verified_commit": "7d3b17b91d25d31ea98e810a79464de91e25d9d0",
       "last_verification_date": "2026-09-07",
-      "verification_basis": "Fresh local full-size, pending-PTS and decoder snapshot tests. Final-source long-capacity and CI certification follow separately; no hardware or retail claim.",
+      "verification_basis": "Exact-source CD-i fast CI and local production/ASan/full-size/long-capacity gates pass; scope and limits in the capacity checkpoint. No physical or retail claim.",
       "prior_audio_raw_percent": 56.25,
       "last_test_date": "2026-09-07"
     },
@@ -871,7 +871,7 @@
           "weight": 5,
           "prior_grade": 3,
           "grade": 3,
-          "rationale": "Fifteen additional full-size/mode/pending-PTS snapshots reproduce PCM and callback timing. Bounded backend snapshots replace replay after history overflow; final-source long-boundary certification is pending.",
+          "rationale": "Fifteen additional full-size/mode/pending-PTS snapshots reproduce PCM and callback timing. All four history-boundary snapshots pass exact PCM/callback continuation using replay or bounded backend images.",
           "prior_rationale": "Replay and device state tested; real full A/V continuation absent."
         },
         {
@@ -885,7 +885,7 @@
       ],
       "implementation_status": "Parser, Layer II decode, queues, recovered digital gain, emphasis and replay are implemented.",
       "verification_status": "Explicit reset branches and full-size/mode snapshots pass PCM references and exact continuations; hardware flush/gain and host output remain open.",
-      "next_action": "Complete capacity certification; then compare starvation/refill and additional rates/control edges against independent PCM.",
+      "next_action": "Compare starvation/refill and additional rates/control edges against independent PCM.",
       "raw_percent": 80.0,
       "percent": 80,
       "source": [
@@ -933,7 +933,7 @@
         "Deterministic pair/zero/refill; physical DAC rule missing.",
         "Standards shelf response tested; physical transition unknown.",
         "Queued-audio stream selection remains tested. Explicit stop/reset branches instead flush old PCM and schedule cold audio with video at a shared future 100 ms PTS; independent samples and exact restored continuations pass. Hardware flush semantics remain open.",
-        "Fifteen additional full-size/mode/pending-PTS snapshots reproduce PCM and callback timing. Bounded backend snapshots replace replay after history overflow; final-source long-boundary certification is pending.",
+        "Fifteen additional full-size/mode/pending-PTS snapshots reproduce PCM and callback timing. All four history-boundary snapshots pass exact PCM/callback continuation using replay or bounded backend images.",
         "Exact instruction/limiter and waveform remain unavailable."
       ],
       "remaining_work": [
@@ -944,10 +944,10 @@
         "Audio save/load",
         "Physical DSP/DAC attribution"
       ],
-      "last_reviewed_commit": "c9d4027d69d80c76c55a09c431cc782d7b2f8296",
-      "last_verified_commit": null,
+      "last_reviewed_commit": "30246e5f846ff13a44b9c261051081f273ee0f94",
+      "last_verified_commit": "7d3b17b91d25d31ea98e810a79464de91e25d9d0",
       "last_verification_date": "2026-09-07",
-      "verification_basis": "Fresh local full-size, pending-PTS and decoder snapshot tests. Final-source long-capacity and CI certification follow separately; no hardware or retail claim.",
+      "verification_basis": "Exact-source CD-i fast CI and local production/ASan/full-size/long-capacity gates pass; scope and limits in the capacity checkpoint. No physical or retail claim.",
       "prior_audio_raw_percent": 80.0,
       "last_test_date": "2026-09-07"
     },
@@ -1745,10 +1745,10 @@
         "Host output drift",
         "Physical clock/branch latency"
       ],
-      "last_reviewed_commit": "c9d4027d69d80c76c55a09c431cc782d7b2f8296",
-      "last_verified_commit": null,
+      "last_reviewed_commit": "30246e5f846ff13a44b9c261051081f273ee0f94",
+      "last_verified_commit": "7d3b17b91d25d31ea98e810a79464de91e25d9d0",
       "last_verification_date": "2026-09-07",
-      "verification_basis": "Fresh local full-size, pending-PTS and decoder snapshot tests. Final-source long-capacity and CI certification follow separately; no hardware or retail claim.",
+      "verification_basis": "Exact-source CD-i fast CI and local production/ASan/full-size/long-capacity gates pass; scope and limits in the capacity checkpoint. No physical or retail claim.",
       "prior_audio_raw_percent": 46.25,
       "last_test_date": "2026-09-07"
     },
@@ -1768,7 +1768,7 @@
           "weight": 25,
           "prior_grade": 3,
           "grade": 3,
-          "rationale": "Short full-size/mode snapshots reproduce PCM and callbacks. Versioned pointer-free backend images preserve synthesis history when replay exceeds its bound. Final-source capacity certification is pending.",
+          "rationale": "Short full-size/mode snapshots reproduce PCM and callbacks. Versioned pointer-free backend images preserve synthesis history when replay exceeds its bound. Four before/after history-boundary snapshots pass exact output/callback/IRQ continuation.",
           "prior_rationale": "Audio adds end/stream/live ram_state paths."
         },
         {
@@ -1776,7 +1776,7 @@
           "weight": 20,
           "prior_grade": 2,
           "grade": 3,
-          "rationale": "Full-size native-mode and incomplete-first-picture snapshots reproduce composed output exactly. Backend snapshots preserve all I/P/B reference-plane permutations; arbitrary mid-field, other peripherals and final capacity certification remain open.",
+          "rationale": "Full-size native-mode and incomplete-first-picture snapshots reproduce composed output exactly. Backend snapshots preserve all I/P/B reference-plane permutations; all four history-boundary continuations also pass. Arbitrary mid-field and other peripherals remain open.",
           "prior_rationale": "Queues mirrored; live fixture holds sequence header without decoded pictures."
         },
         {
@@ -1815,15 +1815,15 @@
           "scope": "Capacity/error policy",
           "weight": 5,
           "prior_grade": 2,
-          "grade": 2,
-          "rationale": "8 MiB audio, 32 MiB video and 16384 pump-event history limits select current decoder snapshots instead of invalidating otherwise bounded saves. Actual pending-input, PCM and presentation capacities still apply. Final-source capacity certification is pending.",
+          "grade": 3,
+          "rationale": "8 MiB audio, 32 MiB video and 16384 pump-event history limits select current decoder snapshots instead of invalidating otherwise bounded saves. Actual pending-input, PCM and presentation capacities still apply. Four before/after history-boundary snapshots pass exact output/callback/IRQ continuation.",
           "prior_rationale": "8 MiB/32 MiB replay caps can invalidate snapshots; recovery modeled."
         }
       ],
       "implementation_status": "State registration and decoder replay cover multiple devices.",
-      "verification_status": "Fifteen further short snapshots and pointer-free decoder-state tests pass; final-source history-capacity certification is pending. Other active peripherals and arbitrary mid-field saves remain open.",
-      "next_action": "Complete capacity certification; extend active XA/read/seek/UART/I2C/SLAVE and arbitrary mid-field snapshots.",
-      "raw_percent": 62.5,
+      "verification_status": "Fifteen further short snapshots and pointer-free decoder-state tests pass; all four history-boundary continuations pass on the certified source. Other active peripherals and arbitrary mid-field saves remain open.",
+      "next_action": "Extend active XA/read/seek/UART/I2C/SLAVE and arbitrary mid-field snapshots.",
+      "raw_percent": 63.75,
       "percent": 65,
       "source": [
         "src/devices/cpu/m68000/m68kcpu.cpp",
@@ -1858,13 +1858,13 @@
         "docs/cdi_capacity_full_av_checkpoint_20260907.md"
       ],
       "known_inaccuracies_and_evidence_gaps": [
-        "Short full-size/mode snapshots reproduce PCM and callbacks. Versioned pointer-free backend images preserve synthesis history when replay exceeds its bound. Final-source capacity certification is pending.",
-        "Full-size native-mode and incomplete-first-picture snapshots reproduce composed output exactly. Backend snapshots preserve all I/P/B reference-plane permutations; arbitrary mid-field, other peripherals and final capacity certification remain open.",
+        "Short full-size/mode snapshots reproduce PCM and callbacks. Versioned pointer-free backend images preserve synthesis history when replay exceeds its bound. Four before/after history-boundary snapshots pass exact output/callback/IRQ continuation.",
+        "Full-size native-mode and incomplete-first-picture snapshots reproduce composed output exactly. Backend snapshots preserve all I/P/B reference-plane permutations; all four history-boundary continuations also pass. Arbitrary mid-field and other peripherals remain open.",
         "Active-MMU save/load followed by executed fault recovery passes; snapshots inside partial fault cycles remain open.",
         "Four active CD-DA snapshots pass exact PCM/Q/IRQ continuation; active XA/read/seek and other command states remain open.",
         "Registered parser/response state; partial-command round trip missing.",
         "More UART/timer fields and held DREQ are saved, but no new active UART/I2C or held-request DMA round-trip fixture was added. Registration alone does not close continuation behavior.",
-        "8 MiB audio, 32 MiB video and 16384 pump-event history limits select current decoder snapshots instead of invalidating otherwise bounded saves. Actual pending-input, PCM and presentation capacities still apply. Final-source capacity certification is pending."
+        "8 MiB audio, 32 MiB video and 16384 pump-event history limits select current decoder snapshots instead of invalidating otherwise bounded saves. Actual pending-input, PCM and presentation capacities still apply. Four before/after history-boundary snapshots pass exact output/callback/IRQ continuation."
       ],
       "remaining_work": [
         "DVC audio replay/device state",
@@ -1875,10 +1875,10 @@
         "Active UART/I2C/DMA",
         "Capacity/error policy"
       ],
-      "last_reviewed_commit": "c9d4027d69d80c76c55a09c431cc782d7b2f8296",
-      "last_verified_commit": null,
+      "last_reviewed_commit": "30246e5f846ff13a44b9c261051081f273ee0f94",
+      "last_verified_commit": "7d3b17b91d25d31ea98e810a79464de91e25d9d0",
       "last_verification_date": "2026-09-07",
-      "verification_basis": "Fresh local full-size, pending-PTS and decoder snapshot tests. Final-source long-capacity and CI certification follow separately; no hardware or retail claim.",
+      "verification_basis": "Exact-source CD-i fast CI and local production/ASan/full-size/long-capacity gates pass; scope and limits in the capacity checkpoint. No physical or retail claim.",
       "prior_audio_raw_percent": 57.5,
       "last_test_date": "2026-09-07"
     },
@@ -2648,10 +2648,10 @@
         "Gain/emphasis/control",
         "Cross-stream/output continuity"
       ],
-      "last_reviewed_commit": "c9d4027d69d80c76c55a09c431cc782d7b2f8296",
-      "last_verified_commit": null,
+      "last_reviewed_commit": "30246e5f846ff13a44b9c261051081f273ee0f94",
+      "last_verified_commit": "7d3b17b91d25d31ea98e810a79464de91e25d9d0",
       "last_verification_date": "2026-09-07",
-      "verification_basis": "Fresh local full-size, pending-PTS and decoder snapshot tests. Final-source long-capacity and CI certification follow separately; no hardware or retail claim.",
+      "verification_basis": "Exact-source CD-i fast CI and local production/ASan/full-size/long-capacity gates pass; scope and limits in the capacity checkpoint. No physical or retail claim.",
       "prior_audio_raw_percent": 68.75,
       "last_test_date": "2026-09-07"
     },
@@ -2761,10 +2761,10 @@
         "Presentation",
         "Hardware/title captures"
       ],
-      "last_reviewed_commit": "c9d4027d69d80c76c55a09c431cc782d7b2f8296",
-      "last_verified_commit": null,
+      "last_reviewed_commit": "30246e5f846ff13a44b9c261051081f273ee0f94",
+      "last_verified_commit": "7d3b17b91d25d31ea98e810a79464de91e25d9d0",
       "last_verification_date": "2026-09-07",
-      "verification_basis": "Fresh local full-size, pending-PTS and decoder snapshot tests. Final-source long-capacity and CI certification follow separately; no hardware or retail claim.",
+      "verification_basis": "Exact-source CD-i fast CI and local production/ASan/full-size/long-capacity gates pass; scope and limits in the capacity checkpoint. No physical or retail claim.",
       "prior_audio_raw_percent": 53.75,
       "last_test_date": "2026-09-07"
     },
@@ -3060,10 +3060,10 @@
   },
   "capacity_full_av_checkpoint": {
     "baseline": "c9d4027d69d80c76c55a09c431cc782d7b2f8296",
-    "code_commit": null,
+    "code_commit": "7d3b17b91d25d31ea98e810a79464de91e25d9d0",
     "document": "docs/cdi_capacity_full_av_checkpoint_20260907.md",
     "date": "2026-09-07",
-    "status": "Short local gates pass; final-source capacity and CI certification in progress",
+    "status": "PASS: final-source capacity, all local gates and exact-source CI",
     "scores": [
       [
         "mcd",
@@ -3101,13 +3101,6 @@
         60
       ],
       [
-        "save",
-        62.5,
-        65,
-        62.5,
-        65
-      ],
-      [
         "all_audio",
         68.75,
         70,
@@ -3120,7 +3113,265 @@
         60,
         65.0,
         65
+      ],
+      [
+        "save",
+        62.5,
+        65,
+        63.75,
+        65
       ]
-    ]
+    ],
+    "tested_commit": "30246e5f846ff13a44b9c261051081f273ee0f94",
+    "ci": {
+      "conclusion": "success",
+      "databaseId": 34164448976,
+      "headSha": "30246e5f846ff13a44b9c261051081f273ee0f94",
+      "jobs": [
+        {
+          "completedAt": "2026-09-07T22:01:34Z",
+          "conclusion": "success",
+          "databaseId": 101872606500,
+          "name": "cdi-fast",
+          "startedAt": "2026-09-07T21:48:30Z",
+          "status": "completed",
+          "steps": [
+            {
+              "completedAt": "2026-09-07T21:48:31Z",
+              "conclusion": "success",
+              "name": "Set up job",
+              "number": 1,
+              "startedAt": "2026-09-07T21:48:31Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-09-07T21:48:52Z",
+              "conclusion": "success",
+              "name": "Run actions/checkout@v4",
+              "number": 2,
+              "startedAt": "2026-09-07T21:48:31Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-09-07T21:48:52Z",
+              "conclusion": "success",
+              "name": "Verify generated Musashi sources",
+              "number": 3,
+              "startedAt": "2026-09-07T21:48:52Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-09-07T21:49:17Z",
+              "conclusion": "success",
+              "name": "Install build dependencies",
+              "number": 4,
+              "startedAt": "2026-09-07T21:48:52Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-09-07T21:49:19Z",
+              "conclusion": "success",
+              "name": "Restore compiler cache",
+              "number": 5,
+              "startedAt": "2026-09-07T21:49:17Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-09-07T21:49:19Z",
+              "conclusion": "success",
+              "name": "Configure compiler cache",
+              "number": 6,
+              "startedAt": "2026-09-07T21:49:19Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-09-07T21:49:20Z",
+              "conclusion": "success",
+              "name": "Restore generated CD-i build",
+              "number": 7,
+              "startedAt": "2026-09-07T21:49:19Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-09-07T21:50:28Z",
+              "conclusion": "success",
+              "name": "Generate CD-i build",
+              "number": 8,
+              "startedAt": "2026-09-07T21:49:20Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-09-07T21:50:36Z",
+              "conclusion": "success",
+              "name": "Build precompiled header",
+              "number": 9,
+              "startedAt": "2026-09-07T21:50:28Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-09-07T21:50:53Z",
+              "conclusion": "success",
+              "name": "Build CD-i helper tests",
+              "number": 10,
+              "startedAt": "2026-09-07T21:50:36Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-09-07T21:51:56Z",
+              "conclusion": "success",
+              "name": "Run CD-i helper tests",
+              "number": 11,
+              "startedAt": "2026-09-07T21:50:53Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-09-07T21:51:56Z",
+              "conclusion": "success",
+              "name": "Check DVC DMA liveness wiring",
+              "number": 12,
+              "startedAt": "2026-09-07T21:51:56Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-09-07T21:56:27Z",
+              "conclusion": "success",
+              "name": "Build CD-i integration tests",
+              "number": 13,
+              "startedAt": "2026-09-07T21:51:56Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-09-07T22:01:30Z",
+              "conclusion": "success",
+              "name": "Run CD-i integration tests",
+              "number": 14,
+              "startedAt": "2026-09-07T21:56:27Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-09-07T22:01:30Z",
+              "conclusion": "success",
+              "name": "Compiler cache statistics",
+              "number": 15,
+              "startedAt": "2026-09-07T22:01:30Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-09-07T22:01:32Z",
+              "conclusion": "success",
+              "name": "Post Restore generated CD-i build",
+              "number": 28,
+              "startedAt": "2026-09-07T22:01:30Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-09-07T22:01:32Z",
+              "conclusion": "success",
+              "name": "Post Restore compiler cache",
+              "number": 29,
+              "startedAt": "2026-09-07T22:01:32Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-09-07T22:01:32Z",
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@v4",
+              "number": 30,
+              "startedAt": "2026-09-07T22:01:32Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-09-07T22:01:32Z",
+              "conclusion": "success",
+              "name": "Complete job",
+              "number": 31,
+              "startedAt": "2026-09-07T22:01:32Z",
+              "status": "completed"
+            }
+          ],
+          "url": "https://github.com/matt-dawidowicz/mame/actions/runs/34164448976/job/101872606500"
+        }
+      ],
+      "status": "completed",
+      "url": "https://github.com/matt-dawidowicz/mame/actions/runs/34164448976"
+    },
+    "capacity": {
+      "profile": 0,
+      "full": 0,
+      "mode": 0,
+      "sync": 0,
+      "deferred": 0,
+      "seconds": 1336,
+      "saves": 4,
+      "loads": 4,
+      "fields": 67017,
+      "restored_fields": 100,
+      "samples": 118038062,
+      "restored_samples": 176400,
+      "decoded_values": 1646764032,
+      "rgb_squared": 3994144340,
+      "pcm_squared": 1943759821592,
+      "max_rgb": 9,
+      "max_pcm": 537,
+      "native": 0
+    },
+    "capacity_snapshots": [
+      {
+        "serial": 1,
+        "valid": 1,
+        "audio_replay": 8355840,
+        "video_replay": 8790600,
+        "pcm_values": 49126,
+        "queue": 26,
+        "present_pixels": 3072,
+        "picture_events": 34,
+        "audio_overflow": 0,
+        "video_overflow": 0
+      },
+      {
+        "serial": 2,
+        "valid": 1,
+        "audio_replay": 24024,
+        "video_replay": 27519,
+        "pcm_values": 207974,
+        "queue": 26,
+        "present_pixels": 3072,
+        "picture_events": 15,
+        "audio_overflow": 1,
+        "video_overflow": 0
+      },
+      {
+        "serial": 3,
+        "valid": 1,
+        "audio_replay": 24024,
+        "video_replay": 15018,
+        "pcm_values": 251986,
+        "queue": 13,
+        "present_pixels": 3072,
+        "picture_events": 0,
+        "audio_overflow": 1,
+        "video_overflow": 0
+      },
+      {
+        "serial": 4,
+        "valid": 1,
+        "audio_replay": 24024,
+        "video_replay": 32916,
+        "pcm_values": 186806,
+        "queue": 26,
+        "present_pixels": 3072,
+        "picture_events": 19,
+        "audio_overflow": 1,
+        "video_overflow": 1
+      }
+    ],
+    "backend_formats": [
+      0,
+      1,
+      1,
+      1
+    ],
+    "capacity_log_sha256": "1ff655510ccbb67e4c4990af3a03bc058f6cd8f776564168ca61cad78e48e496",
+    "capacity_binary_sha256": "05da09607bccd2d362029ee44b2186dd72779beecb50c8e6bc575f7ed01600b8"
   }
 }

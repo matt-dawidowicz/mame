@@ -17,11 +17,16 @@ audio and video with the same 100 ms future timestamp. Fifteen additional short
 saves, including incomplete first-picture input, reproduce output exactly.
 Local gates pass: 12120 assertions / 25 integration cases, 17405336 / 225 helper
 cases, production build/validity, focused ASan, Musashi freshness and DMA liveness.
-Final-source long-capacity and CI certification are in progress.
+Final-source capacity passes: 67,017 composed fields and
+118,038,062 channel samples checked, with all four saves repeating
+100 fields and 176400 samples exactly. [CI 34164448976](https://github.com/matt-dawidowicz/mame/actions/runs/34164448976)
+passes on `30246e5f846ff13a44b9c261051081f273ee0f94`, whose production and tests match `7d3b17b91d25d31ea98e810a79464de91e25d9d0`.
+This subsequent certification changes documentation only.
 See the [capacity and full-size checkpoint](cdi_capacity_full_av_checkpoint_20260907.md).
 
 MCD212 is now 70%, MPEG video 70% and cross-system video 65%; other grades remain
-unchanged pending capacity certification. These are scoped engineering judgments.
+unchanged after rounding. Save-state capacity policy gains limited credit
+(raw 62.5 to 63.75; still 65%). These are scoped engineering judgments.
 Interlace/QHY, starvation/refill, arbitrary timestamps, host output and physical
 or retained retail validation remain open.
 
@@ -385,7 +390,7 @@ Next action: Extend complete composed references to interlace/QHY/DYUV/RGB555 an
 
 Implementation: Ingress, registers, audio/video backend, scheduling and DMA operate as a model.
 
-Verification: Full-size MPEG and synchronized explicit reset branches pass; bounded decoder snapshots fix history overflow. Final-source long-capacity certification is pending.
+Verification: Full-size MPEG and synchronized explicit reset branches pass; bounded decoder snapshots fix history overflow. All four history-boundary continuations pass on the exact certified source.
 
 | Obligation | Weight | Previous grade | Current grade | Rationale and remaining gaps |
 | --- | ---: | ---: | ---: | --- |
@@ -395,7 +400,7 @@ Verification: Full-size MPEG and synchronized explicit reset branches pass; boun
 | Video decode/output | 20 | 2 | 3 | Six original small/full-size moving I/P/B formats pass FFmpeg reference comparisons; prior 25 Hz playback passes 30 minutes uninterrupted. Further GOP/error/profile breadth and physical fidelity remain open. |
 | Presentation scheduling | 10 | 2 | 2 | First-picture PTS now survives fragmented PES input and a save while that picture is incomplete. Two explicit audio/video reset branches share a future 100 ms PTS with reference-checked output. Arbitrary PTS, underflow and hardware command timing remain open. |
 | DVC DMA boundary | 10 | 4 | 4 | Live SCC/DVC fixtures now cover explicit START, held-request re-arm, immediate abort, full 65536-word transfer and legal Layer II ingress. Grade 4 remains limited to this tested software handshake scope. |
-| Save reconstruction | 5 | 3 | 3 | Replay overflow now selects a bounded pointer-free decoder snapshot preserving reference planes, ring input and audio synthesis history. Short continuations pass; final-source long-boundary certification is pending in the capacity checkpoint. |
+| Save reconstruction | 5 | 3 | 3 | Replay overflow now selects a bounded pointer-free decoder snapshot preserving reference planes, ring input and audio synthesis history. All four before/after history-boundary continuations pass exactly on the certified source, including the pump-event limit. |
 | Physical board fidelity | 5 | 0 | 0 | No full VMPEG timing/analogue certification. |
 
 Implementation: [3rdparty/pl_mpeg/pl_mpeg.h](../3rdparty/pl_mpeg/pl_mpeg.h), [src/mame/philips/cdicdic.cpp](../src/mame/philips/cdicdic.cpp), [src/mame/philips/cdidvc.cpp](../src/mame/philips/cdidvc.cpp), [src/mame/philips/cdidvc_fidelity.h](../src/mame/philips/cdidvc_fidelity.h), [src/mame/philips/cdidvc_mpeg_format.h](../src/mame/philips/cdidvc_mpeg_format.h), [src/mame/philips/cdidvc_save_state.h](../src/mame/philips/cdidvc_save_state.h), [src/mame/philips/cdidvc_utils.h](../src/mame/philips/cdidvc_utils.h), [src/mame/philips/cdislavehle.cpp](../src/mame/philips/cdislavehle.cpp).
@@ -404,7 +409,7 @@ Tests: [moving A/V composition](../tests/emu/philips/cdi_dvc_motion_integration.
 
 Documentation: [capacity and full-size checkpoint](cdi_capacity_full_av_checkpoint_20260907.md), [moving A/V checkpoint](cdi_motion_av_checkpoint_20260907.md), [decoded A/V checkpoint](cdi_decoded_av_checkpoint_20260907.md), [docs/cdi_audio_fidelity_campaign.md](../docs/cdi_audio_fidelity_campaign.md), [docs/cdi_audio_final_certification_20260906.md](../docs/cdi_audio_final_certification_20260906.md), [docs/cdi_dma_av_optional_dvc_checkpoint_20260906.md](../docs/cdi_dma_av_optional_dvc_checkpoint_20260906.md).
 
-Next action: Complete final-source capacity certification; then exercise sparse ingress, starvation/refill, discontinuous timestamps and queue limits.
+Next action: Exercise sparse ingress, starvation/refill, discontinuous timestamps and queue limits.
 
 <a id="mpeg_video"></a>
 
@@ -453,7 +458,7 @@ Verification: Explicit reset branches and full-size/mode snapshots pass PCM refe
 | FMA digital gain | 10 | 4 | 4 | Literal recovered Q22 curve, routes and mute tested. |
 | De-emphasis response | 10 | 3 | 3 | Standards shelf response tested; physical transition unknown. |
 | Termination and switching | 10 | 3 | 3 | Queued-audio stream selection remains tested. Explicit stop/reset branches instead flush old PCM and schedule cold audio with video at a shared future 100 ms PTS; independent samples and exact restored continuations pass. Hardware flush semantics remain open. |
-| Audio save/load | 5 | 3 | 3 | Fifteen additional full-size/mode/pending-PTS snapshots reproduce PCM and callback timing. Bounded backend snapshots replace replay after history overflow; final-source long-boundary certification is pending. |
+| Audio save/load | 5 | 3 | 3 | Fifteen additional full-size/mode/pending-PTS snapshots reproduce PCM and callback timing. All four history-boundary snapshots pass exact PCM/callback continuation using replay or bounded backend images. |
 | Physical DSP/DAC attribution | 5 | 0 | 0 | Exact instruction/limiter and waveform remain unavailable. |
 
 Implementation: [3rdparty/pl_mpeg/pl_mpeg.h](../3rdparty/pl_mpeg/pl_mpeg.h), [src/mame/philips/cdiaudio.h](../src/mame/philips/cdiaudio.h), [src/mame/philips/cdiaudio_dsp56001.h](../src/mame/philips/cdiaudio_dsp56001.h), [src/mame/philips/cdicdic.cpp](../src/mame/philips/cdicdic.cpp), [src/mame/philips/cdidvc.cpp](../src/mame/philips/cdidvc.cpp), [src/mame/philips/cdidvc_fidelity.h](../src/mame/philips/cdidvc_fidelity.h), [src/mame/philips/cdidvc_mpeg_format.h](../src/mame/philips/cdidvc_mpeg_format.h), [src/mame/philips/cdidvc_save_state.h](../src/mame/philips/cdidvc_save_state.h), [src/mame/philips/cdidvc_utils.h](../src/mame/philips/cdidvc_utils.h), [src/mame/philips/cdislavehle.cpp](../src/mame/philips/cdislavehle.cpp).
@@ -462,7 +467,7 @@ Tests: [moving A/V composition](../tests/emu/philips/cdi_dvc_motion_integration.
 
 Documentation: [capacity and full-size checkpoint](cdi_capacity_full_av_checkpoint_20260907.md), [moving A/V checkpoint](cdi_motion_av_checkpoint_20260907.md), [decoded A/V checkpoint](cdi_decoded_av_checkpoint_20260907.md), [docs/cdi_audio_arithmetic_checkpoint.md](../docs/cdi_audio_arithmetic_checkpoint.md), [docs/cdi_audio_fidelity.md](../docs/cdi_audio_fidelity.md), [docs/cdi_audio_fidelity_campaign.md](../docs/cdi_audio_fidelity_campaign.md), [docs/cdi_audio_final_certification_20260906.md](../docs/cdi_audio_final_certification_20260906.md), [docs/cdi_dma_av_optional_dvc_checkpoint_20260906.md](../docs/cdi_dma_av_optional_dvc_checkpoint_20260906.md).
 
-Next action: Complete capacity certification; then compare starvation/refill and additional rates/control edges against independent PCM.
+Next action: Compare starvation/refill and additional rates/control edges against independent PCM.
 
 <a id="xa"></a>
 
@@ -664,21 +669,21 @@ Next action: Test underflow/refill and discontinuous timestamps; measure host dr
 
 ### Save states
 
-**65% — Medium confidence; raw weighted score 62.5.**
+**65% — Medium confidence; raw weighted score 63.75.**
 
 Implementation: State registration and decoder replay cover multiple devices.
 
-Verification: Fifteen further short snapshots and pointer-free decoder-state tests pass; final-source history-capacity certification is pending. Other active peripherals and arbitrary mid-field saves remain open.
+Verification: Fifteen further short snapshots and pointer-free decoder-state tests pass; all four history-boundary continuations pass on the certified source. Other active peripherals and arbitrary mid-field saves remain open.
 
 | Obligation | Weight | Previous grade | Current grade | Rationale and remaining gaps |
 | --- | ---: | ---: | ---: | --- |
-| DVC audio replay/device state | 25 | 3 | 3 | Short full-size/mode snapshots reproduce PCM and callbacks. Versioned pointer-free backend images preserve synthesis history when replay exceeds its bound. Final-source capacity certification is pending. |
-| Decoded video continuation | 20 | 2 | 3 | Full-size native-mode and incomplete-first-picture snapshots reproduce composed output exactly. Backend snapshots preserve all I/P/B reference-plane permutations; arbitrary mid-field, other peripherals and final capacity certification remain open. |
+| DVC audio replay/device state | 25 | 3 | 3 | Short full-size/mode snapshots reproduce PCM and callbacks. Versioned pointer-free backend images preserve synthesis history when replay exceeds its bound. Four before/after history-boundary snapshots pass exact output/callback/IRQ continuation. |
+| Decoded video continuation | 20 | 2 | 3 | Full-size native-mode and incomplete-first-picture snapshots reproduce composed output exactly. Backend snapshots preserve all I/P/B reference-plane permutations; all four history-boundary continuations also pass. Arbitrary mid-field and other peripherals remain open. |
 | MMU state | 15 | 3 | 3 | Active-MMU save/load followed by executed fault recovery passes; snapshots inside partial fault cycles remain open. |
 | CDIC active transport | 15 | 2 | 2 | Four active CD-DA snapshots pass exact PCM/Q/IRQ continuation; active XA/read/seek and other command states remain open. |
 | SLAVE partial commands | 10 | 2 | 2 | Registered parser/response state; partial-command round trip missing. |
 | Active UART/I2C/DMA | 10 | 1 | 1 | More UART/timer fields and held DREQ are saved, but no new active UART/I2C or held-request DMA round-trip fixture was added. Registration alone does not close continuation behavior. |
-| Capacity/error policy | 5 | 2 | 2 | 8 MiB audio, 32 MiB video and 16384 pump-event history limits select current decoder snapshots instead of invalidating otherwise bounded saves. Actual pending-input, PCM and presentation capacities still apply. Final-source capacity certification is pending. |
+| Capacity/error policy | 5 | 2 | 3 | 8 MiB audio, 32 MiB video and 16384 pump-event history limits select current decoder snapshots instead of invalidating otherwise bounded saves. Actual pending-input, PCM and presentation capacities still apply. Four before/after history-boundary snapshots pass exact output/callback/IRQ continuation. |
 
 Implementation: [src/devices/cpu/m68000/m68kcpu.cpp](../src/devices/cpu/m68000/m68kcpu.cpp), [src/devices/cpu/m68000/scc68070.cpp](../src/devices/cpu/m68000/scc68070.cpp), [src/devices/machine/scc68070.h](../src/devices/machine/scc68070.h), [src/devices/machine/scc68070_helpers.h](../src/devices/machine/scc68070_helpers.h), [src/mame/philips/cdicdic.cpp](../src/mame/philips/cdicdic.cpp), [src/mame/philips/cdicdic_memory.h](../src/mame/philips/cdicdic_memory.h), [src/mame/philips/cdicdic_state.h](../src/mame/philips/cdicdic_state.h), [src/mame/philips/cdidvc.cpp](../src/mame/philips/cdidvc.cpp), [src/mame/philips/cdidvc_save_state.h](../src/mame/philips/cdidvc_save_state.h), [src/mame/philips/cdislavehle.cpp](../src/mame/philips/cdislavehle.cpp).
 
@@ -686,7 +691,7 @@ Tests: [moving A/V composition](../tests/emu/philips/cdi_dvc_motion_integration.
 
 Documentation: [capacity and full-size checkpoint](cdi_capacity_full_av_checkpoint_20260907.md), [moving A/V checkpoint](cdi_motion_av_checkpoint_20260907.md), [decoded A/V checkpoint](cdi_decoded_av_checkpoint_20260907.md), [docs/cdi_audio_fidelity_campaign.md](../docs/cdi_audio_fidelity_campaign.md), [docs/cdi_scc68070_mmu_checkpoint_20260906.md](../docs/cdi_scc68070_mmu_checkpoint_20260906.md).
 
-Next action: Complete capacity certification; extend active XA/read/seek/UART/I2C/SLAVE and arbitrary mid-field snapshots.
+Next action: Extend active XA/read/seek/UART/I2C/SLAVE and arbitrary mid-field snapshots.
 
 <a id="slave"></a>
 
