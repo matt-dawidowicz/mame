@@ -586,3 +586,5 @@ See the [ingress checkpoint](cdi_ingress_pts_checkpoint_20260907.md) for final
 gate certification and the +1 sample MAME boundary contract. Grades remain
 unchanged. Queued-PCM timestamp discontinuities, independent SCR jumps and
 physical/retail output remain open.
+
+Exact-source ingress certification: [CI 34167219403](https://github.com/matt-dawidowicz/mame/actions/runs/34167219403) passes on `47dbd619dfbf2b1ec99bd76a0cef8ebbbef0b350`: 12201 assertions / 26 integration cases and 17405336 / 225 helper cases, generated-source freshness and DMA liveness.

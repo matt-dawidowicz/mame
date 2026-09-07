@@ -2,8 +2,8 @@
   "schema_version": 2,
   "audit_date": "2026-09-07",
   "branch": "cdi-unified",
-  "reviewed_head": "30246e5f846ff13a44b9c261051081f273ee0f94",
-  "verified_code_commit": "7d3b17b91d25d31ea98e810a79464de91e25d9d0",
+  "reviewed_head": "47dbd619dfbf2b1ec99bd76a0cef8ebbbef0b350",
+  "verified_code_commit": "47dbd619dfbf2b1ec99bd76a0cef8ebbbef0b350",
   "upstream_commit": "1fb001f9bfab5cf0148fdfe8755659c4a869831b",
   "prior_report": "cdi_verified_status_20260906.json",
   "prior_audio_baseline": "442e5050846e680ed653fc1297b66df588b314e2",
@@ -604,7 +604,7 @@
         }
       ],
       "implementation_status": "Ingress, registers, audio/video backend, scheduling and DMA operate as a model.",
-      "verification_status": "Live ingress/PTS references and fifteen saved continuations pass; final gate certification is in the ingress checkpoint. Historical capacity/30-minute evidence retains its original code scope.",
+      "verification_status": "Exact-code CD-i CI passes the full helper/integration suites, including live ingress/PTS references and fifteen exact saved continuations. Historical capacity/30-minute evidence retains its original code scope.",
       "next_action": "Test timestamped audio behind queued PCM and independently discontinuous SCR, then wider malformed/input-capacity cases.",
       "raw_percent": 75.0,
       "percent": 75,
@@ -658,10 +658,10 @@
         "Save reconstruction",
         "Physical board fidelity"
       ],
-      "last_reviewed_commit": "30246e5f846ff13a44b9c261051081f273ee0f94",
-      "last_verified_commit": "7d3b17b91d25d31ea98e810a79464de91e25d9d0",
+      "last_reviewed_commit": "47dbd619dfbf2b1ec99bd76a0cef8ebbbef0b350",
+      "last_verified_commit": "47dbd619dfbf2b1ec99bd76a0cef8ebbbef0b350",
       "last_verification_date": "2026-09-07",
-      "verification_basis": "Exact-source CD-i fast CI and local production/ASan/full-size/long-capacity gates pass; scope and limits in the capacity checkpoint. No physical or retail claim.",
+      "verification_basis": "Exact final-code CI plus local CD-i production build/validity, helper/integration, DMA liveness, Musashi freshness and include checks. No new physical, retail, host-output or sanitizer certification.",
       "prior_audio_raw_percent": 70.0,
       "last_test_date": "2026-09-07"
     },
@@ -734,7 +734,7 @@
         }
       ],
       "implementation_status": "PL_MPEG decode, picture queues and presentation handoff exist.",
-      "verification_status": "Live ingress/PTS references and fifteen saved continuations pass; final gate certification is in the ingress checkpoint. Historical capacity/30-minute evidence retains its original code scope.",
+      "verification_status": "Exact-code CD-i CI passes the full helper/integration suites, including live ingress/PTS references and fifteen exact saved continuations. Historical capacity/30-minute evidence retains its original code scope.",
       "next_action": "Exercise independent SCR jumps, malformed/GOP boundaries and pending-input capacity with full output references.",
       "raw_percent": 68.75,
       "percent": 70,
@@ -791,10 +791,10 @@
         "MCD212 composition",
         "Independent frame/title certification"
       ],
-      "last_reviewed_commit": "30246e5f846ff13a44b9c261051081f273ee0f94",
-      "last_verified_commit": "7d3b17b91d25d31ea98e810a79464de91e25d9d0",
+      "last_reviewed_commit": "47dbd619dfbf2b1ec99bd76a0cef8ebbbef0b350",
+      "last_verified_commit": "47dbd619dfbf2b1ec99bd76a0cef8ebbbef0b350",
       "last_verification_date": "2026-09-07",
-      "verification_basis": "Exact-source CD-i fast CI and local production/ASan/full-size/long-capacity gates pass; scope and limits in the capacity checkpoint. No physical or retail claim.",
+      "verification_basis": "Exact final-code CI plus local CD-i production build/validity, helper/integration, DMA liveness, Musashi freshness and include checks. No new physical, retail, host-output or sanitizer certification.",
       "prior_audio_raw_percent": 56.25,
       "last_test_date": "2026-09-07"
     },
@@ -884,7 +884,7 @@
         }
       ],
       "implementation_status": "Parser, Layer II decode, queues, recovered digital gain, emphasis and replay are implemented.",
-      "verification_status": "Live ingress/PTS references and fifteen saved continuations pass; final gate certification is in the ingress checkpoint. Historical capacity/30-minute evidence retains its original code scope.",
+      "verification_status": "Exact-code CD-i CI passes the full helper/integration suites, including live ingress/PTS references and fifteen exact saved continuations. Historical capacity/30-minute evidence retains its original code scope.",
       "next_action": "Test timestamped PES behind queued PCM and additional rates/control boundaries against independent PCM.",
       "raw_percent": 80.0,
       "percent": 80,
@@ -944,10 +944,10 @@
         "Audio save/load",
         "Physical DSP/DAC attribution"
       ],
-      "last_reviewed_commit": "30246e5f846ff13a44b9c261051081f273ee0f94",
-      "last_verified_commit": "7d3b17b91d25d31ea98e810a79464de91e25d9d0",
+      "last_reviewed_commit": "47dbd619dfbf2b1ec99bd76a0cef8ebbbef0b350",
+      "last_verified_commit": "47dbd619dfbf2b1ec99bd76a0cef8ebbbef0b350",
       "last_verification_date": "2026-09-07",
-      "verification_basis": "Exact-source CD-i fast CI and local production/ASan/full-size/long-capacity gates pass; scope and limits in the capacity checkpoint. No physical or retail claim.",
+      "verification_basis": "Exact final-code CI plus local CD-i production build/validity, helper/integration, DMA liveness, Musashi freshness and include checks. No new physical, retail, host-output or sanitizer certification.",
       "prior_audio_raw_percent": 80.0,
       "last_test_date": "2026-09-07"
     },
@@ -1699,7 +1699,7 @@
         }
       ],
       "implementation_status": "Clock arithmetic, packet scheduling and discontinuity controls exist.",
-      "verification_status": "Live ingress/PTS references and fifteen saved continuations pass; final gate certification is in the ingress checkpoint. Historical capacity/30-minute evidence retains its original code scope.",
+      "verification_status": "Exact-code CD-i CI passes the full helper/integration suites, including live ingress/PTS references and fifteen exact saved continuations. Historical capacity/30-minute evidence retains its original code scope.",
       "next_action": "Test queued-PCM timestamps and independent SCR jumps; measure host drift and physical latency separately.",
       "raw_percent": 61.25,
       "percent": 60,
@@ -1745,10 +1745,10 @@
         "Host output drift",
         "Physical clock/branch latency"
       ],
-      "last_reviewed_commit": "30246e5f846ff13a44b9c261051081f273ee0f94",
-      "last_verified_commit": "7d3b17b91d25d31ea98e810a79464de91e25d9d0",
+      "last_reviewed_commit": "47dbd619dfbf2b1ec99bd76a0cef8ebbbef0b350",
+      "last_verified_commit": "47dbd619dfbf2b1ec99bd76a0cef8ebbbef0b350",
       "last_verification_date": "2026-09-07",
-      "verification_basis": "Exact-source CD-i fast CI and local production/ASan/full-size/long-capacity gates pass; scope and limits in the capacity checkpoint. No physical or retail claim.",
+      "verification_basis": "Exact final-code CI plus local CD-i production build/validity, helper/integration, DMA liveness, Musashi freshness and include checks. No new physical, retail, host-output or sanitizer certification.",
       "prior_audio_raw_percent": 46.25,
       "last_test_date": "2026-09-07"
     },
@@ -1821,7 +1821,7 @@
         }
       ],
       "implementation_status": "State registration and decoder replay cover multiple devices.",
-      "verification_status": "Live ingress/PTS references and fifteen saved continuations pass; final gate certification is in the ingress checkpoint. Historical capacity/30-minute evidence retains its original code scope.",
+      "verification_status": "Exact-code CD-i CI passes the full helper/integration suites, including live ingress/PTS references and fifteen exact saved continuations. Historical capacity/30-minute evidence retains its original code scope.",
       "next_action": "Extend active XA/read/seek/UART/I2C/SLAVE and arbitrary mid-field snapshots.",
       "raw_percent": 63.75,
       "percent": 65,
@@ -1875,10 +1875,10 @@
         "Active UART/I2C/DMA",
         "Capacity/error policy"
       ],
-      "last_reviewed_commit": "30246e5f846ff13a44b9c261051081f273ee0f94",
-      "last_verified_commit": "7d3b17b91d25d31ea98e810a79464de91e25d9d0",
+      "last_reviewed_commit": "47dbd619dfbf2b1ec99bd76a0cef8ebbbef0b350",
+      "last_verified_commit": "47dbd619dfbf2b1ec99bd76a0cef8ebbbef0b350",
       "last_verification_date": "2026-09-07",
-      "verification_basis": "Exact-source CD-i fast CI and local production/ASan/full-size/long-capacity gates pass; scope and limits in the capacity checkpoint. No physical or retail claim.",
+      "verification_basis": "Exact final-code CI plus local CD-i production build/validity, helper/integration, DMA liveness, Musashi freshness and include checks. No new physical, retail, host-output or sanitizer certification.",
       "prior_audio_raw_percent": 57.5,
       "last_test_date": "2026-09-07"
     },
@@ -2590,7 +2590,7 @@
         }
       ],
       "implementation_status": "XA, MPEG audio, queues, control, gain and emphasis are implemented.",
-      "verification_status": "Live ingress/PTS references and fifteen saved continuations pass; final gate certification is in the ingress checkpoint. Historical capacity/30-minute evidence retains its original code scope.",
+      "verification_status": "Exact-code CD-i CI passes the full helper/integration suites, including live ingress/PTS references and fifteen exact saved continuations. Historical capacity/30-minute evidence retains its original code scope.",
       "next_action": "Extend queued-audio timestamp and cross-device transitions; obtain host/reference-disc evidence.",
       "raw_percent": 68.75,
       "percent": 70,
@@ -2648,10 +2648,10 @@
         "Gain/emphasis/control",
         "Cross-stream/output continuity"
       ],
-      "last_reviewed_commit": "30246e5f846ff13a44b9c261051081f273ee0f94",
-      "last_verified_commit": "7d3b17b91d25d31ea98e810a79464de91e25d9d0",
+      "last_reviewed_commit": "47dbd619dfbf2b1ec99bd76a0cef8ebbbef0b350",
+      "last_verified_commit": "47dbd619dfbf2b1ec99bd76a0cef8ebbbef0b350",
       "last_verification_date": "2026-09-07",
-      "verification_basis": "Exact-source CD-i fast CI and local production/ASan/full-size/long-capacity gates pass; scope and limits in the capacity checkpoint. No physical or retail claim.",
+      "verification_basis": "Exact final-code CI plus local CD-i production build/validity, helper/integration, DMA liveness, Musashi freshness and include checks. No new physical, retail, host-output or sanitizer certification.",
       "prior_audio_raw_percent": 68.75,
       "last_test_date": "2026-09-07"
     },
@@ -2708,7 +2708,7 @@
         }
       ],
       "implementation_status": "Native display, MPEG backend, composition and presentation model exist.",
-      "verification_status": "Live ingress/PTS references and fifteen saved continuations pass; final gate certification is in the ingress checkpoint. Historical capacity/30-minute evidence retains its original code scope.",
+      "verification_status": "Exact-code CD-i CI passes the full helper/integration suites, including live ingress/PTS references and fifteen exact saved continuations. Historical capacity/30-minute evidence retains its original code scope.",
       "next_action": "Extend interlace/QHY/DYUV/RGB555 composition, wider GOP/error cases and host/physical output evidence.",
       "raw_percent": 65.0,
       "percent": 65,
@@ -2761,10 +2761,10 @@
         "Presentation",
         "Hardware/title captures"
       ],
-      "last_reviewed_commit": "30246e5f846ff13a44b9c261051081f273ee0f94",
-      "last_verified_commit": "7d3b17b91d25d31ea98e810a79464de91e25d9d0",
+      "last_reviewed_commit": "47dbd619dfbf2b1ec99bd76a0cef8ebbbef0b350",
+      "last_verified_commit": "47dbd619dfbf2b1ec99bd76a0cef8ebbbef0b350",
       "last_verification_date": "2026-09-07",
-      "verification_basis": "Exact-source CD-i fast CI and local production/ASan/full-size/long-capacity gates pass; scope and limits in the capacity checkpoint. No physical or retail claim.",
+      "verification_basis": "Exact final-code CI plus local CD-i production build/validity, helper/integration, DMA liveness, Musashi freshness and include checks. No new physical, retail, host-output or sanitizer certification.",
       "prior_audio_raw_percent": 53.75,
       "last_test_date": "2026-09-07"
     },
@@ -3377,7 +3377,7 @@
   "ingress_pts_checkpoint": {
     "date": "2026-09-07",
     "reviewed_baseline": "2bdb486f60d784accc252a8ecccf2e7320220f0a",
-    "status": "Local production gates and final targeted variants pass; exact final-code CI pending.",
+    "status": "PASS: all local gates, final targeted variants and exact final-code CI.",
     "document": "cdi_ingress_pts_checkpoint_20260907.md",
     "scope": "Original full-size 352x288/25 Hz I/P/B and 44.1 kHz Layer II through live DVC and full MCD212 composition; three sparse/gap/PTS scenarios and fifteen saves. CPU suspended; direct DVC DMA-port injection.",
     "grade_changes": [],
@@ -3459,7 +3459,7 @@
     "integration": {
       "assertions": 12201,
       "cases": 26,
-      "scope": "All final production paths pass; final fixture adds absent/late refill variants subsequently checked by the targeted gate. Exact final full-suite CI remains pending."
+      "scope": "Exact final code and test suite pass in CD-i fast CI."
     },
     "targeted": {
       "assertions": 81,
@@ -3478,7 +3478,181 @@
       "ingress-final-fixture-build.log": "f2ac03bd8cb96cab3ff33a123475419ae381594cd68431275ef2ab6a768ba56e",
       "ingress-validity.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       "ingress-liveness.log": "47bedad239d577966c9017aa305bc62bffe5ea086159c54534fc0676be74b8d8",
-      "ingress-include.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      "ingress-include.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "ingress-ci.log": "033c3c103c99a62e6156866b3c416c18902866bfede576cc0d2dfe13c7c5d05c"
+    },
+    "code_commit": "47dbd619dfbf2b1ec99bd76a0cef8ebbbef0b350",
+    "ci": {
+      "conclusion": "success",
+      "databaseId": 34167219403,
+      "headSha": "47dbd619dfbf2b1ec99bd76a0cef8ebbbef0b350",
+      "jobs": [
+        {
+          "completedAt": "2026-09-07T22:49:52Z",
+          "conclusion": "success",
+          "databaseId": 101880533721,
+          "name": "cdi-fast",
+          "startedAt": "2026-09-07T22:36:02Z",
+          "status": "completed",
+          "steps": [
+            {
+              "completedAt": "2026-09-07T22:36:03Z",
+              "conclusion": "success",
+              "name": "Set up job",
+              "number": 1,
+              "startedAt": "2026-09-07T22:36:02Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-09-07T22:36:24Z",
+              "conclusion": "success",
+              "name": "Run actions/checkout@v4",
+              "number": 2,
+              "startedAt": "2026-09-07T22:36:03Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-09-07T22:36:25Z",
+              "conclusion": "success",
+              "name": "Verify generated Musashi sources",
+              "number": 3,
+              "startedAt": "2026-09-07T22:36:24Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-09-07T22:36:42Z",
+              "conclusion": "success",
+              "name": "Install build dependencies",
+              "number": 4,
+              "startedAt": "2026-09-07T22:36:25Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-09-07T22:36:43Z",
+              "conclusion": "success",
+              "name": "Restore compiler cache",
+              "number": 5,
+              "startedAt": "2026-09-07T22:36:42Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-09-07T22:36:43Z",
+              "conclusion": "success",
+              "name": "Configure compiler cache",
+              "number": 6,
+              "startedAt": "2026-09-07T22:36:43Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-09-07T22:36:43Z",
+              "conclusion": "success",
+              "name": "Restore generated CD-i build",
+              "number": 7,
+              "startedAt": "2026-09-07T22:36:43Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-09-07T22:36:43Z",
+              "conclusion": "skipped",
+              "name": "Generate CD-i build",
+              "number": 8,
+              "startedAt": "2026-09-07T22:36:43Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-09-07T22:36:51Z",
+              "conclusion": "success",
+              "name": "Build precompiled header",
+              "number": 9,
+              "startedAt": "2026-09-07T22:36:43Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-09-07T22:37:08Z",
+              "conclusion": "success",
+              "name": "Build CD-i helper tests",
+              "number": 10,
+              "startedAt": "2026-09-07T22:36:51Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-09-07T22:38:11Z",
+              "conclusion": "success",
+              "name": "Run CD-i helper tests",
+              "number": 11,
+              "startedAt": "2026-09-07T22:37:08Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-09-07T22:38:11Z",
+              "conclusion": "success",
+              "name": "Check DVC DMA liveness wiring",
+              "number": 12,
+              "startedAt": "2026-09-07T22:38:11Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-09-07T22:42:39Z",
+              "conclusion": "success",
+              "name": "Build CD-i integration tests",
+              "number": 13,
+              "startedAt": "2026-09-07T22:38:11Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-09-07T22:49:50Z",
+              "conclusion": "success",
+              "name": "Run CD-i integration tests",
+              "number": 14,
+              "startedAt": "2026-09-07T22:42:39Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-09-07T22:49:50Z",
+              "conclusion": "success",
+              "name": "Compiler cache statistics",
+              "number": 15,
+              "startedAt": "2026-09-07T22:49:50Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-09-07T22:49:50Z",
+              "conclusion": "success",
+              "name": "Post Restore generated CD-i build",
+              "number": 28,
+              "startedAt": "2026-09-07T22:49:50Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-09-07T22:49:50Z",
+              "conclusion": "success",
+              "name": "Post Restore compiler cache",
+              "number": 29,
+              "startedAt": "2026-09-07T22:49:50Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-09-07T22:49:51Z",
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@v4",
+              "number": 30,
+              "startedAt": "2026-09-07T22:49:50Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-09-07T22:49:51Z",
+              "conclusion": "success",
+              "name": "Complete job",
+              "number": 31,
+              "startedAt": "2026-09-07T22:49:51Z",
+              "status": "completed"
+            }
+          ],
+          "url": "https://github.com/matt-dawidowicz/mame/actions/runs/34167219403/job/101880533721"
+        }
+      ],
+      "status": "completed",
+      "url": "https://github.com/matt-dawidowicz/mame/actions/runs/34167219403"
     }
   }
 }

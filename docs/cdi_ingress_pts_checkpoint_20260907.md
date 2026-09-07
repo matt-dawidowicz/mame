@@ -1,8 +1,9 @@
 # DVC sparse ingress, refill and picture timestamps
 
 Date: 2026-09-07. Branch: `cdi-unified`. Reviewed baseline:
-`2bdb486f60d784accc252a8ecccf2e7320220f0a`. Code commit and exact-source CI are certified in the subsequent
-documentation-only checkpoint after the final local gates.
+`2bdb486f60d784accc252a8ecccf2e7320220f0a`. Verified code: `47dbd619dfbf2b1ec99bd76a0cef8ebbbef0b350`.
+This subsequent documentation-only certification records exact-source CI.
+[CI 34167219403](https://github.com/matt-dawidowicz/mame/actions/runs/34167219403) passes on `47dbd619dfbf2b1ec99bd76a0cef8ebbbef0b350`: 12201 assertions / 26 integration cases and 17405336 / 225 helper cases, generated-source freshness and DMA liveness.
 
 ## Reproductions and production changes
 
@@ -89,7 +90,7 @@ integration run passed 12201 assertions / 26 cases before the final test-only
 absent/late audio refill variants; the final targeted run above covers those.
 Helpers pass 17405336 assertions / 225 cases. CD-i production build/validity,
 DMA liveness, Musashi freshness, include guards and diff checks pass.
-Exact final full-suite CI certification is pending.
+[CI 34167219403](https://github.com/matt-dawidowicz/mame/actions/runs/34167219403) passes on `47dbd619dfbf2b1ec99bd76a0cef8ebbbef0b350`: 12201 assertions / 26 integration cases and 17405336 / 225 helper cases, generated-source freshness and DMA liveness.
 
 - Final targeted binary SHA-256: `bbc66fd3bb44c062fbaef0a9160e2a994c7b17f01f5127115e23a261972a4849`.
 - Final targeted log SHA-256: `340b7c9e036c4e65bab336e9cf8899f99636b1a99dbef33132ec042f2736f8db`.

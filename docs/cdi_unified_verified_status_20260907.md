@@ -14,8 +14,8 @@ Original full-size video and stereo PCM references exercise sparse delivery,
 starvation/refill, forward/backward PTS changes and 33-bit wraparound. Fifteen
 scheduled saves repeat composed output, PCM, callback timing and IRQ/status exactly.
 The host 26-picture decode-ahead queue fills and drains; this is not a physical
-VMPEG buffer claim. Local/CI certification is recorded in the
-[ingress checkpoint](cdi_ingress_pts_checkpoint_20260907.md).
+VMPEG buffer claim. [CI 34167219403](https://github.com/matt-dawidowicz/mame/actions/runs/34167219403) passes on `47dbd619dfbf2b1ec99bd76a0cef8ebbbef0b350`: 12201 assertions / 26 integration cases and 17405336 / 225 helper cases, generated-source freshness and DMA liveness.
+See the [ingress checkpoint](cdi_ingress_pts_checkpoint_20260907.md).
 
 Weighted grades remain unchanged: DVC 75%, MPEG video 70%, DVC audio 80%, A/V sync
 60%, saves 65%, cross-system audio 70% and video 65%. Timestamped audio behind
@@ -408,7 +408,7 @@ Next action: Extend complete composed references to interlace/QHY/DYUV/RGB555 an
 
 Implementation: Ingress, registers, audio/video backend, scheduling and DMA operate as a model.
 
-Verification: Live ingress/PTS references and fifteen saved continuations pass; final gate certification is in the ingress checkpoint. Historical capacity/30-minute evidence retains its original code scope.
+Verification: Exact-code CD-i CI passes the full helper/integration suites, including live ingress/PTS references and fifteen exact saved continuations. Historical capacity/30-minute evidence retains its original code scope.
 
 | Obligation | Weight | Previous grade | Current grade | Rationale and remaining gaps |
 | --- | ---: | ---: | ---: | --- |
@@ -437,7 +437,7 @@ Next action: Test timestamped audio behind queued PCM and independently disconti
 
 Implementation: PL_MPEG decode, picture queues and presentation handoff exist.
 
-Verification: Live ingress/PTS references and fifteen saved continuations pass; final gate certification is in the ingress checkpoint. Historical capacity/30-minute evidence retains its original code scope.
+Verification: Exact-code CD-i CI passes the full helper/integration suites, including live ingress/PTS references and fifteen exact saved continuations. Historical capacity/30-minute evidence retains its original code scope.
 
 | Obligation | Weight | Previous grade | Current grade | Rationale and remaining gaps |
 | --- | ---: | ---: | ---: | --- |
@@ -465,7 +465,7 @@ Next action: Exercise independent SCR jumps, malformed/GOP boundaries and pendin
 
 Implementation: Parser, Layer II decode, queues, recovered digital gain, emphasis and replay are implemented.
 
-Verification: Live ingress/PTS references and fifteen saved continuations pass; final gate certification is in the ingress checkpoint. Historical capacity/30-minute evidence retains its original code scope.
+Verification: Exact-code CD-i CI passes the full helper/integration suites, including live ingress/PTS references and fifteen exact saved continuations. Historical capacity/30-minute evidence retains its original code scope.
 
 | Obligation | Weight | Previous grade | Current grade | Rationale and remaining gaps |
 | --- | ---: | ---: | ---: | --- |
@@ -664,7 +664,7 @@ Next action: Exercise Timer 1/2 and UART event timing in live fixtures; measure 
 
 Implementation: Clock arithmetic, packet scheduling and discontinuity controls exist.
 
-Verification: Live ingress/PTS references and fifteen saved continuations pass; final gate certification is in the ingress checkpoint. Historical capacity/30-minute evidence retains its original code scope.
+Verification: Exact-code CD-i CI passes the full helper/integration suites, including live ingress/PTS references and fifteen exact saved continuations. Historical capacity/30-minute evidence retains its original code scope.
 
 | Obligation | Weight | Previous grade | Current grade | Rationale and remaining gaps |
 | --- | ---: | ---: | ---: | --- |
@@ -691,7 +691,7 @@ Next action: Test queued-PCM timestamps and independent SCR jumps; measure host 
 
 Implementation: State registration and decoder replay cover multiple devices.
 
-Verification: Live ingress/PTS references and fifteen saved continuations pass; final gate certification is in the ingress checkpoint. Historical capacity/30-minute evidence retains its original code scope.
+Verification: Exact-code CD-i CI passes the full helper/integration suites, including live ingress/PTS references and fifteen exact saved continuations. Historical capacity/30-minute evidence retains its original code scope.
 
 | Obligation | Weight | Previous grade | Current grade | Rationale and remaining gaps |
 | --- | ---: | ---: | ---: | --- |
@@ -884,7 +884,7 @@ Next action: Complete and validate the DSP firmware path plus host DTACK and MCU
 
 Implementation: XA, MPEG audio, queues, control, gain and emphasis are implemented.
 
-Verification: Live ingress/PTS references and fifteen saved continuations pass; final gate certification is in the ingress checkpoint. Historical capacity/30-minute evidence retains its original code scope.
+Verification: Exact-code CD-i CI passes the full helper/integration suites, including live ingress/PTS references and fifteen exact saved continuations. Historical capacity/30-minute evidence retains its original code scope.
 
 | Obligation | Weight | Previous grade | Current grade | Rationale and remaining gaps |
 | --- | ---: | ---: | ---: | --- |
@@ -911,7 +911,7 @@ Next action: Extend queued-audio timestamp and cross-device transitions; obtain 
 
 Implementation: Native display, MPEG backend, composition and presentation model exist.
 
-Verification: Live ingress/PTS references and fifteen saved continuations pass; final gate certification is in the ingress checkpoint. Historical capacity/30-minute evidence retains its original code scope.
+Verification: Exact-code CD-i CI passes the full helper/integration suites, including live ingress/PTS references and fifteen exact saved continuations. Historical capacity/30-minute evidence retains its original code scope.
 
 | Obligation | Weight | Previous grade | Current grade | Rationale and remaining gaps |
 | --- | ---: | ---: | ---: | --- |
