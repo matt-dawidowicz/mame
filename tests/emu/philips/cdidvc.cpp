@@ -6,6 +6,7 @@
 
 #include "catch.hpp"
 
+#include "cdi_dvc_av_reference_data.h"
 #include "cdidvc_mpeg_format.h"
 #include "cdidvc_save_state.h"
 #include "cdidvc_utils.h"
@@ -712,4 +713,68 @@ TEST_CASE("CD-i DVC MPEG audio never emits a truncated final frame", "[emu][phil
 	REQUIRE(plm_audio_decode(decoder) == nullptr);
 	REQUIRE(plm_audio_has_ended(decoder));
 	plm_audio_destroy(decoder);
+}
+
+TEST_CASE("PL_MPEG ring EOF survives compaction and reopens only on new input", "[emu][philips][dvc][plmpeg][eof]")
+{
+	plm_buffer_t *buffer = plm_buffer_create_with_capacity(32);
+	REQUIRE(buffer != nullptr);
+	std::array<uint8_t, 12> bytes{};
+	REQUIRE(plm_buffer_write(buffer, bytes.data(), bytes.size()) == bytes.size());
+	plm_buffer_signal_end(buffer);
+	plm_buffer_skip(buffer, 5 * 8);
+	plm_buffer_discard_read_bytes(buffer);
+	CHECK(plm_buffer_has(buffer, 7 * 8));
+	CHECK_FALSE(plm_buffer_has(buffer, 8 * 8));
+	CHECK(plm_buffer_has_ended(buffer));
+	plm_buffer_skip(buffer, 7 * 8);
+	plm_buffer_discard_read_bytes(buffer);
+	CHECK(plm_buffer_has_ended(buffer));
+	REQUIRE(plm_buffer_write(buffer, bytes.data(), bytes.size()) == bytes.size());
+	CHECK_FALSE(plm_buffer_has_ended(buffer));
+	CHECK_FALSE(plm_buffer_has(buffer, 13 * 8));
+	CHECK_FALSE(plm_buffer_has_ended(buffer));
+	plm_buffer_signal_end(buffer);
+	CHECK_FALSE(plm_buffer_has(buffer, 13 * 8));
+	CHECK(plm_buffer_has_ended(buffer));
+	plm_buffer_rewind(buffer);
+	plm_buffer_signal_end(buffer);
+	CHECK(plm_buffer_has_ended(buffer));
+	plm_buffer_destroy(buffer);
+}
+
+
+TEST_CASE("PL_MPEG returns the final reference after trailing B pictures and ring refill", "[emu][philips][dvc][plmpeg][eof]")
+{
+	for (bool split : {false, true})
+	{
+		CAPTURE(split);
+		auto bytes = cdi_av_reference::VIDEO_0;
+		plm_buffer_t *buffer = plm_buffer_create_with_capacity(4096);
+		REQUIRE(buffer != nullptr);
+		plm_video_t *decoder = plm_video_create_with_buffer(buffer, 1);
+		REQUIRE(decoder != nullptr);
+		unsigned count = 0;
+		if (split)
+		{
+			REQUIRE(plm_buffer_write(buffer, bytes.data(), 1000) == 1000);
+			while (plm_video_decode(decoder)) ++count;
+			CHECK(count > 0);
+			CHECK(count < 64);
+			CHECK_FALSE(plm_video_has_ended(decoder));
+		}
+		unsigned const offset = split ? 1000 : 0;
+		REQUIRE(plm_buffer_write(buffer, bytes.data() + offset, bytes.size() - offset) == bytes.size() - offset);
+		plm_buffer_signal_end(buffer);
+		while (plm_frame_t *frame = plm_video_decode(decoder))
+		{
+			CHECK(frame->width == 32);
+			CHECK(frame->height == 32);
+			++count;
+		}
+		CHECK(count == 64);
+		CHECK(plm_video_has_ended(decoder));
+		CHECK(plm_video_decode(decoder) == nullptr);
+		plm_video_destroy(decoder);
+	}
 }

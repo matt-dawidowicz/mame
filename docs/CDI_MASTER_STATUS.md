@@ -14,7 +14,27 @@ verified status updates affected worksheets; development resumes the next action
 [AGENTS.md](../AGENTS.md) defines those modes. The audio campaign remains the
 detailed audio ledger on this unified branch.
 
-## Active CD-DA save/load checkpoint — 2026-09-07
+## Active decoded A/V checkpoint — 2026-09-07
+
+Original changing stereo MPEG audio and two original I/P/B video scenes now run
+through the live DVC for 31 seconds across 12 scheduled scene resets. All 768
+baseline pictures match independent FFmpeg pixels within 3 RGB levels. A normal
+scheduled save/load repeats 747 pictures, 2,644,236 channel samples, 1,499 sound
+callback times/counts and timed IRQ/status observations exactly.
+
+The regression reproduced and fixes ring-buffer EOF compaction, delayed reference
+output after a trailing B picture, and periodic IRQ phase shifting after load.
+See the [decoded A/V checkpoint](cdi_decoded_av_checkpoint_20260907.md) for reference
+provenance, decoder tolerances, commands and remaining scope.
+
+Only two previously absent evidence obligations gain limited credit: MPEG video
+55% to 60% (raw 56.25 to 58.75), and A/V synchronization 45% to 50% (raw 46.25 to
+51.25). Other grades are carried unchanged with updated evidence. These remain
+scoped engineering judgments, not hardware fidelity or game compatibility.
+The 30-minute uninterrupted decoded gate, interactive branching, varied motion,
+combined MCD212 output and physical/retail validation remain open.
+
+## Previous CD-DA save/load checkpoint — 2026-09-07
 
 The new live regression saves during active playback, advances, restores and
 repeats the continuation. All 93,492 stereo channel samples, sound callback times,
@@ -30,7 +50,7 @@ Exact-source [CI 34082755572](https://github.com/matt-dawidowicz/mame/actions/ru
 liveness. This subsequent documentation-only certification changes no test or
 production behavior.
 
-Grades remain unchanged; sustained decoded A/V and other active modes remain open.
+At this earlier CD-DA checkpoint, grades remained unchanged; decoded A/V evidence is superseded by the active checkpoint above.
 
 ## Previous transport certification — 2026-09-07
 
@@ -62,8 +82,8 @@ save/restore, reference-media or hardware-fidelity scope.
 Driver-controlled seek completion now passes a live Q/IRQ/DBUF fixture.
 Data-track bytes are excluded from CD-DA PCM, with exact digital sample counts
 verified through audio/data transitions. Active CD-DA save/load now also passes
-the checkpoint above. Next: sustained decoded A/V and its save/load continuity,
-plus broader transport error and multisession evidence.
+the CD-DA checkpoint above. Decoded A/V evidence is now recorded in the active
+checkpoint; broader transport error and multisession evidence remains open.
 
 ## Meaning of the percentages
 
@@ -90,25 +110,25 @@ fidelity percentage is invented when evidence is insufficient.
 | [SCC68070 MMU](cdi_unified_verified_status_20260907.md#mmu) | 65% | **75%** | Medium | Executed read/write/fetch/boundary fault/retry, format-F read frame and active-MMU save/load pass; full SSW and internal-cycle semantics remain open. |
 | [CDIC](cdi_unified_verified_status_20260907.md#cdic) | 55% | **70%** | Medium | Live Q/TOC and four shared/separate CUE layouts with stored/virtual pregaps pass; CUE higher indexes reach SRAM in BCD. Physical status and timing remain open. |
 | [MCD212 display](cdi_unified_verified_status_20260907.md#mcd) | 65% | **65%** | Medium | Mode/control/QHY helpers pass; independent full frames and combined overlay remain unverified. |
-| [DVC overall](cdi_unified_verified_status_20260907.md#dvc) | 70% | **70%** | Medium | Live ingress/handshake and control-state tests pass; full decoded movie/physical board fidelity remains open. |
-| [MPEG video decode and presentation](cdi_unified_verified_status_20260907.md#mpeg_video) | 55% | **55%** | Low | Packet/event/conversion helpers pass; no retained independent full I/P/B picture corpus or combined displayed-frame oracle. |
-| [DVC audio](cdi_unified_verified_status_20260907.md#dvc_audio) | 80% | **80%** | Medium | Broad helper/reference tests and real DMA ingress pass; reference PCM tolerance and physical DSP/DAC edges remain. |
+| [DVC overall](cdi_unified_verified_status_20260907.md#dvc) | 70% | **70%** | Medium | 31-second original decoded A/V, 12 scene resets and active save/load pass; broad movie behavior and physical board fidelity remain open. |
+| [MPEG video decode and presentation](cdi_unified_verified_status_20260907.md#mpeg_video) | 55% | **60%** | Low | Full pixels of original I/P/B scenes match FFmpeg and EOF frame loss is fixed; varied motion and combined displayed-frame coverage remain open. |
+| [DVC audio](cdi_unified_verified_status_20260907.md#dvc_audio) | 80% | **80%** | Medium | Changing stereo PCM matches FFmpeg within documented tolerance and restores exactly; broader stream controls and physical DSP/DAC edges remain open. |
 | [XA routing and ADPCM](cdi_unified_verified_status_20260907.md#xa) | 75% | **75%** | Medium | Exhaustive helpers and retained exact 4-bit stereo reference exist; other independent modes, silicon and retail evidence remain incomplete. |
 | [CD-DA playback and transport](cdi_unified_verified_status_20260907.md#cdda) | 50% | **65%** | Low | Live seek, exact mixed-mode PCM counts and four active CD-DA save/load continuations pass; physical output and broader transport/save semantics remain unverified. |
 | [CD-DA Q and other subcode](cdi_unified_verified_status_20260907.md#q) | 40% | **70%** | Low | Live 45-packet TOC verifies all twelve tracks, triplicate points, absolute starts, first/last track and complete A2 lead-out. Physical lead-in and multisession remain open. |
 | [DMA integration](cdi_unified_verified_status_20260907.md#dma) | 60% | **70%** | Medium | Live DVC transfers and both CDIC SRAM boundary/error directions pass; advanced modes and physical arbitration remain open. |
-| [Interrupts](cdi_unified_verified_status_20260907.md#irq) | 65% | **70%** | Medium | Live DVC events, executed MMU fault/recovery and CDIC error status pass; expanded peripheral IRQ sequences remain open. |
-| [Device timing](cdi_unified_verified_status_20260907.md#timing) | 60% | **60%** | Medium | Arithmetic and DMA cadence tests pass; cycle-exact CPU/bus and physical cross-device calibration remain unverified. |
-| [A/V synchronization](cdi_unified_verified_status_20260907.md#av) | 45% | **45%** | Medium | Long-run arithmetic passes; it is not a 30-minute decoded/presented movie or host-output drift measurement. |
-| [Save states](cdi_unified_verified_status_20260907.md#save) | 60% | **60%** | Medium | Live audio/control, MMU and active CD-DA PCM/Q/IRQ snapshots pass; decoded pictures and other active peripherals lack complete continuation fixtures. |
+| [Interrupts](cdi_unified_verified_status_20260907.md#irq) | 65% | **70%** | Medium | Live DVC status/acknowledgement and restored periodic phase pass alongside MMU/CDIC gates; expanded peripheral IRQ sequences remain open. |
+| [Device timing](cdi_unified_verified_status_20260907.md#timing) | 60% | **60%** | Medium | Live decoded frame timing and restored DVC timer phase pass; CPU/bus cycle accuracy and physical calibration remain unverified. |
+| [A/V synchronization](cdi_unified_verified_status_20260907.md#av) | 45% | **50%** | Medium | 31-second decoded reference playback passes through 12 scene resets and save/load; 30-minute continuous and host-output drift measurements remain open. |
+| [Save states](cdi_unified_verified_status_20260907.md#save) | 60% | **60%** | Medium | Active decoded A/V, MMU and CD-DA continuations pass; more snapshot phases and active peripheral modes remain open. |
 | [SLAVE HLE](cdi_unified_verified_status_20260907.md#slave) | 55% | **55%** | Medium | Command/pointer/readiness helpers pass; several protocols remain stubs and physical mailbox timing is modeled. |
 | [Input and peripherals](cdi_unified_verified_status_20260907.md#input) | 45% | **45%** | Medium | Pointer helpers pass; keyboard event delivery, controller breadth and serial waveforms are incomplete. |
 | [SERVO and MCU integration](cdi_unified_verified_status_20260907.md#servo) | 15% | **15%** | Low | Structural evidence only for much of the scope; live protocol, feedback and complete firmware runtime remain absent. |
 | [Disc handling](cdi_unified_verified_status_20260907.md#disc) | 50% | **60%** | Low | Synthetic Q/TOC, four CUE layouts, normalized higher indexes, payload/subcode offsets and truncated-read errors pass. Generic CHD gaps/padding pass; multisession and physical status remain open. |
 | [Mono-I/II board glue](cdi_unified_verified_status_20260907.md#glue) | 50% | **50%** | Low | Presence/IRQ helpers and live optional-DVC fixture pass; disabled DSP and unmapped MCU interfaces still block Mono-II. |
 | [Mono-II functional system](cdi_unified_verified_status_20260907.md#mono2) | 20% | **20%** | Low | Structural tests pass; host DTACK, SPI, enabled DSP and matching-ROM runtime remain absent. |
-| [Cross-system audio](cdi_unified_verified_status_20260907.md#all_audio) | 70% | **70%** | Medium | Strong component tests and synthetic CD-DA Q/TOC coexist with missing audible transport and cross-stream continuity evidence. |
-| [Cross-system video](cdi_unified_verified_status_20260907.md#all_video) | 55% | **55%** | Low | Component helpers pass; independent decoded/composed frames and hardware/title captures remain incomplete. |
+| [Cross-system audio](cdi_unified_verified_status_20260907.md#all_audio) | 70% | **70%** | Medium | Live changing DVC PCM and mixed-mode CD-DA gates pass; interactive cross-stream, host-output and physical continuity remain open. |
+| [Cross-system video](cdi_unified_verified_status_20260907.md#all_video) | 55% | **55%** | Low | Original decoded DVC pixels and short presentation pass; varied video, combined MCD212 frames and hardware/title captures remain open. |
 | [DSP56000/56001 standalone core](cdi_unified_verified_status_20260907.md#dsp) | New row | **40%** | Low | Three helper test files cover host words, bootstrap relocation, masks, loops and wrapping. No emulator-linked complete firmware, interrupt, ALU or cycle-accuracy campaign. |
 | [Compatibility](cdi_audio_compatibility_matrix_20260906.md) | Not estimated | **Not estimated** | Low | Retained retail-runtime certification is missing for required XA/DVC/CD-DA categories; this does not mean no games work. |
 
@@ -136,9 +156,11 @@ fidelity percentage is invented when evidence is insufficient.
    active PCM save/load now passes four live scenarios. Continue with broader
    transport error semantics and other active modes.
 
-2. **Decoded A/V and save continuity:** retain decoded pictures and PCM across
-   sustained presentation, interactive branches and save/load. Timestamp arithmetic
-   and a video sequence header do not close this gate.
+2. **Broader decoded A/V:** the 31-second original reference and active save/load
+   gate passes. Extend moving/textured I/P/B content, rates/dimensions, pause and
+   interactive stream branches, multiple snapshot phases and combined MCD212
+   output. Retain a 30-minute uninterrupted decoded run before closing long-run
+   continuity; calibrate host and physical timing separately.
 3. **Newly merged peripheral verification:** live timer match/capture/count IRQs,
    UART mode/break/overrun, active peripheral saves and DMA error injection.
 4. **Mono-II/DSP:** complete standalone architectural/firmware execution and

@@ -1549,9 +1549,6 @@ size_t plm_buffer_write(plm_buffer_t *self, uint8_t *bytes, size_t length) {
 		// Seems to be good enough.
 
 		plm_buffer_discard_read_bytes(self);
-		if (self->mode == PLM_BUFFER_MODE_RING) {
-			self->total_size = 0;
-		}
 	}
 
 	// Do we have to resize to fit the new data?
@@ -1568,11 +1565,17 @@ size_t plm_buffer_write(plm_buffer_t *self, uint8_t *bytes, size_t length) {
 	memcpy(self->bytes + self->length, bytes, length);
 	self->length += length;
 	self->has_ended = FALSE;
+	if (self->mode == PLM_BUFFER_MODE_RING) {
+		self->total_size = 0; // a write reopens the dynamic source
+	}
 	return length;
 }
 
 void plm_buffer_signal_end(plm_buffer_t *self) {
 	self->total_size = self->length;
+	if (self->length == 0) {
+		self->has_ended = TRUE;
+	}
 }
 
 void plm_buffer_set_load_callback(plm_buffer_t *self, plm_buffer_load_callback fp, void *user) {
@@ -1614,6 +1617,15 @@ size_t plm_buffer_tell(plm_buffer_t *self) {
 
 void plm_buffer_discard_read_bytes(plm_buffer_t *self) {
 	size_t byte_pos = self->bit_index >> 3;
+	// An explicitly ended ring uses a buffer-relative end position. Keep it
+	// aligned when consumed bytes are removed, or video lookahead never sees
+	// EOF and strands the final coded picture and its delayed reference frame.
+	if (self->mode == PLM_BUFFER_MODE_RING && self->total_size != 0) {
+		self->total_size -= byte_pos;
+		if (self->total_size == 0) {
+			self->has_ended = TRUE;
+		}
+	}
 	if (byte_pos == self->length) {
 		self->bit_index = 0;
 		self->length = 0;
@@ -2869,15 +2881,12 @@ plm_frame_t *plm_video_decode(plm_video_t *self) {
 			self->start_code = plm_buffer_find_start_code(self->buffer, PLM_START_PICTURE);
 			
 			if (self->start_code == -1) {
-				// If we reached the end of the file and the previously decoded
-				// frame was a reference frame, we still have to return it.
+				// Return the delayed reference at EOF even when the last coded
+				// picture was a B picture displayed before that reference.
 				if (
 					self->has_reference_frame &&
 					!self->assume_no_b_frames &&
-					plm_buffer_has_ended(self->buffer) && (
-						self->picture_type == PLM_VIDEO_PICTURE_TYPE_INTRA ||
-						self->picture_type == PLM_VIDEO_PICTURE_TYPE_PREDICTIVE
-					)
+					plm_buffer_has_ended(self->buffer)
 				) {
 					self->has_reference_frame = FALSE;
 					frame = &self->frame_backward;

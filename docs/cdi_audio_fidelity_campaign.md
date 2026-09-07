@@ -1,6 +1,15 @@
 # CD-i Audio Fidelity Campaign
 
-> Fresh completion estimates and code/test findings: [CDI_MASTER_STATUS.md](CDI_MASTER_STATUS.md) and [current unified audit](cdi_unified_verified_status_20260907.md). The pre-campaign numbers below are historical. CDIC DMA bounds/Q generation and actual decoded A/V verification remain software work.
+> Fresh completion estimates and code/test findings: [CDI_MASTER_STATUS.md](CDI_MASTER_STATUS.md) and [current unified audit](cdi_unified_verified_status_20260907.md). The pre-campaign numbers below are historical. Live CDIC DMA/Q/CD-DA gates and short decoded A/V reference continuity now pass; broader transport, interactive playback and physical fidelity remain open.
+
+## Decoded A/V checkpoint — 2026-09-07
+
+Original changing stereo MPEG audio and two I/P/B video scenes now have independent
+full PCM/pixel references through the live DVC. A 31-second, 12-scene run and active
+save/load pass; EOF picture loss and restored periodic IRQ phase were corrected.
+See [the checkpoint](cdi_decoded_av_checkpoint_20260907.md) for exact bounds and
+remaining scope. This is short synthetic software evidence; the 30-minute decoded,
+interactive stream-control, host-output and physical DSP/DAC gates remain open.
 
 ## Goal
 

@@ -726,7 +726,8 @@ void cdi_dvc_device::save_state_postload()
 	if (m_audio_stream)
 		m_audio_stream->set_sample_rate(m_audio_output_rate ? m_audio_output_rate : 48'000);
 	update_interrupt_state();
-	update_timer();
+	// The scheduler restores this timer's deadline and period. Re-arming it
+	// here starts a new period and shifts FMA POLL/FMV TIM after every load.
 
 	logerror("DVC_SAVE_STATE_RESTORE_OK serial=%u audio_replay=%u video_replay=%u pcm_values=%u queue=%u present_pixels=%u audio_frames=%u video_frames=%u\n",
 			m_save_snapshot_serial, m_save_audio_replay_length, m_save_video_replay_length,
