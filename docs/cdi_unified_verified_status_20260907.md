@@ -5,6 +5,21 @@ available project branches and the 60-commit upstream synchronization. It replac
 the pre-merge numbers as the current assessment. Historical figures remain in
 [the earlier audit](cdi_verified_status_20260906.md).
 
+## CD-DA/Q transport update — 2026-09-07
+
+Following the MMU certification, the real CDIC path now derives track number,
+INDEX 00/01, relative MSF and control bits from disc metadata. A generated
+twelve-track mixed-mode fixture passes 435 assertions; the complete integration
+gate passes 459 assertions / 8 cases. It checks 33 sector deliveries, sequential
+track/gap transitions, backward repositioning and no fabricated lead-out Q.
+The independent CRC oracle passes without changing the production CRC algorithm.
+See [the Q checkpoint](cdi_q_checkpoint_20260907.md) for scope and remaining gaps.
+Same weighted rubric: CD-DA 48.75→65 raw (50→65%), Q 38.75→61.25 (40→60%),
+CDIC 63.75→67.5 (65→70%), disc handling 50→56.25 (50→55%).
+Physical fidelity remains unestimated. MMU CI run
+[34074599579](https://github.com/matt-dawidowicz/mame/actions/runs/34074599579)
+is now successful: 219 helpers / 17,393,781 assertions, 7 integration cases / 24 assertions.
+
 ## Publication certification — 2026-09-07
 
 Verified production source: `6785ea148341de1bf54fdd8e70cec0ab4115d24e`. Local regenerated-source gate passes
@@ -99,9 +114,9 @@ within the same five-point reporting band.
    and boundary/error behavior pass; physical clipping/wrap policy is unmeasured.
 2. **MMU executed fault delivery: closed tested software gap.** Regenerated format-F
    RTE, guest repair and instruction retry pass. Full silicon semantics remain open.
-3. **CD-DA/Q:** non-TOC track/index remain 01 and relative slots reuse absolute
-   MSF; TOC lead-out construction remains incomplete. A synthetic multi-track
-   disc fixture and actual transport/error corrections remain software work.
+1. **CD-DA/Q:** track/index-0/1/relative time now pass live synthetic-disc tests.
+   Continue with stored Q and metadata-derived TOC lead packets.
+
 4. **A/V and saves:** 30-minute arithmetic is not a decoded/presented movie.
    The live video save case uses a sequence header, not decoded picture history.
    Output drift, full-frame reference and active peripheral continuation remain.
@@ -128,14 +143,14 @@ de-emphasis or recovered-Q22 work is reopened by this reassessment.
 | --- | ---: | ---: | --- |
 | [SCC68070 CPU and internal peripherals](#scc) | 55% | 75% | Medium |
 | [SCC68070 MMU](#mmu) | 65% | 75% | Medium |
-| [CDIC](#cdic) | 55% | 65% | Medium |
+| [CDIC](#cdic) | 55% | 70% | Medium |
 | [MCD212 display](#mcd) | 65% | 65% | Medium |
 | [DVC overall](#dvc) | 70% | 70% | Medium |
 | [MPEG video decode and presentation](#mpeg_video) | 55% | 55% | Low |
 | [DVC audio](#dvc_audio) | 80% | 80% | Medium |
 | [XA routing and ADPCM](#xa) | 75% | 75% | Medium |
-| [CD-DA playback and transport](#cdda) | 50% | 50% | Low |
-| [CD-DA Q and other subcode](#q) | 40% | 40% | Low |
+| [CD-DA playback and transport](#cdda) | 50% | 65% | Low |
+| [CD-DA Q and other subcode](#q) | 40% | 60% | Low |
 | [DMA integration](#dma) | 60% | 70% | Medium |
 | [Interrupts](#irq) | 65% | 70% | Medium |
 | [Device timing](#timing) | 60% | 60% | Medium |
@@ -144,7 +159,7 @@ de-emphasis or recovered-Q22 work is reopened by this reassessment.
 | [SLAVE HLE](#slave) | 55% | 55% | Medium |
 | [Input and peripherals](#input) | 45% | 45% | Medium |
 | [SERVO and MCU integration](#servo) | 15% | 15% | Low |
-| [Disc handling](#disc) | 50% | 50% | Low |
+| [Disc handling](#disc) | 50% | 55% | Low |
 | [Mono-I/II board glue](#glue) | 50% | 50% | Low |
 | [Mono-II functional system](#mono2) | 20% | 20% | Low |
 | [Cross-system audio](#all_audio) | 70% | 70% | Medium |
@@ -219,11 +234,11 @@ Next action: Extend transfer-form/SSW coverage, RR=1 and internal-cycle restart 
 
 ### CDIC
 
-**65% — Medium confidence; raw weighted score 63.75.**
+**70% — Medium confidence; raw weighted score 67.5.**
 
 Implementation: Commands, sector routing, double buffers, XA and AUDCTL are implemented.
 
-Verification: Live SRAM boundaries and both DMA directions pass; multi-track Q/transport fixtures remain missing.
+Verification: DMA SRAM safety and synthetic twelve-track Q transport pass; TOC, stored Q and physical error/status remain open.
 
 | Obligation | Weight | Previous grade | Current grade | Rationale and remaining gaps |
 | --- | ---: | ---: | ---: | --- |
@@ -232,7 +247,7 @@ Verification: Live SRAM boundaries and both DMA directions pass; multi-track Q/t
 | Buffers and delivery | 15 | 3 | 3 | Measured double-buffer behavior; no full disc-device campaign. |
 | Audio control and handoff | 15 | 3 | 3 | Audio fixes AUDCTL/playback/sector ownership; physical edges remain. |
 | DMA SRAM boundaries | 15 | 1 | 3 | Both live DMA directions stop safely at 16 KiB and report SCC device bus error; clipping/error policy is emulator safety, not measured silicon behavior. |
-| TOC and subcode | 15 | 1 | 1 | Hard-coded position fields and partial TOC synthesis. |
+| TOC and subcode | 15 | 1 | 2 | Live Q track/index-0/1/time/control fields pass; TOC lead packets and stored subcode remain open. |
 | Error/status fidelity | 5 | 1 | 1 | Read failure is bounded; hardware error response incomplete. |
 | Active save/load | 5 | 2 | 2 | Fields are registered; CDIC live transport snapshot fixture missing. |
 
@@ -242,7 +257,9 @@ Tests: [tests/emu/machine/scc68070_peripherals.cpp](../tests/emu/machine/scc6807
 
 Documentation: [docs/cdi_audio_compatibility_matrix_20260906.md](../docs/cdi_audio_compatibility_matrix_20260906.md), [docs/cdi_audio_fidelity.md](../docs/cdi_audio_fidelity.md), [docs/cdi_audio_fidelity_campaign.md](../docs/cdi_audio_fidelity_campaign.md), [docs/cdi_audio_final_certification_20260906.md](../docs/cdi_audio_final_certification_20260906.md), [docs/cdi_dma_av_optional_dvc_checkpoint_20260906.md](../docs/cdi_dma_av_optional_dvc_checkpoint_20260906.md).
 
-Next action: Implement synthetic multi-track CD-DA/Q coverage and correct track/index/relative time.
+Next action: Preserve stored Q and correct metadata-derived TOC lead packets.
+
+Current live disc evidence: [Q checkpoint](cdi_q_checkpoint_20260907.md).
 
 <a id="mcd"></a>
 
@@ -392,21 +409,21 @@ Next action: Keep core reference gates; acquire silicon arithmetic and retail-sc
 
 ### CD-DA playback and transport
 
-**50% — Low confidence; raw weighted score 48.75.**
+**65% — Low confidence; raw weighted score 65.**
 
 Implementation: PCM sector handoff, gating, cadence and de-emphasis exist.
 
-Verification: Helper/reference response tests pass; track/index/relative position defects and mixed-mode transport validation remain.
+Verification: Synthetic sequential audio/data Q transport and repositioning pass; audible output and broader transport semantics remain unverified.
 
 | Obligation | Weight | Previous grade | Current grade | Rationale and remaining gaps |
 | --- | ---: | ---: | ---: | --- |
 | Transport command state | 15 | 2 | 2 | Start/stop/read model; no complete pause/seek reference campaign. |
 | PCM sector handoff | 20 | 3 | 3 | Audio 588-frame sector model and pre-start buffer; no live output sample capture. |
 | Playback gating/cadence | 15 | 3 | 3 | Audio fixes AUDCTL and 75 Hz events. |
-| Track/index transitions | 15 | 1 | 1 | Current Q track/index stay 01 regardless of later track. |
-| Position/subcode | 15 | 1 | 1 | Relative fields reuse absolute MSF; no position oracle. |
+| Track/index transitions | 15 | 1 | 3 | Live sequential track/pregap/INDEX 01 transitions pass; higher indexes and wider disc formats remain open. |
+| Position/subcode | 15 | 1 | 3 | Track-relative and absolute Q, backward command repositioning and lead-out no-fabrication checks pass; seek-only completion and hardware alignment remain open. |
 | Pre-emphasis | 10 | 3 | 3 | Image flags and response tested. |
-| Mixed-mode runtime | 5 | 0 | 0 | No retained fixture. |
+| Mixed-mode runtime | 5 | 0 | 1 | Synthetic audio/data Q delivery passes; audible output, mixed-mode DAC gating and retail compatibility remain unverified. |
 | Physical alignment/servo | 5 | 0 | 0 | Unmeasured. |
 
 Implementation: [src/mame/philips/cdiaudio.h](../src/mame/philips/cdiaudio.h), [src/mame/philips/cdiaudio_dsp56001.h](../src/mame/philips/cdiaudio_dsp56001.h), [src/mame/philips/cdicdic.cpp](../src/mame/philips/cdicdic.cpp), [src/mame/philips/cdicdic_state.h](../src/mame/philips/cdicdic_state.h), [src/mame/philips/cdidvc.cpp](../src/mame/philips/cdidvc.cpp).
@@ -415,27 +432,29 @@ Tests: [tests/emu/philips/cdi_audio_arithmetic.cpp](../tests/emu/philips/cdi_aud
 
 Documentation: [docs/cdi_audio_arithmetic_checkpoint.md](../docs/cdi_audio_arithmetic_checkpoint.md), [docs/cdi_audio_compatibility_matrix_20260906.md](../docs/cdi_audio_compatibility_matrix_20260906.md), [docs/cdi_audio_fidelity.md](../docs/cdi_audio_fidelity.md), [docs/cdi_audio_final_certification_20260906.md](../docs/cdi_audio_final_certification_20260906.md).
 
-Next action: Fix position metadata with a synthetic mixed-mode reference disc.
+Next action: Preserve stored Q and correct TOC; then validate data-track DAC gating and seek-only completion.
+
+Current live disc evidence: [Q checkpoint](cdi_q_checkpoint_20260907.md).
 
 <a id="q"></a>
 
 ### CD-DA Q and other subcode
 
-**40% — Low confidence; raw weighted score 38.75.**
+**60% — Low confidence; raw weighted score 61.25.**
 
 Implementation: ADR/control, buffer placement, cadence and partial Q/TOC synthesis exist.
 
-Verification: Control/placement helpers pass; fixed track/index and incorrect relative/lead-out construction remain.
+Verification: Live Q track/index-0/1/time/control/CRC pass on a synthetic twelve-track disc; stored Q, TOC and wider subcode remain open.
 
 | Obligation | Weight | Previous grade | Current grade | Rationale and remaining gaps |
 | --- | ---: | ---: | ---: | --- |
 | Control/ADR | 10 | 4 | 4 | Audio preserves all encoded control/ADR combinations. |
 | Location/cadence | 15 | 4 | 4 | Measured trailer offset and 75 Hz model reflected in production. |
-| Track/index/relative position | 25 | 1 | 1 | Hard-coded 01 fields and absolute MSF in relative slots. |
+| Track/index/relative position | 25 | 1 | 3 | Live twelve-track CUE verifies INDEX 00/01, countdown, track-relative reset and continuous absolute MSF; higher indexes and stored Q remain open. |
 | TOC/lead packets | 20 | 1 | 1 | Synthesis remains partial; audio frames are omitted from frames accumulator. |
-| CRC oracle | 10 | 1 | 1 | Existing CRC loop includes twelve bytes; independent packet oracle absent. |
+| CRC oracle | 10 | 1 | 3 | Independent bitwise ten-byte/inverted CRC oracle passes all 33 delivered packets; existing production CRC needs no change. |
 | P/R-W/multisession | 10 | 0 | 0 | Not implemented as faithful delivery. |
-| Disc reference campaign | 10 | 0 | 0 | Missing. |
+| Disc reference campaign | 10 | 0 | 2 | Synthetic mixed audio/data shared BIN/CUE runs through real CDIC commands, timer and SRAM; other image layouts, hardware and retail remain open. |
 
 Implementation: [src/mame/philips/cdicdic.cpp](../src/mame/philips/cdicdic.cpp), [src/mame/philips/cdicdic_state.h](../src/mame/philips/cdicdic_state.h).
 
@@ -443,7 +462,9 @@ Tests: [tests/emu/philips/cdicdic.cpp](../tests/emu/philips/cdicdic.cpp).
 
 Documentation: [docs/cdi_audio_compatibility_matrix_20260906.md](../docs/cdi_audio_compatibility_matrix_20260906.md), [docs/cdi_audio_final_certification_20260906.md](../docs/cdi_audio_final_certification_20260906.md).
 
-Next action: Implement correct track/index/relative time and independently check CRC/lead packets.
+Next action: Preserve stored Q and repair TOC lead packets; investigate generic index offsets and separate-file pregaps.
+
+Current live disc evidence: [Q checkpoint](cdi_q_checkpoint_20260907.md).
 
 <a id="dma"></a>
 
@@ -666,20 +687,20 @@ Next action: Establish SPI/DTACK/host interfaces before claiming servo runtime.
 
 ### Disc handling
 
-**50% — Low confidence; raw weighted score 50.**
+**55% — Low confidence; raw weighted score 56.25.**
 
 Implementation: Sector ingress, data/audio filters and command transport model exist.
 
-Verification: Routing helpers pass; Q/TOC errors, seek/error behavior and mixed-mode/multisession fixtures remain open.
+Verification: Synthetic mixed-mode Q transport passes; TOC, separate-file gaps, multisession and seek/error fidelity remain open.
 
 | Obligation | Weight | Previous grade | Current grade | Rationale and remaining gaps |
 | --- | ---: | ---: | ---: | --- |
 | Sector ingress | 25 | 3 | 3 | Audio distinguishes CD-DA/header validation and endian word paths. |
 | Data/audio filtering | 20 | 3 | 3 | Audio has exhaustive routing helper; complete device/media proof pending. |
 | Command transport | 20 | 2 | 2 | Read/stop model; seek-only behavior unresolved. |
-| TOC/subcode | 15 | 1 | 1 | Partial synthesis and concrete position defects. |
+| TOC/subcode | 15 | 1 | 2 | Synthetic multi-track Q position fields pass; TOC lead-out and stored subcode remain open. |
 | Error recovery | 10 | 1 | 1 | Bounded failed reads without accurate error/status machinery. |
-| Mixed-mode/multisession | 10 | 0 | 0 | No retained reference campaign. |
+| Mixed-mode/multisession | 10 | 0 | 1 | One synthetic shared-file mixed-mode disc passes Q delivery; multisession and broader image layouts remain open. |
 
 Implementation: [src/devices/cpu/dsp56000/dsp56000.cpp](../src/devices/cpu/dsp56000/dsp56000.cpp), [src/mame/philips/cdi.cpp](../src/mame/philips/cdi.cpp), [src/mame/philips/cdicdic.cpp](../src/mame/philips/cdicdic.cpp), [src/mame/philips/cdicdic_memory.h](../src/mame/philips/cdicdic_memory.h), [src/mame/philips/cdicdic_state.h](../src/mame/philips/cdicdic_state.h), [src/mame/philips/cdimono2.h](../src/mame/philips/cdimono2.h).
 
@@ -687,7 +708,9 @@ Tests: [tests/emu/philips/cdi_dvc_edge_integration.cpp](../tests/emu/philips/cdi
 
 Documentation: [docs/cdi_audio_compatibility_matrix_20260906.md](../docs/cdi_audio_compatibility_matrix_20260906.md), [docs/cdi_audio_fidelity_campaign.md](../docs/cdi_audio_fidelity_campaign.md), [docs/cdi_audio_final_certification_20260906.md](../docs/cdi_audio_final_certification_20260906.md), [docs/cdi_dma_av_optional_dvc_checkpoint_20260906.md](../docs/cdi_dma_av_optional_dvc_checkpoint_20260906.md), [docs/cdi_modernization_status.md](../docs/cdi_modernization_status.md).
 
-Next action: Repair CDIC boundaries and build reference-disc transport tests.
+Next action: Extend stored-subcode/TOC coverage, then generic image index/pregap and seek/error behavior.
+
+Current live disc evidence: [Q checkpoint](cdi_q_checkpoint_20260907.md).
 
 <a id="glue"></a>
 

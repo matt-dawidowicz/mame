@@ -12,10 +12,11 @@
 #include "cdi_dvc_edge_integration.cpp"
 #include "cdi_dvc_state_integration.cpp"
 #include "cdi_mmu_integration.cpp"
+#include "cdi_q_integration.cpp"
 
 #include "drivenum.h"
 
-std::size_t const driver_list::s_driver_count = 8;
+std::size_t const driver_list::s_driver_count = 9;
 game_driver const * const driver_list::s_drivers_sorted[] =
 {
 	&GAME_NAME(cdiaudma),
@@ -25,7 +26,8 @@ game_driver const * const driver_list::s_drivers_sorted[] =
 	&GAME_NAME(cdidmaint),
 	&GAME_NAME(cdihasdvct),
 	&GAME_NAME(cdimmaint),
-	&GAME_NAME(cdinodvct)
+	&GAME_NAME(cdinodvct),
+	&GAME_NAME(cdiqtest)
 };
 
 const char *emulator_info::get_appname() { return "MAME"; }

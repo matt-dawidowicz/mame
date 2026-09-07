@@ -322,8 +322,8 @@
           "scope": "TOC and subcode",
           "weight": 15,
           "prior_grade": 1,
-          "grade": 1,
-          "rationale": "Hard-coded position fields and partial TOC synthesis.",
+          "grade": 2,
+          "rationale": "Live Q track/index-0/1/time/control fields pass; TOC lead packets and stored subcode remain open.",
           "prior_rationale": "Hard-coded position fields and partial TOC synthesis."
         },
         {
@@ -344,10 +344,10 @@
         }
       ],
       "implementation_status": "Commands, sector routing, double buffers, XA and AUDCTL are implemented.",
-      "verification_status": "Live SRAM boundaries and both DMA directions pass; multi-track Q/transport fixtures remain missing.",
-      "next_action": "Implement synthetic multi-track CD-DA/Q coverage and correct track/index/relative time.",
-      "raw_percent": 63.75,
-      "percent": 65,
+      "verification_status": "DMA SRAM safety and synthetic twelve-track Q transport pass; TOC, stored Q and physical error/status remain open.",
+      "next_action": "Preserve stored Q and correct metadata-derived TOC lead packets.",
+      "raw_percent": 67.5,
+      "percent": 70,
       "source": [
         "src/devices/machine/scc68070.cpp",
         "src/mame/philips/cdi.cpp",
@@ -362,6 +362,7 @@
         "tests/emu/philips/cdi_dvc_audio_dma_integration.cpp",
         "tests/emu/philips/cdi_dvc_dma_integration.cpp",
         "tests/emu/philips/cdi_dvc_edge_integration.cpp",
+        "tests/emu/philips/cdi_q_integration.cpp",
         "tests/emu/philips/cdicdic.cpp",
         "tests/emu/philips/cdicdic_memory.cpp"
       ],
@@ -371,6 +372,7 @@
         "docs/cdi_audio_fidelity_campaign.md",
         "docs/cdi_audio_final_certification_20260906.md",
         "docs/cdi_dma_av_optional_dvc_checkpoint_20260906.md",
+        "docs/cdi_q_checkpoint_20260907.md",
         "docs/cdi_unified_verified_status_20260907.md#cdic"
       ],
       "known_inaccuracies_and_evidence_gaps": [
@@ -378,7 +380,7 @@
         "Measured double-buffer behavior; no full disc-device campaign.",
         "Audio fixes AUDCTL/playback/sector ownership; physical edges remain.",
         "Both live DMA directions stop safely at 16 KiB and report SCC device bus error; clipping/error policy is emulator safety, not measured silicon behavior.",
-        "Hard-coded position fields and partial TOC synthesis.",
+        "Live Q track/index-0/1/time/control fields pass; TOC lead packets and stored subcode remain open.",
         "Read failure is bounded; hardware error response incomplete.",
         "Fields are registered; CDIC live transport snapshot fixture missing."
       ],
@@ -391,10 +393,10 @@
         "Error/status fidelity",
         "Active save/load"
       ],
-      "last_reviewed_commit": "6785ea148341de1bf54fdd8e70cec0ab4115d24e",
-      "last_verified_commit": "6785ea148341de1bf54fdd8e70cec0ab4115d24e",
+      "last_reviewed_commit": "3a9d22a445819763c8b90f34bac95670fcbfba45",
+      "last_verified_commit": "3a9d22a445819763c8b90f34bac95670fcbfba45",
       "last_verification_date": "2026-09-07",
-      "verification_basis": "Local regenerated-source CD-i helper and full-machine integration gate; no hardware or retail certification.",
+      "verification_basis": "Source/test changes following 3a9d22a445819763c8b90f34bac95670fcbfba45; local full integration 459 assertions / 8 cases. See Q checkpoint; no hardware or retail certification.",
       "prior_audio_raw_percent": 56.25,
       "last_test_date": "2026-09-07"
     },
@@ -1073,16 +1075,16 @@
           "scope": "Track/index transitions",
           "weight": 15,
           "prior_grade": 1,
-          "grade": 1,
-          "rationale": "Current Q track/index stay 01 regardless of later track.",
+          "grade": 3,
+          "rationale": "Live sequential track/pregap/INDEX 01 transitions pass; higher indexes and wider disc formats remain open.",
           "prior_rationale": "Current Q track/index stay 01 regardless of later track."
         },
         {
           "scope": "Position/subcode",
           "weight": 15,
           "prior_grade": 1,
-          "grade": 1,
-          "rationale": "Relative fields reuse absolute MSF; no position oracle.",
+          "grade": 3,
+          "rationale": "Track-relative and absolute Q, backward command repositioning and lead-out no-fabrication checks pass; seek-only completion and hardware alignment remain open.",
           "prior_rationale": "Relative fields reuse absolute MSF; no position oracle."
         },
         {
@@ -1097,8 +1099,8 @@
           "scope": "Mixed-mode runtime",
           "weight": 5,
           "prior_grade": 0,
-          "grade": 0,
-          "rationale": "No retained fixture.",
+          "grade": 1,
+          "rationale": "Synthetic audio/data Q delivery passes; audible output, mixed-mode DAC gating and retail compatibility remain unverified.",
           "prior_rationale": "No retained fixture."
         },
         {
@@ -1111,10 +1113,10 @@
         }
       ],
       "implementation_status": "PCM sector handoff, gating, cadence and de-emphasis exist.",
-      "verification_status": "Helper/reference response tests pass; track/index/relative position defects and mixed-mode transport validation remain.",
-      "next_action": "Fix position metadata with a synthetic mixed-mode reference disc.",
-      "raw_percent": 48.75,
-      "percent": 50,
+      "verification_status": "Synthetic sequential audio/data Q transport and repositioning pass; audible output and broader transport semantics remain unverified.",
+      "next_action": "Preserve stored Q and correct TOC; then validate data-track DAC gating and seek-only completion.",
+      "raw_percent": 65.0,
+      "percent": 65,
       "source": [
         "src/mame/philips/cdiaudio.h",
         "src/mame/philips/cdiaudio_dsp56001.h",
@@ -1125,6 +1127,7 @@
       "tests": [
         "tests/emu/philips/cdi_audio_arithmetic.cpp",
         "tests/emu/philips/cdi_fma_attenuation.cpp",
+        "tests/emu/philips/cdi_q_integration.cpp",
         "tests/emu/philips/cdicdic.cpp",
         "tests/emu/philips/cdidvc_audio_reference.cpp"
       ],
@@ -1133,16 +1136,17 @@
         "docs/cdi_audio_compatibility_matrix_20260906.md",
         "docs/cdi_audio_fidelity.md",
         "docs/cdi_audio_final_certification_20260906.md",
+        "docs/cdi_q_checkpoint_20260907.md",
         "docs/cdi_unified_verified_status_20260907.md#cdda"
       ],
       "known_inaccuracies_and_evidence_gaps": [
         "Start/stop/read model; no complete pause/seek reference campaign.",
         "Audio 588-frame sector model and pre-start buffer; no live output sample capture.",
         "Audio fixes AUDCTL and 75 Hz events.",
-        "Current Q track/index stay 01 regardless of later track.",
-        "Relative fields reuse absolute MSF; no position oracle.",
+        "Live sequential track/pregap/INDEX 01 transitions pass; higher indexes and wider disc formats remain open.",
+        "Track-relative and absolute Q, backward command repositioning and lead-out no-fabrication checks pass; seek-only completion and hardware alignment remain open.",
         "Image flags and response tested.",
-        "No retained fixture.",
+        "Synthetic audio/data Q delivery passes; audible output, mixed-mode DAC gating and retail compatibility remain unverified.",
         "Unmeasured."
       ],
       "remaining_work": [
@@ -1155,12 +1159,12 @@
         "Mixed-mode runtime",
         "Physical alignment/servo"
       ],
-      "last_reviewed_commit": "ad950937b72f258afe087bc2aa65cdb298e4e46b",
-      "last_verified_commit": "ade0f78abf4367f07c9d2fd3d383f448110c4cb2",
+      "last_reviewed_commit": "3a9d22a445819763c8b90f34bac95670fcbfba45",
+      "last_verified_commit": "3a9d22a445819763c8b90f34bac95670fcbfba45",
       "last_verification_date": "2026-09-07",
-      "verification_basis": "Fresh unified source/delta and fixture-scope review; existing passing CI on identical production/test code, not a new runtime or hardware measurement.",
+      "verification_basis": "Source/test changes following 3a9d22a445819763c8b90f34bac95670fcbfba45; local full integration 459 assertions / 8 cases. See Q checkpoint; no hardware or retail certification.",
       "prior_audio_raw_percent": 48.75,
-      "last_test_date": "2026-09-06"
+      "last_test_date": "2026-09-07"
     },
     {
       "id": "q",
@@ -1191,8 +1195,8 @@
           "scope": "Track/index/relative position",
           "weight": 25,
           "prior_grade": 1,
-          "grade": 1,
-          "rationale": "Hard-coded 01 fields and absolute MSF in relative slots.",
+          "grade": 3,
+          "rationale": "Live twelve-track CUE verifies INDEX 00/01, countdown, track-relative reset and continuous absolute MSF; higher indexes and stored Q remain open.",
           "prior_rationale": "Hard-coded 01 fields and absolute MSF in relative slots."
         },
         {
@@ -1207,8 +1211,8 @@
           "scope": "CRC oracle",
           "weight": 10,
           "prior_grade": 1,
-          "grade": 1,
-          "rationale": "Existing CRC loop includes twelve bytes; independent packet oracle absent.",
+          "grade": 3,
+          "rationale": "Independent bitwise ten-byte/inverted CRC oracle passes all 33 delivered packets; existing production CRC needs no change.",
           "prior_rationale": "Existing CRC loop includes twelve bytes; independent packet oracle absent."
         },
         {
@@ -1223,34 +1227,36 @@
           "scope": "Disc reference campaign",
           "weight": 10,
           "prior_grade": 0,
-          "grade": 0,
-          "rationale": "Missing.",
+          "grade": 2,
+          "rationale": "Synthetic mixed audio/data shared BIN/CUE runs through real CDIC commands, timer and SRAM; other image layouts, hardware and retail remain open.",
           "prior_rationale": "Missing."
         }
       ],
       "implementation_status": "ADR/control, buffer placement, cadence and partial Q/TOC synthesis exist.",
-      "verification_status": "Control/placement helpers pass; fixed track/index and incorrect relative/lead-out construction remain.",
-      "next_action": "Implement correct track/index/relative time and independently check CRC/lead packets.",
-      "raw_percent": 38.75,
-      "percent": 40,
+      "verification_status": "Live Q track/index-0/1/time/control/CRC pass on a synthetic twelve-track disc; stored Q, TOC and wider subcode remain open.",
+      "next_action": "Preserve stored Q and repair TOC lead packets; investigate generic index offsets and separate-file pregaps.",
+      "raw_percent": 61.25,
+      "percent": 60,
       "source": [
         "src/mame/philips/cdicdic.cpp",
         "src/mame/philips/cdicdic_state.h"
       ],
       "tests": [
+        "tests/emu/philips/cdi_q_integration.cpp",
         "tests/emu/philips/cdicdic.cpp"
       ],
       "documentation": [
         "docs/cdi_audio_compatibility_matrix_20260906.md",
         "docs/cdi_audio_final_certification_20260906.md",
+        "docs/cdi_q_checkpoint_20260907.md",
         "docs/cdi_unified_verified_status_20260907.md#q"
       ],
       "known_inaccuracies_and_evidence_gaps": [
-        "Hard-coded 01 fields and absolute MSF in relative slots.",
+        "Live twelve-track CUE verifies INDEX 00/01, countdown, track-relative reset and continuous absolute MSF; higher indexes and stored Q remain open.",
         "Synthesis remains partial; audio frames are omitted from frames accumulator.",
-        "Existing CRC loop includes twelve bytes; independent packet oracle absent.",
+        "Independent bitwise ten-byte/inverted CRC oracle passes all 33 delivered packets; existing production CRC needs no change.",
         "Not implemented as faithful delivery.",
-        "Missing."
+        "Synthetic mixed audio/data shared BIN/CUE runs through real CDIC commands, timer and SRAM; other image layouts, hardware and retail remain open."
       ],
       "remaining_work": [
         "Track/index/relative position",
@@ -1259,12 +1265,12 @@
         "P/R-W/multisession",
         "Disc reference campaign"
       ],
-      "last_reviewed_commit": "ad950937b72f258afe087bc2aa65cdb298e4e46b",
-      "last_verified_commit": "ade0f78abf4367f07c9d2fd3d383f448110c4cb2",
+      "last_reviewed_commit": "3a9d22a445819763c8b90f34bac95670fcbfba45",
+      "last_verified_commit": "3a9d22a445819763c8b90f34bac95670fcbfba45",
       "last_verification_date": "2026-09-07",
-      "verification_basis": "Fresh unified source/delta and fixture-scope review; existing passing CI on identical production/test code, not a new runtime or hardware measurement.",
+      "verification_basis": "Source/test changes following 3a9d22a445819763c8b90f34bac95670fcbfba45; local full integration 459 assertions / 8 cases. See Q checkpoint; no hardware or retail certification.",
       "prior_audio_raw_percent": 38.75,
-      "last_test_date": "2026-09-06"
+      "last_test_date": "2026-09-07"
     },
     {
       "id": "dma",
@@ -2189,8 +2195,8 @@
           "scope": "TOC/subcode",
           "weight": 15,
           "prior_grade": 1,
-          "grade": 1,
-          "rationale": "Partial synthesis and concrete position defects.",
+          "grade": 2,
+          "rationale": "Synthetic multi-track Q position fields pass; TOC lead-out and stored subcode remain open.",
           "prior_rationale": "Partial synthesis and concrete position defects."
         },
         {
@@ -2205,16 +2211,16 @@
           "scope": "Mixed-mode/multisession",
           "weight": 10,
           "prior_grade": 0,
-          "grade": 0,
-          "rationale": "No retained reference campaign.",
+          "grade": 1,
+          "rationale": "One synthetic shared-file mixed-mode disc passes Q delivery; multisession and broader image layouts remain open.",
           "prior_rationale": "No retained reference campaign."
         }
       ],
       "implementation_status": "Sector ingress, data/audio filters and command transport model exist.",
-      "verification_status": "Routing helpers pass; Q/TOC errors, seek/error behavior and mixed-mode/multisession fixtures remain open.",
-      "next_action": "Repair CDIC boundaries and build reference-disc transport tests.",
-      "raw_percent": 50.0,
-      "percent": 50,
+      "verification_status": "Synthetic mixed-mode Q transport passes; TOC, separate-file gaps, multisession and seek/error fidelity remain open.",
+      "next_action": "Extend stored-subcode/TOC coverage, then generic image index/pregap and seek/error behavior.",
+      "raw_percent": 56.25,
+      "percent": 55,
       "source": [
         "src/devices/cpu/dsp56000/dsp56000.cpp",
         "src/mame/philips/cdi.cpp",
@@ -2225,6 +2231,7 @@
       ],
       "tests": [
         "tests/emu/philips/cdi_dvc_edge_integration.cpp",
+        "tests/emu/philips/cdi_q_integration.cpp",
         "tests/emu/philips/cdicdic.cpp",
         "tests/emu/philips/cdicdic_memory.cpp",
         "tests/emu/philips/cdimono2.cpp"
@@ -2235,15 +2242,16 @@
         "docs/cdi_audio_final_certification_20260906.md",
         "docs/cdi_dma_av_optional_dvc_checkpoint_20260906.md",
         "docs/cdi_modernization_status.md",
+        "docs/cdi_q_checkpoint_20260907.md",
         "docs/cdi_unified_verified_status_20260907.md#disc"
       ],
       "known_inaccuracies_and_evidence_gaps": [
         "Audio distinguishes CD-DA/header validation and endian word paths.",
         "Audio has exhaustive routing helper; complete device/media proof pending.",
         "Read/stop model; seek-only behavior unresolved.",
-        "Partial synthesis and concrete position defects.",
+        "Synthetic multi-track Q position fields pass; TOC lead-out and stored subcode remain open.",
         "Bounded failed reads without accurate error/status machinery.",
-        "No retained reference campaign."
+        "One synthetic shared-file mixed-mode disc passes Q delivery; multisession and broader image layouts remain open."
       ],
       "remaining_work": [
         "Sector ingress",
@@ -2253,12 +2261,12 @@
         "Error recovery",
         "Mixed-mode/multisession"
       ],
-      "last_reviewed_commit": "ad950937b72f258afe087bc2aa65cdb298e4e46b",
-      "last_verified_commit": "ade0f78abf4367f07c9d2fd3d383f448110c4cb2",
+      "last_reviewed_commit": "3a9d22a445819763c8b90f34bac95670fcbfba45",
+      "last_verified_commit": "3a9d22a445819763c8b90f34bac95670fcbfba45",
       "last_verification_date": "2026-09-07",
-      "verification_basis": "Fresh unified source/delta and fixture-scope review; existing passing CI on identical production/test code, not a new runtime or hardware measurement.",
+      "verification_basis": "Source/test changes following 3a9d22a445819763c8b90f34bac95670fcbfba45; local full integration 459 assertions / 8 cases. See Q checkpoint; no hardware or retail certification.",
       "prior_audio_raw_percent": 50.0,
-      "last_test_date": "2026-09-06"
+      "last_test_date": "2026-09-07"
     },
     {
       "id": "glue",

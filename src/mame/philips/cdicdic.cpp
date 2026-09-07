@@ -618,6 +618,28 @@ uint8_t cdicdic_device::get_sector_count_for_coding(uint8_t coding)
 void cdicdic_device::process_disc_sector()
 {
 	const cdic_hle::disc_operation operation = cdic_hle::disc_operation(m_disc_mode);
+	const cdrom_file::toc &toc = m_cdrom->get_toc();
+	if (!toc.numtrks || m_curr_lba >= m_cdrom->get_track_start(0xaa))
+	{
+		// The image API has no readable lead-out sectors. Do not let its fallback
+		// track lookup turn padding beyond the TOC into fabricated position data.
+		cancel_disc_read();
+		return;
+	}
+
+	// Generic sector lookup assigns a stored pregap to the preceding track.
+	// Q belongs to the upcoming track from INDEX 00, before its INDEX 01 LBA.
+	uint32_t q_track = 0;
+	while (q_track + 1 < toc.numtrks)
+	{
+		const cdrom_file::track_info &next = toc.tracks[q_track + 1];
+		uint32_t const gap_start = next.logframeofs - std::min(next.logframeofs, next.pregap);
+		if (m_curr_lba < gap_start)
+			break;
+		++q_track;
+	}
+	uint32_t const track_start = m_cdrom->get_track_start(q_track);
+	bool const pregap = m_curr_lba < track_start;
 	const uint32_t real_lba = m_curr_lba + 150;
 	const uint8_t mins = real_lba / (60 * 75);
 	const uint8_t secs = (real_lba / 75) % 60;
@@ -747,7 +769,7 @@ void cdicdic_device::process_disc_sector()
 	else if (m_disc_mode == DISC_CDDA)
 	{
 		uint8_t const adr_control = uint8_t(
-			m_cdrom->get_adr_control(m_cdrom->get_track(m_curr_lba)));
+			m_cdrom->get_adr_control(q_track));
 		bool const emphasis = cdic_hle::cdda_preemphasis(adr_control);
 		// Byteswap if not already detected as byteswapped
 		if (!m_cd_byteswap)
@@ -887,15 +909,17 @@ void cdicdic_device::process_disc_sector()
 	}
 	else
 	{
-		uint8_t const adr_control = m_disc_mode == DISC_CDDA
-			? uint8_t(m_cdrom->get_adr_control(m_cdrom->get_track(m_curr_lba)))
-			: uint8_t(0x14);
+		uint8_t const adr_control = uint8_t(m_cdrom->get_adr_control(q_track));
+		uint32_t const relative = cdrom_file::lba_to_msf(
+			pregap ? track_start - m_curr_lba : m_curr_lba - track_start);
 		subcode_buffer[SUBCODE_Q_CONTROL] = cdic_hle::cdic_q_adr_control(adr_control);
-		subcode_buffer[SUBCODE_Q_TRACK] = 0x01;
-		subcode_buffer[SUBCODE_Q_INDEX] = 0x01;
-		subcode_buffer[SUBCODE_Q_MODE1_MINS] = mins_bcd;
-		subcode_buffer[SUBCODE_Q_MODE1_SECS] = secs_bcd;
-		subcode_buffer[SUBCODE_Q_MODE1_FRAC] = frac_bcd;
+		subcode_buffer[SUBCODE_Q_TRACK] = uint8_t(((q_track + 1) / 10) << 4) | ((q_track + 1) % 10);
+		// TOC metadata defines INDEX 00/01. Higher indexes require stored Q;
+		// generic CUE index offsets are not normalized to track-relative LBAs.
+		subcode_buffer[SUBCODE_Q_INDEX] = pregap ? 0x00 : 0x01;
+		subcode_buffer[SUBCODE_Q_MODE1_MINS] = uint8_t(relative >> 16);
+		subcode_buffer[SUBCODE_Q_MODE1_SECS] = uint8_t(relative >> 8);
+		subcode_buffer[SUBCODE_Q_MODE1_FRAC] = uint8_t(relative);
 		subcode_buffer[SUBCODE_Q_MODE1_ZERO] = 0x00;
 		subcode_buffer[SUBCODE_Q_MODE1_AMINS] = mins_bcd;
 		subcode_buffer[SUBCODE_Q_MODE1_ASECS] = secs_bcd;
