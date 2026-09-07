@@ -1,0 +1,349 @@
+name: Apply CDIC DMA bounds patch
+
+on:
+  push:
+    paths:
+      - '.github/workflows/cdi-cdic-dma-bounds-patch.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: cdi-unified
+          fetch-depth: 0
+      - name: Apply surgical patch
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path('src/mame/philips/cdicdic.cpp')
+          s = p.read_text()
+          old = '''\t\t\twhile (m_scc->dma_channel1_active())
+\t\t\t{
+\t\t\t\tuint8_t *const ram_word = &m_ram[device_index << 1];
+\t\t\t\tuint16_t operand = cdic_hle::read_ram_word(ram_word);
+
+\t\t\t\tif (!m_scc->dma_channel1_transfer(operand))
+\t\t\t\t\tbreak;
+
+\t\t\t\tcdic_hle::write_ram_word(ram_word, operand);
+\t\t\t\t++device_index;
+\t\t\t}
+'''
+          new = '''\t\t\twhile (m_scc->dma_channel1_active())
+\t\t\t{
+\t\t\t\t// DMACTL exposes a 14-bit CDIC byte address.  The HLE owns exactly
+\t\t\t\t// 0x4000 bytes of SRAM, so an incrementing transfer that reaches the
+\t\t\t\t// word after 0x3ffe must not form or dereference an out-of-allocation
+\t\t\t\t// pointer.  Report a device-side bus error through the SCC controller
+\t\t\t\t// as the conservative emulator safety policy.  Physical CDIC behavior
+\t\t\t\t// (wrap, clip, or error) remains unmeasured and is not asserted here.
+\t\t\t\tif (device_index >= 0x2000)
+\t\t\t\t{
+\t\t\t\t\tm_scc->dma_channel_device_bus_error(0);
+\t\t\t\t\tbreak;
+\t\t\t\t}
+
+\t\t\t\tuint8_t *const ram_word = &m_ram[device_index << 1];
+\t\t\t\tuint16_t operand = cdic_hle::read_ram_word(ram_word);
+
+\t\t\t\tif (!m_scc->dma_channel1_transfer(operand))
+\t\t\t\t\tbreak;
+
+\t\t\t\tcdic_hle::write_ram_word(ram_word, operand);
+\t\t\t\t++device_index;
+\t\t\t}
+'''
+          if s.count(old) != 1:
+              raise SystemExit(f'CDIC DMA loop match count: {s.count(old)}')
+          p.write_text(s.replace(old, new))
+
+          p = Path('tests/emu/philips/cdi_dvc_dma_test_support.cpp')
+          s = p.read_text()
+          s = s.replace('#include "cdi_dvc_dma_integration.cpp"\n', '#include "cdi_dvc_dma_integration.cpp"\n#include "cdi_cdic_dma_integration.cpp"\n', 1)
+          s = s.replace('std::size_t const driver_list::s_driver_count = 7;', 'std::size_t const driver_list::s_driver_count = 8;', 1)
+          s = s.replace('\t&GAME_NAME(cdiavsave),\n', '\t&GAME_NAME(cdiavsave),\n\t&GAME_NAME(cdicdmab),\n', 1)
+          p.write_text(s)
+
+          Path('tests/emu/philips/cdi_cdic_dma_integration.cpp').write_text(r'''// license:BSD-3-Clause
+// copyright-holders:Matt Jordan
+
+#include "emu.h"
+#include "cdi.h"
+
+#include "catch.hpp"
+#include "emuopts.h"
+#include "main.h"
+#include "osdepend.h"
+#include "render.h"
+#include "ui/menuitem.h"
+#include "ui/uimain.h"
+
+#include <memory>
+#include <string>
+#include <vector>
+
+namespace
+{
+
+class cdi_cdic_dma_bounds_state : public cdi_state
+{
+public:
+\tcdi_cdic_dma_bounds_state(const machine_config &mconfig, device_type type, const char *tag)
+\t\t: cdi_state(mconfig, type, tag)
+\t{
+\t}
+
+\tvoid cdi_cdic_dma_bounds(machine_config &config) { cdimono1(config); }
+\tbool completed() const { return m_completed; }
+\tstd::vector<std::string> const &failures() const { return m_failures; }
+
+protected:
+\tvoid machine_start() override
+\t{
+\t\tcdi_state::machine_start();
+\t\tm_test_timer = timer_alloc(FUNC(cdi_cdic_dma_bounds_state::test_step), this);
+\t}
+
+\tvoid machine_reset() override
+\t{
+\t\tcdi_state::machine_reset();
+\t\tm_failures.clear();
+\t\tm_completed = false;
+\t\tm_test_timer->adjust(attotime::zero);
+\t}
+
+private:
+\tstatic constexpr uint32_t DMA1_STATUS = 0x80004000U;
+\tstatic constexpr uint32_t DMA1_CONTROL = 0x80004004U;
+\tstatic constexpr uint32_t DMA1_SEQUENCE = 0x80004006U;
+\tstatic constexpr uint32_t DMA1_COUNTER = 0x8000400aU;
+\tstatic constexpr uint32_t DMA1_MAC_HI = 0x8000400cU;
+\tstatic constexpr uint32_t DMA1_MAC_LO = 0x8000400eU;
+\tstatic constexpr uint32_t CDIC_DMACTL = 0x00303ff8U;
+\tstatic constexpr uint32_t SOURCE = 0x00500100U;
+\tstatic constexpr uint32_t DESTINATION = 0x00500200U;
+\tstatic constexpr uint16_t WORDS = 3;
+\tstatic constexpr uint16_t DMACTL_LAST_TWO_WORDS = 0x3ffc;
+\tstatic constexpr uint16_t DEVICE_BUS_ERROR = 0x000a;
+
+\tvoid expect(bool condition, std::string message)
+\t{
+\t\tif (!condition)
+\t\t\tm_failures.push_back(std::move(message));
+\t}
+
+\tvoid expect_remaining(uint16_t expected, char const *where)
+\t{
+\t\tuint16_t const actual = m_maincpu->dma_channel_remaining(0);
+\t\tif (actual != expected)
+\t\t\tm_failures.push_back(util::string_format("%s: DMA1 remaining expected %u, got %u", where, expected, actual));
+\t}
+
+\tvoid expect_address(uint32_t expected, char const *where)
+\t{
+\t\tuint32_t const actual = m_maincpu->dma_channel_memory_address(0);
+\t\tif (actual != expected)
+\t\t\tm_failures.push_back(util::string_format("%s: DMA1 MAC expected %08x, got %08x", where, expected, actual));
+\t}
+
+\tvoid program_dma(address_space &space, bool device_to_memory, uint32_t memory_address)
+\t{
+\t\tspace.write_word(DMA1_STATUS, 0xb000);
+\t\tspace.write_word(DMA1_CONTROL, device_to_memory ? 0x3090 : 0x3010);
+\t\tspace.write_word(DMA1_SEQUENCE, 0x0400);
+\t\tspace.write_word(DMA1_COUNTER, WORDS);
+\t\tspace.write_word(DMA1_MAC_HI, uint16_t(memory_address >> 16));
+\t\tspace.write_word(DMA1_MAC_LO, uint16_t(memory_address));
+
+\t\texpect(m_maincpu->dma_channel_memory_to_device(0) == !device_to_memory,
+\t\t\t\tdevice_to_memory ? "program D2M: wrong direction" : "program M2D: wrong direction");
+\t\texpect(m_maincpu->dma_channel_word_transfer(0), "program: DMA1 is not a word transfer");
+\t\tbool increment = false;
+\t\texpect(m_maincpu->dma_channel_memory_increment(0, increment) && increment,
+\t\t\t\t"program: DMA1 MAC increment mode was not accepted");
+\t\texpect_remaining(WORDS, "program");
+\t\texpect_address(memory_address, "program");
+\t\tspace.write_word(DMA1_SEQUENCE, 0x0480);
+\t\texpect(m_maincpu->dma_channel_active(0), "start: SCC START did not assert DMA1 CA");
+\t}
+
+\tvoid expect_boundary_error(address_space &space, uint32_t expected_memory_address, char const *where)
+\t{
+\t\tuint16_t const status = space.read_word(DMA1_STATUS);
+\t\texpect((status & 0x9000U) == 0x9000U,
+\t\t\t\tutil::string_format("%s: DMA1 did not report COC+ERR (%04x)", where, status));
+\t\texpect(!(status & 0x0800U),
+\t\t\t\tutil::string_format("%s: DMA1 CA remained active (%04x)", where, status));
+\t\texpect((status & 0x00ffU) == DEVICE_BUS_ERROR,
+\t\t\t\tutil::string_format("%s: expected device bus error 0a, got %02x", where, status & 0xff));
+\t\texpect_remaining(1, where);
+\t\texpect_address(expected_memory_address, where);
+\t}
+
+\tTIMER_CALLBACK_MEMBER(test_step)
+\t{
+\t\taddress_space &space = m_maincpu->space(AS_PROGRAM);
+\t\tm_maincpu->suspend(SUSPEND_REASON_DISABLE, true);
+
+\t\tspace.write_word(SOURCE + 0, 0x1234);
+\t\tspace.write_word(SOURCE + 2, 0xabcd);
+\t\tspace.write_word(SOURCE + 4, 0x55aa);
+\t\tspace.write_word(DESTINATION + 0, 0xdead);
+\t\tspace.write_word(DESTINATION + 2, 0xbeef);
+\t\tspace.write_word(DESTINATION + 4, 0xcafe);
+
+\t\t// $3ffc and $3ffe are valid SRAM words; requested word 3 starts at $4000.
+\t\tprogram_dma(space, false, SOURCE);
+\t\tspace.write_word(CDIC_DMACTL, DMACTL_LAST_TWO_WORDS);
+\t\texpect_boundary_error(space, SOURCE + 4, "memory-to-device");
+
+\t\tprogram_dma(space, true, DESTINATION);
+\t\tspace.write_word(CDIC_DMACTL, DMACTL_LAST_TWO_WORDS);
+\t\texpect_boundary_error(space, DESTINATION + 4, "device-to-memory");
+
+\t\texpect(space.read_word(DESTINATION + 0) == 0x1234, "D2M: first final SRAM word did not round-trip");
+\t\texpect(space.read_word(DESTINATION + 2) == 0xabcd, "D2M: last SRAM word did not round-trip");
+\t\texpect(space.read_word(DESTINATION + 4) == 0xcafe, "D2M: out-of-range operand overwrote sentinel");
+
+\t\tm_completed = true;
+\t\tmachine().schedule_exit();
+\t}
+
+\temu_timer *m_test_timer = nullptr;
+\tbool m_completed = false;
+\tstd::vector<std::string> m_failures;
+};
+
+static INPUT_PORTS_START(cdi_cdic_dma_bounds)
+\tPORT_START("MOUSEX")
+\tPORT_BIT(0xffff, IP_ACTIVE_HIGH, IPT_UNUSED)
+\tPORT_START("MOUSEY")
+\tPORT_BIT(0xffff, IP_ACTIVE_HIGH, IPT_UNUSED)
+\tPORT_START("MOUSEBTN")
+\tPORT_BIT(0xffff, IP_ACTIVE_HIGH, IPT_UNUSED)
+\tPORT_START("TESTPLUG")
+\tPORT_BIT(0x01, IP_ACTIVE_HIGH, IPT_UNUSED)
+INPUT_PORTS_END
+
+ROM_START(cdicdmab)
+\tROM_REGION16_BE(0x80000, "maincpu", ROMREGION_ERASE00)
+ROM_END
+
+GAME(2026, cdicdmab, 0, cdi_cdic_dma_bounds, cdi_cdic_dma_bounds,
+\tcdi_cdic_dma_bounds_state, empty_init, ROT0, "MAME",
+\t"CD-i CDIC DMA SRAM bounds integration fixture", 0)
+
+} // anonymous namespace
+
+TEST_CASE(
+\t"CDIC DMA bounds final SRAM words and faults oversized transfers in both directions",
+\t"[emu][philips][cdi][cdic][dma][integration]")
+{
+\temu_options options;
+\toptions.set_system_name(std::string(GAME_NAME(cdicdmab).name));
+\tcdi_dma_test_osd osd;
+\tcdi_dma_test_manager manager(options, osd);
+\tmachine_config config(GAME_NAME(cdicdmab), options);
+\trunning_machine machine(config, manager);
+\tmanager.set_machine(&machine);
+
+\tint const error = machine.run(true);
+\tauto &state = downcast<cdi_cdic_dma_bounds_state &>(machine.root_device());
+\tmanager.set_machine(nullptr);
+
+\tstd::string diagnostics;
+\tfor (std::string const &failure : state.failures())
+\t{
+\t\tif (!diagnostics.empty()) diagnostics.append("\\n");
+\t\tdiagnostics.append(failure);
+\t}
+
+\tINFO(diagnostics);
+\tREQUIRE(error == EMU_ERR_NONE);
+\tREQUIRE(state.completed());
+\tREQUIRE(state.failures().empty());
+}
+''')
+
+          p = Path('docs/CDI_MASTER_STATUS.md')
+          s = p.read_text()
+          s = s.replace('1. **CDIC SRAM DMA safety:** bound accesses beyond the last SRAM word; reproduce\n   and test both directions and oversized transfers through the real device.\n   Distinguish the chosen safe policy from unmeasured hardware wrap/error behavior.\n2. **MMU exception delivery:**',
+'''1. **MMU exception delivery:**''', 1)
+          s = s.replace('2. **MMU exception delivery:**', '1. **MMU exception delivery:**', 1)
+          s = s.replace('3. **CD-DA/Q:**', '2. **CD-DA/Q:**', 1)
+          s = s.replace('4. **Decoded A/V and save continuity:**', '3. **Decoded A/V and save continuity:**', 1)
+          s = s.replace('5. **Newly merged peripheral verification:**', '4. **Newly merged peripheral verification:**', 1)
+          s = s.replace('6. **Mono-II/DSP:**', '5. **Mono-II/DSP:**', 1)
+          marker = '## Known gaps and next substantive tasks\n\n'
+          note = ('**CDIC SRAM DMA safety is implemented in the current code batch:** the DMACTL loop now '
+                  'stops before byte $4000 and reports SCC device-bus-error status. A live fixture covers '
+                  'the last two SRAM words plus an oversized third operand in both directions. This is an '
+                  'emulator safety policy only; physical CDIC wrap/clip/error behavior remains unverified.\n\n')
+          if marker not in s:
+              raise SystemExit('master task marker not found')
+          s = s.replace(marker, marker + note, 1)
+          p.write_text(s)
+
+          p = Path('docs/cdi_unified_verified_status_20260907.md')
+          s = p.read_text()
+          s = s.replace('1. **CDIC SRAM bounds:** the DMACTL loop still increments `device_index` without\n   bounding the next SRAM access. Starting at 0x3ffe with two operands exceeds\n   the 0x4000-byte allocation. This remains source-confirmed, not newly reproduced\n   in an executed CDIC fixture. It is the next development task.\n2. **MMU exception delivery:**',
+'''1. **CDIC SRAM bounds:** repaired in the current development batch. DMACTL now refuses
+   to advance beyond the 0x4000-byte SRAM allocation and terminates the SCC channel
+   with a device-side bus error. The live fixture starts at 0x3ffc with three words,
+   proving the final two valid words and oversized third operand in both directions.
+   This is an implementation-safety policy; physical wrap/clip/error behavior is unmeasured.
+2. **MMU exception delivery:**''', 1)
+          s = s.replace('| DMA SRAM boundaries | 15 | 1 | 1 | Unbounded device_index can leave the 16 KiB allocation on both branches. |',
+                        '| DMA SRAM boundaries | 15 | 1 | 3 | Bounds are enforced through the real DMACTL path with both directions and oversized-transfer coverage; physical wrap/clip/error behavior remains unverified. |', 1)
+          s = s.replace('**55% — Medium confidence; raw weighted score 56.25.**', '**65% — Medium confidence; raw weighted score 63.75.**', 1)
+          s = s.replace('Verification: Routing/control helpers and retained buffer evidence exist; live SRAM-boundary and multi-track transport fixtures are missing.',
+                        'Verification: Routing/control helpers, retained buffer evidence, and a live bidirectional SRAM-boundary fixture exist; multi-track transport fixtures remain missing.', 1)
+          s = s.replace('Next action: Repair the channel-1 SRAM boundary before more audio-fidelity work.',
+                        'Next action: Correct CD-DA/Q track/index/relative-time and multi-track transport defects.', 1)
+          s = s.replace('| CDIC channel 1 | 20 | 1 | 1 | Synchronous unbounded SRAM loop; guest can cross allocation. |',
+                        '| CDIC channel 1 | 20 | 1 | 3 | Real DMACTL fixture covers end-of-SRAM and oversized transfers in both directions; hardware boundary semantics remain unverified. |', 1)
+          s = s.replace('**60% — Medium confidence; raw weighted score 61.25.**', '**70% — Medium confidence; raw weighted score 71.25.**', 1)
+          s = s.replace('Verification: Real DVC boundary passes; CDIC SRAM safety, actual error injection and bus arbitration remain open.',
+                        'Verification: Real DVC and CDIC boundary fixtures pass when CI is green; physical boundary semantics, broader error injection and bus arbitration remain open.', 1)
+          s = s.replace('Next action: Fix and live-test CDIC SRAM boundaries; then inject controller errors and test request/bus modes.',
+                        'Next action: Expand controller error injection and request/bus modes after MMU exception delivery.', 1)
+          p.write_text(s)
+
+          Path('docs/cdi_cdic_dma_bounds_20260907.md').write_text('''# CDIC SRAM DMA bounds checkpoint — 2026-09-07
+
+## Change
+
+The Mono-I CDIC DMACTL loop now checks its word index before constructing the SRAM pointer. The HLE owns 0x4000 bytes (0x2000 words); any requested operand at word index 0x2000 or beyond terminates SCC68070 DMA channel 1 through `dma_channel_device_bus_error(0)` rather than accessing outside the allocation.
+
+## Policy boundary
+
+This is an **emulator memory-safety policy**, not a claim about physical IMS66490/CDIC behavior. No retained hardware measurement distinguishes wraparound, clipping, ignored cycles, or a bus/error response at the SRAM boundary. Until such evidence exists, MAME uses the SCC's existing device-bus-error path because it is bounded, externally visible, and does not fabricate wrap semantics.
+
+## Regression
+
+`tests/emu/philips/cdi_cdic_dma_integration.cpp` drives the real SCC68070 register map and CDIC DMACTL handler. It starts at CDIC byte address 0x3ffc with a three-word transfer:
+
+- memory -> device: words at 0x3ffc and 0x3ffe transfer, the third operand at 0x4000 is rejected;
+- device -> memory: the two valid words round-trip, while the third destination sentinel remains unchanged;
+- both directions retain one untransferred SCC word, advance MAC by exactly four bytes, clear CA, assert COC+ERR, and report device bus error code 0x0a.
+
+## Verification
+
+The normal `CI (CD-i fast)` push workflow is the executable gate for this batch. Percentage updates in the unified worksheet describe the implemented/tested scope but remain contingent on that workflow completing successfully. They do not establish physical hardware semantics or retail compatibility.
+''')
+
+          Path('.github/workflows/cdi-cdic-dma-bounds-patch.yml').unlink()
+          PY
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/mame/philips/cdicdic.cpp tests/emu/philips/cdi_cdic_dma_integration.cpp tests/emu/philips/cdi_dvc_dma_test_support.cpp docs/CDI_MASTER_STATUS.md docs/cdi_unified_verified_status_20260907.md docs/cdi_cdic_dma_bounds_20260907.md .github/workflows/cdi-cdic-dma-bounds-patch.yml
+          git commit -m "cdic: bound SRAM DMA transfers"
+          git push origin HEAD:cdi-unified
