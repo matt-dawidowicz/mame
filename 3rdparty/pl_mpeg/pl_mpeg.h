@@ -3025,6 +3025,9 @@ int plm_video_decode_sequence_header(plm_video_t *self) {
 	size_t frame_data_size = (luma_plane_size + 2 * chroma_plane_size);
 
 	self->frames_data = (uint8_t*)PLM_MALLOC(frame_data_size * 3);
+	// Reference slots must have deterministic bytes before their first decode.
+	// This also keeps value-only decoder snapshots free of uninitialized heap data.
+	memset(self->frames_data, 0, frame_data_size * 3);
 	plm_video_init_frame(self, &self->frame_current, self->frames_data + frame_data_size * 0);
 	plm_video_init_frame(self, &self->frame_forward, self->frames_data + frame_data_size * 1);
 	plm_video_init_frame(self, &self->frame_backward, self->frames_data + frame_data_size * 2);

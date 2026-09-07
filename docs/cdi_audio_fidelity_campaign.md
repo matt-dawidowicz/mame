@@ -1,5 +1,17 @@
 # CD-i Audio Fidelity Campaign
 
+## Capacity and full-size A/V follow-up — 2026-09-07
+
+Explicit FMA reset/FMV clear branches now pass common future-PTS audio/video
+references, with fifteen additional full-size/native-mode/pending-picture saves
+repeating PCM, callbacks, fields and IRQ observations exactly. Replay overflow
+uses bounded current decoder snapshots; final-source long-capacity certification
+is in progress. See the [capacity/full-size checkpoint](cdi_capacity_full_av_checkpoint_20260907.md)
+for the reproduced failures, short local/ASan gates and remaining scope. Physical
+flush latency and host output remain unverified; selection-only queued PCM is
+unchanged. Earlier campaign completion claims retain their original narrow scope.
+
+
 > Fresh completion estimates and code/test findings: [CDI_MASTER_STATUS.md](CDI_MASTER_STATUS.md) and [current unified audit](cdi_unified_verified_status_20260907.md). The pre-campaign numbers below are historical. Live CDIC DMA/Q/CD-DA gates, moving A/V transitions and 30-minute decoded reference continuity now pass; long-playback saveability, seamless branch/host output and physical fidelity remain open.
 
 ## Active moving A/V checkpoint — 2026-09-07

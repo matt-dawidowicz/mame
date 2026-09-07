@@ -16,3 +16,5 @@ bool plmpeg_video_has_reference_frame(plm_video_t const *decoder)
 	return decoder && decoder->has_reference_frame;
 }
 }
+
+#include "cdidvc_plmpeg_state_impl.h"

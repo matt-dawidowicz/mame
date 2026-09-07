@@ -14,3 +14,7 @@
 
 #include "cdidvc.cpp"
 #include "cdidvc_avsync_threshold.cpp"
+
+#include "../../../src/mame/philips/cdidvc_plmpeg_state_impl.h"
+
+#include "cdidvc_decoder_snapshot.cpp"

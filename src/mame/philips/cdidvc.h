@@ -314,6 +314,7 @@ private:
 	uint64_t m_video_pts_anchor90 = 0;
 	uint64_t m_video_backend_anchor90 = 0;
 	bool m_video_pts_anchor_valid = false;
+	bool m_video_pts_pending = false;
 
 	std::vector<uint32_t> m_video_present_frame;
 	uint16_t m_video_present_width = 0;
@@ -416,6 +417,7 @@ private:
 	uint16_t m_save_picture_event_count = 0;
 	uint32_t m_save_video_replay_pump_count = 0;
 	bool m_save_snapshot_valid = false;
+	bool m_save_backend_snapshot = false;
 	uint32_t m_save_snapshot_serial = 0;
 
 	std::array<uint16_t, cdi_dvc::SAVE_VIDEO_QUEUE_FRAMES> m_save_video_queue_width{};
