@@ -746,6 +746,13 @@ void m68000_musashi_device::device_post_load()
 	m68ki_set_sr_noint_nosp(m_save_sr);
 	//fprintf(stderr, "Reloaded, pc=%x\n", REG_PC(m68k));
 	m_stopped = (m_save_stopped ? STOP_LEVEL_STOP : 0) | (m_save_halted  ? STOP_LEVEL_HALT : 0);
+
+	// Instruction restart is an SCC68070 architectural capability rather than
+	// software-visible MMU state.  Reassert it after loading older or transient
+	// snapshots so an enabled on-chip MMU can still deliver restartable faults.
+	if (CPU_TYPE_IS_070())
+		m_can_instruction_restart = true;
+
 	m68ki_jump(m_pc);
 }
 
@@ -992,7 +999,13 @@ void m68000_musashi_device::execute_run()
 
 						if (!CPU_TYPE_IS_020_PLUS())
 						{
-							if (CPU_TYPE_IS_010())
+							if (CPU_TYPE_IS_070())
+							{
+								// The SCC68070 uses its 17-word format-F bus-error frame.  This
+								// restart path is entered by the on-chip MMU, so mark BM in the SSW.
+								m68ki_stack_frame_1111(m_ppc, sr, EXCEPTION_BUS_ERROR, m_mmu_tmp_buserror_address, true);
+							}
+							else if (CPU_TYPE_IS_010())
 							{
 								m68ki_stack_frame_1000(m_ppc, sr, EXCEPTION_BUS_ERROR, m_mmu_tmp_buserror_address);
 							}
@@ -1146,7 +1159,10 @@ void m68000_musashi_device::device_reset()
 	m_pmmu_enabled = false;
 	m_hmmu_enabled = 0;
 	m_emmu_enabled = false;
-	m_can_instruction_restart = false;
+	// The SCC68070 on-chip MMU uses the restartable bus-error path whenever MCR.EN
+	// is set.  MCR.EN itself is reset by the SCC peripheral, but the CPU capability
+	// must remain armed across reset.
+	m_can_instruction_restart = CPU_TYPE_IS_070();
 
 	if (m_has_fpu)
 	{
@@ -2438,6 +2454,8 @@ void m68000_musashi_device::init_cpu_scc68070(void)
 	m_cyc_reset        = 154;
 	m_has_pmmu         = 0;
 	m_has_fpu          = 0;
+	// SCC68070 format-F bus errors support instruction rerun after RTE.
+	m_can_instruction_restart = true;
 
 	define_state();
 }

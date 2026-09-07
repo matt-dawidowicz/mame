@@ -1,8 +1,48 @@
 # SCC68070 MMU translation checkpoint — 2026-09-06
 
-This checkpoint records the original MMU milestone. The [fresh source/test audit](cdi_verified_status_20260906.md#f2--scc-mmu-restartable-fault-path-is-not-enabled-audio-branch) reopens broad architectural certification: translation and query/save fixtures pass, but the restartable fault path is not enabled and executed-CPU fault tests are missing. Exact silicon timing remains a separate evidence gap.
+Updated 2026-09-07: executed on-chip-MMU faults and whole-instruction retry
+are now locally verified. The earlier translation-only milestone below is
+historical; it does not describe the current execution coverage.
 
-## Certification
+## Executed recovery certification — 2026-09-07
+
+Baseline: `f330c0901c7d1aaf5581f50735ee03c6b8aeaa1f`.
+The remote candidate still equalled that baseline; staging run `34073320088`
+failed RTE recovery. Its `make generate` step did not regenerate the **tracked**
+Musashi sources. Running `m68kmake.py` produces the missing format-F RTE branch
+in `m68kops.cpp`. Both input and output are committed. Production CI now runs
+the generator and rejects drift before compiling, includes all M68000 sources
+in its trigger, and incorporates both generator inputs in the generated cache key.
+
+Local clean build, GCC/WSL, OPTIMIZE=0, 2026-09-07:
+
+- `python3 src/devices/cpu/m68000/m68kmake.py src/devices/cpu/m68000/m68k_in.lst src/devices/cpu/m68000/m68kops.h src/devices/cpu/m68000/m68kops.cpp`
+- `SOURCES=src/mame/philips/cdi.cpp,src/mame/philips/cdidvc_plmpeg.cpp TESTS=1 TOOLS=0 OPTIMIZE=0 ARCHOPTS=-U_FORTIFY_SOURCE make -j6 generate build/projects/sdl/mame/gmake-linux/Makefile`
+- `make -j4 -C build/projects/sdl/mame/gmake-linux config=release64 precompile`
+- `make -j6 -C build/projects/sdl/mame/gmake-linux config=release64 cdihelpertests cdiintegrationtests`
+- `./cdihelpertests`: 17,393,781 assertions / 219 cases, PASS.
+- `./cdiintegrationtests`: 24 top-level assertions / 7 cases, PASS.
+- `python3 scripts/cdi_dvc_dma_liveness_audit.py`: GREEN.
+- `git diff --check`: PASS.
+
+The full-machine fixture checks protected data read and write, protected opcode
+fetch, a longword crossing the programmed segment limit, guest descriptor repair
+for write/fetch/boundary cases, RTE and successful instruction rerun. The read
+case pauses in the guest handler for host inspection of the real 34-byte frame,
+format/vector `f008`, SSW `1125`, logical fault address and MSR; it uses host
+descriptor repair. All four cases check restored stack depth and successful
+recovery. Existing active-MMU register/query save/load is retained and followed
+by execution, exercising postload restart ownership.
+
+Restart capability is enabled for SCC68070 initialization/reset/postload. The
+on-chip fault uses the 17-word format-F frame and sets the modeled BM, IF/DF,
+R/W and function-code fields. RR is clear; recovery reruns the whole instruction.
+This is not exact internal-cycle continuation. RR=1, complete SSW transfer-size
+and lane fidelity, partial bus-cycle side effects, duplicate CAM silicon behavior,
+bus timing and undocumented corners remain unproven. No retail or physical
+hardware validation is claimed, and this gate is neither ASan nor UBSan.
+
+## Historical translation-only certification
 
 The MMU milestone is certified at commit:
 
@@ -24,7 +64,7 @@ Two test-harness corrections were required while reaching the certified run. Nei
 1. The full-machine MMU fixture originally called `m_maincpu->memory().translate(...)`, which is ambiguous because `scc68070_device` exposes `memory()` through both `device_t` and `device_memory_interface`. The fixture now binds the CPU explicitly to `device_memory_interface` before calling `translate()`.
 2. An existing DVC DMA edge regression sampled the SCC68070 IPL line in the same scheduler callback that asserted or cleared it. The observed line transition becomes visible on the following scheduler turn, so the fixture now samples the assertion and acknowledgement edges after synchronization rather than treating the scheduler propagation delay as a controller failure.
 
-The fresh audit identifies a concrete source defect and an executed-CPU verification gap. Repair and validate fault delivery before treating this milestone as architecturally complete.
+That historical audit identified the fault-delivery gap closed by the executed recovery gate above. Broader architectural fidelity remains open.
 
 ## Evidence basis
 
@@ -100,9 +140,10 @@ The existing MSR/MCR word-lane behavior remains intact.
 
 A live MMU violation does not fall through to the untranslated physical address. The SCC68070 records the logical fault address, read/write state, and current function code through Musashi's `set_buserror_details(..., rerun=true)` external-MMU path.
 
-The original claim that this schedules a restartable fault was too broad. Musashi only raises its pending MMU fault when `m_can_instruction_restart` is true. The reviewed SCC68070 path never calls `set_emmu_enable`, and initialization/reset leave restart disabled. The metadata call alone does not activate the required exception route. This is source-traced; a full executed-CPU reproduction is still required. Do not add a second bus-error pulse blindly: the intended enabled path explicitly forbids double injection.
-
-Exact SCC68070 bus-error cycle timing and stack-frame timing remain hardware-evidence questions rather than claims of this checkpoint.
+Initialization, reset and postload now keep SCC68070 instruction restart enabled.
+The on-chip fault path builds the format-F frame; generated RTE consumes all
+17 words and returns to the faulting instruction. The executed corpus above
+verifies recovery. Exact internal-cycle restart and SSW fidelity are still open.
 
 ### 8. Stack-segment direction
 
@@ -173,4 +214,4 @@ These are deliberately **not** closed by inference:
 - hardware capture of stack-segment boundary/wrap corner cases;
 - any undocumented interaction between MMU faults and concurrent external bus arbitration.
 
-The items in this section are hardware-fidelity questions. They are additional to the open software fault-delivery and executed-CPU validation work described in section 7 and the fresh audit; they are not the complete remaining-work list.
+These remain open alongside complete SSW, RR=1 and internal-cycle restart semantics. Executed whole-instruction recovery is verified within the corpus above.

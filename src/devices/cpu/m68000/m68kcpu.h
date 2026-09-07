@@ -1328,8 +1328,21 @@ inline void m68ki_stack_frame_1000(u32 pc, u32 sr, u32 vector, u32 fault_address
 /* Format 15 stack frame (68070).
  * 68070 only.  This is the 17 word bus/address error frame.
  */
-inline void m68ki_stack_frame_1111(u32 pc, u32 sr, u32 vector, u32 fault_address)
+inline void m68ki_stack_frame_1111(u32 pc, u32 sr, u32 vector, u32 fault_address, bool on_chip_mmu = false)
 {
+	// Preserve bus-cycle metadata before stack writes replace the temporary access
+	// classification.  RR remains clear: the current recovery model reruns the
+	// complete faulting instruction after RTE rather than resuming a partial cycle.
+	u16 const orig_fc = m_mmu_tmp_buserror_fc & 7;
+	u16 const orig_rw = m_mmu_tmp_buserror_rw;
+	u16 ssw = orig_fc | (orig_rw ? 0x0100 : 0);
+	if (orig_fc == M68K_FC_USER_PROGRAM || orig_fc == M68K_FC_SUPERVISOR_PROGRAM)
+		ssw |= 0x2000; // IF
+	else
+		ssw |= 0x1000; // DF
+	if (on_chip_mmu)
+		ssw |= 0x0020; // BM
+
 	/* INTERNAL INFORMATION */
 	m68ki_fake_push_16();
 
@@ -1355,7 +1368,7 @@ inline void m68ki_stack_frame_1111(u32 pc, u32 sr, u32 vector, u32 fault_address
 	m68ki_push_16(0);
 
 	/* SPECIAL STATUS WORD */
-	m68ki_push_16(0);
+	m68ki_push_16(ssw);
 
 	/* 1111, VECTOR OFFSET */
 	m68ki_push_16(0xf000 | (vector<<2));

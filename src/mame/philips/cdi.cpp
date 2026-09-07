@@ -34,9 +34,9 @@ TODO:
   allows the documented half-line to be modeled using the real PAL/NTSC master clocks,
   but exact odd/even field edge placement should still be verified against hardware.
 
-- SCC68070: Timer 1/2 match/capture/event-counter behavior, executed MMU
-  fault delivery, complete I2C slave/multi-master behavior, bus errors, and
-  cycle-level DMA/IRQ timing remain incomplete.
+- SCC68070: Timer 1/2 match/capture/event-counter behavior, complete I2C
+  slave/multi-master behavior, external bus-error edge cases, and cycle-level
+  DMA/IRQ/MMU timing remain incomplete.
 
 - Mono-I: CDIC remains an evidence-bounded HLE; SERVO and SLAVE MCU LLE still
   require the missing bus/signal behavior described below.
