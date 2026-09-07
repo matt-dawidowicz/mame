@@ -3,8 +3,11 @@
 **Active and default branch: `cdi-unified`. Current unified assessment: 2026-09-07.**
 All 32 available project branches are consolidated and the 60 missing upstream
 commits through `1fb001f9bfab5cf0148fdfe8755659c4a869831b` are merged. Original
-branches and fork `master` are retained. See the [consolidation record](cdi_branch_consolidation_20260906.md)
-and [upstream synchronization](cdi_upstream_sync_20260906.md).
+branches and fork `master` were subsequently deleted at the user's request; only
+`cdi-unified` remains in the fork and active WSL clone. See the
+[branch cleanup record](cdi_branch_cleanup_20260907.md),
+[consolidation record](cdi_branch_consolidation_20260906.md) and
+[upstream synchronization](cdi_upstream_sync_20260906.md).
 
 This is the canonical high-level index. Routine status reads this document;
 verified status updates affected worksheets; development resumes the next action.

@@ -27,8 +27,9 @@ conversation history is a handoff hint, not certification evidence.
 ## Branch and worktree discipline
 
 - Single active project branch: `cdi-unified`.
-- Historical canonical branch: `cdi-dvc-modernization`; preserve as a reference.
-- Historical audio branch: `audio/cdi-fidelity-100-campaign-20260905`.
+- Obsolete fork and local branches were deleted at the user's request; see
+  `docs/cdi_branch_cleanup_20260907.md` for exact tips and preservation details.
+- Historical canonical and audio commits remain on `cdi-unified`.
   `docs/cdi_audio_fidelity_campaign.md` remains the detailed audio ledger on unified.
 - All 32 available project branches were consolidated by user request; see
   `docs/cdi_branch_consolidation_20260906.md`. Keep new experiments isolated until

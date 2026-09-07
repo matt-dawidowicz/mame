@@ -3,10 +3,12 @@
 ## Active development branch
 
 `cdi-unified` is the single active project branch, as requested by Matt. It combines
-all 32 project branches present in the fork at inventory time. `master` remains
-unchanged. Existing source branches remain as historical references; future routine
-project work goes to `cdi-unified`. The audio campaign is now a subsystem ledger on
-this branch, not a separate integration destination.
+all 32 project branches present in the fork at inventory time. At consolidation,
+`master` was unchanged and source branches were retained as historical references.
+The user subsequently requested their deletion; see the
+[cleanup record](cdi_branch_cleanup_20260907.md) for the complete later inventory,
+ancestry checks and staging recovery details. Routine project work goes to
+`cdi-unified`; the audio campaign is a subsystem ledger on this branch.
 
 The specifically named local experiment `dvc/fmv-clock-underflow-trace-20260905`
 was absent from both the remote enumeration and available worktrees. No access to
