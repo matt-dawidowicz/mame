@@ -103,6 +103,7 @@ public:
 		: cdi_state(config, type, tag) { }
 	void cdi_q_integration(machine_config &config) { cdimono1(config); }
 	std::string image_path;
+	bool toc_test = false;
 	std::vector<cdi_q_observation> observations;
 	std::vector<std::string> failures;
 	bool completed = false;
@@ -134,7 +135,7 @@ private:
 			| (uint32_t(cdi_q_disc::bcd(absolute % 75)) << 8);
 		space.write_word(0x303ffe, 0); // cancel/reset buffer ownership
 		space.read_word(0x303ff6); // acknowledge old XBUF
-		space.write_word(0x303c00, m_span == 6 ? 0x29 : 0x28);
+		space.write_word(0x303c00, toc_test ? 0x27 : m_span == 6 ? 0x29 : 0x28);
 		space.write_dword(0x303c02, time);
 		space.write_word(0x303ffe, 0xc000); // execute, keep disc engine enabled
 	}
@@ -173,15 +174,15 @@ private:
 		}
 		else if (space.read_word(0x303ff6) & 0x8000)
 		{
-			unsigned const lba = SPANS[m_span].start + m_received;
+			unsigned const lba = toc_test ? m_received : SPANS[m_span].start + m_received;
 			cdi_q_observation result{ lba, m_cdrom->get_track(lba), m_cdrom->get_track_index(lba), {} };
 			unsigned const base = (space.read_word(0x303ffe) & 1) * 0xa00 + 0x924;
 			for (unsigned i = 0; i < result.q.size(); ++i)
 				result.q[i] = space.read_word(0x300000 + base + 2 * i);
 			observations.push_back(result);
-			if (++m_received == SPANS[m_span].count)
+			if (++m_received == (toc_test ? 45 : SPANS[m_span].count))
 			{
-				if (++m_span == std::size(SPANS))
+				if (toc_test || ++m_span == std::size(SPANS))
 				{
 					completed = true;
 					machine().schedule_exit();
@@ -220,7 +221,7 @@ ROM_END
 GAME(2026, cdiqtest, 0, cdi_q_integration, cdi_dma_integration,
 	cdi_q_integration_state, empty_init, ROT0, "MAME", "CD-i synthetic Q transport fixture", 0)
 
-void run_cdi_q_fixture(int subcode)
+void run_cdi_q_fixture(int subcode, bool toc = false)
 {
 	cdi_q_disc disc(subcode);
 	emu_options options;
@@ -232,34 +233,56 @@ void run_cdi_q_fixture(int subcode)
 	manager.set_machine(&machine);
 	auto &state = downcast<cdi_q_integration_state &>(machine.root_device());
 	state.image_path = disc.path();
+	state.toc_test = toc;
 	int const error = machine.run(true);
 	manager.set_machine(nullptr);
 	REQUIRE(error == EMU_ERR_NONE);
 	for (auto const &failure : state.failures) { INFO(failure); CHECK(false); }
 	REQUIRE(state.completed);
-	REQUIRE(state.observations.size() == 33);
+	REQUIRE(state.observations.size() == (toc ? 45 : 33));
 	for (auto const &result : state.observations)
 	{
 		CAPTURE(result.lba);
 		CAPTURE(result.generic_index);
-		unsigned const track = result.lba < 300 ? 1 : result.lba < 600 ? 2 : 3 + (result.lba - 600) / 75;
-		unsigned const start = track == 1 ? 0 : track == 2 ? 450 : 600 + (track - 3) * 75;
-		bool const pregap = result.lba < start;
-		unsigned const relative = pregap ? start - result.lba : result.lba - start;
-		unsigned const absolute = result.lba + 150;
-		// Generic get_track assigns the next track's pregap to the preceding
-		// track for sector access. Q ownership is instead specified by the TOC gap.
-		CHECK(result.generic_track == (pregap ? 0 : track - 1));
-		CHECK(result.q[0] == (track <= 2 ? 0x01 : 0x61));
-		CHECK(result.q[1] == cdi_q_disc::bcd(track));
-		CHECK(result.q[2] == (pregap ? 0 : subcode == 2 && track == 1 && result.lba >= 10 ? 2 : 1));
-		CHECK(result.q[3] == cdi_q_disc::bcd(relative / 4500));
-		CHECK(result.q[4] == cdi_q_disc::bcd(relative / 75 % 60));
-		CHECK(result.q[5] == cdi_q_disc::bcd(relative % 75));
-		CHECK(result.q[6] == 0);
-		CHECK(result.q[7] == cdi_q_disc::bcd(absolute / 4500));
-		CHECK(result.q[8] == cdi_q_disc::bcd(absolute / 75 % 60));
-		CHECK(result.q[9] == cdi_q_disc::bcd(absolute % 75));
+		if (toc)
+		{
+			unsigned const entry = result.lba / 3;
+			unsigned const start = entry == 0 ? 0 : entry == 1 ? 450 : 600 + (entry - 2) * 75;
+			unsigned const position = (entry < 12 ? start : 1350) + 150;
+			std::array<uint8_t, 10> expected{
+				uint8_t(entry < 2 || entry == 12 ? 0x01 : 0x61), 0,
+				uint8_t(entry < 12 ? cdi_q_disc::bcd(entry + 1) : 0xa0 + entry - 12),
+				0, cdi_q_disc::bcd((result.lba + 150) / 75), cdi_q_disc::bcd(result.lba % 75), 0,
+				cdi_q_disc::bcd(position / 4500), cdi_q_disc::bcd(position / 75 % 60), cdi_q_disc::bcd(position % 75) };
+			if (entry == 12) { expected[7] = 1; expected[8] = 0x10; expected[9] = 0; }
+			if (entry == 13) { expected[7] = 0x12; expected[8] = 0; expected[9] = 0; }
+			for (unsigned i = 0; i < expected.size(); ++i)
+			{
+				CAPTURE(i);
+				CHECK(result.q[i] == expected[i]);
+			}
+		}
+		else
+		{
+			unsigned const track = result.lba < 300 ? 1 : result.lba < 600 ? 2 : 3 + (result.lba - 600) / 75;
+			unsigned const start = track == 1 ? 0 : track == 2 ? 450 : 600 + (track - 3) * 75;
+			bool const pregap = result.lba < start;
+			unsigned const relative = pregap ? start - result.lba : result.lba - start;
+			unsigned const absolute = result.lba + 150;
+			// Generic get_track assigns the next track's pregap to the preceding
+			// track for sector access. Q ownership is instead specified by the TOC gap.
+			CHECK(result.generic_track == (pregap ? 0 : track - 1));
+			CHECK(result.q[0] == (track <= 2 ? 0x01 : 0x61));
+			CHECK(result.q[1] == cdi_q_disc::bcd(track));
+			CHECK(result.q[2] == (pregap ? 0 : subcode == 2 && track == 1 && result.lba >= 10 ? 2 : 1));
+			CHECK(result.q[3] == cdi_q_disc::bcd(relative / 4500));
+			CHECK(result.q[4] == cdi_q_disc::bcd(relative / 75 % 60));
+			CHECK(result.q[5] == cdi_q_disc::bcd(relative % 75));
+			CHECK(result.q[6] == 0);
+			CHECK(result.q[7] == cdi_q_disc::bcd(absolute / 4500));
+			CHECK(result.q[8] == cdi_q_disc::bcd(absolute / 75 % 60));
+			CHECK(result.q[9] == cdi_q_disc::bcd(absolute % 75));
+		}
 		// Independent bitwise ECMA-130 CRC oracle, ten payload bytes, inverted.
 		uint16_t crc = 0;
 		for (unsigned i = 0; i < 10; ++i)
@@ -296,6 +319,11 @@ TEST_CASE("CDIC falls back to metadata on corrupt raw Q CRC", "[emu][philips][cd
 TEST_CASE("CDIC falls back to metadata when raw subcode omits Q", "[emu][philips][cdic][q][integration]")
 {
 	run_cdi_q_fixture(4);
+}
+
+TEST_CASE("CDIC TOC includes every track and the complete absolute lead-out", "[emu][philips][cdic][q][toc][integration]")
+{
+	run_cdi_q_fixture(0, true);
 }
 
 } // anonymous namespace

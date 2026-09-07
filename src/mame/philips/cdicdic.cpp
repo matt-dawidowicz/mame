@@ -795,109 +795,49 @@ void cdicdic_device::process_disc_sector()
 	if (m_disc_mode == DISC_TOC)
 	{
 		uint8_t *toc_buffer = buffer;
-		const cdrom_file::toc &toc = m_cdrom->get_toc();
 		uint32_t entry_count = 0;
-
-		// Determine total frame count for data, and total audio track count
-		uint32_t frames = toc.tracks[0].pregap;
-		int audio_tracks = 0;
-		int other_tracks = 0;
-		uint32_t audio_starts[cdrom_file::MAX_TRACKS];
-		uint8_t audio_controls[cdrom_file::MAX_TRACKS];
-		uint8_t audio_numbers[cdrom_file::MAX_TRACKS];
-		for (uint32_t i = 0; i < toc.numtrks; i++)
+		auto const append_entry = [&toc_buffer, &entry_count](uint8_t control, uint8_t point, uint8_t pm, uint8_t ps, uint8_t pf)
 		{
-			if (toc.tracks[i].trktype != cdrom_file::CD_TRACK_AUDIO)
+			// Each TOC point appears in three consecutive Q packets (ECMA-130).
+			for (unsigned repeat = 0; repeat < 3; ++repeat)
 			{
-				frames += toc.tracks[i].frames + toc.tracks[i].extraframes;
-				++other_tracks;
+				*toc_buffer++ = control;
+				*toc_buffer++ = point;
+				*toc_buffer++ = pm;
+				*toc_buffer++ = ps;
+				*toc_buffer++ = pf;
+				++entry_count;
 			}
-			else
-			{
-				audio_starts[audio_tracks] = toc.tracks[i].logframeofs;
-				audio_controls[audio_tracks] = cdic_hle::cdic_q_adr_control(
-					uint8_t(m_cdrom->get_adr_control(i)));
-				audio_numbers[audio_tracks] = uint8_t(i + 1);
-				++audio_tracks;
-			}
+		};
+
+		bool has_data = false;
+		for (uint32_t track = 0; track < toc.numtrks; ++track)
+		{
+			has_data |= toc.tracks[track].trktype != cdrom_file::CD_TRACK_AUDIO;
+			uint32_t const start = cdrom_file::lba_to_msf(m_cdrom->get_track_start(track) + 150);
+			uint8_t const number = uint8_t(((track + 1) / 10) << 4) | ((track + 1) % 10);
+			append_entry(cdic_hle::cdic_q_adr_control(uint8_t(m_cdrom->get_adr_control(track))),
+				number, uint8_t(start >> 16), uint8_t(start >> 8), uint8_t(start));
 		}
 
-		// Determine last-frame MSF
-		const uint8_t total_mins = frames / (60 * 75);
-		const uint8_t total_secs = (frames / 75) % 60;
-		const uint8_t total_frac = frames % 75;
-
-		// Specify any audio tracks first
-		for (int i = 0; i < audio_tracks; i++)
-		{
-			const uint8_t audio_mins = audio_starts[i] / (60 * 75);
-			const uint8_t audio_secs = (audio_starts[i] / 75) % 60;
-			const uint8_t audio_frac = audio_starts[i] % 75;
-			const uint8_t audio_mins_bcd = ((audio_mins / 10) << 4) | (audio_mins % 10);
-			const uint8_t audio_secs_bcd = ((audio_secs / 10) << 4) | (audio_secs % 10);
-			const uint8_t audio_frac_bcd = ((audio_frac / 10) << 4) | (audio_frac % 10);
-
-			const uint8_t track_bcd =
-				((audio_numbers[i] / 10) << 4) | (audio_numbers[i] % 10);
-
-			for (int j = 0; j < 3; j++)
-			{
-				*toc_buffer++ = audio_controls[i]; // CD-DA Q control/ADR
-				*toc_buffer++ = track_bcd;  // Track number
-				*toc_buffer++ = audio_mins_bcd;
-				*toc_buffer++ = audio_secs_bcd;
-				*toc_buffer++ = audio_frac_bcd;
-				entry_count++;
-			}
-		}
-
-		// Packet A0 (lead-in)
-		for (int i = 0; i < 3; i++)
-		{
-			*toc_buffer++ = (other_tracks > 0) ? 0x41 : 0x01;
-			*toc_buffer++ = 0xa0;
-			*toc_buffer++ = 0x01;
-			*toc_buffer++ = (other_tracks > 0) ? 0x10 : 0x00;
-			*toc_buffer++ = 0x00;
-			entry_count++;
-		}
-
-		// Packet A1
-		for (int i = 0; i < 3; i++)
-		{
-			*toc_buffer++ = (audio_tracks > 0) ? 0x01 : 0x41;
-			*toc_buffer++ = 0xa1;
-			if (audio_tracks > 0)
-			{
-				uint8_t const last_audio_track = audio_numbers[audio_tracks - 1];
-				*toc_buffer++ = ((last_audio_track / 10) << 4) | (last_audio_track % 10);
-			}
-			else
-			{
-				*toc_buffer++ = 0x00;
-			}
-			*toc_buffer++ = 0x00;
-			*toc_buffer++ = 0x00;
-			entry_count++;
-		}
-
-		// Packet A2 (lead-out)
-		for (int i = 0; i < 3; i++)
-		{
-			*toc_buffer++ = (audio_tracks > 0) ? 0x01 : 0x41;
-			*toc_buffer++ = 0xa2;
-			*toc_buffer++ = ((total_mins / 10) << 4) | (total_mins % 10);
-			*toc_buffer++ = ((total_secs / 10) << 4) | (total_secs % 10);
-			*toc_buffer++ = ((total_frac / 10) << 4) | (total_frac % 10);
-			entry_count++;
-		}
+		// Use the generic layer's lead-out LBA, which includes every track and
+		// logical gap, but excludes CHD storage padding. P times are absolute MSF.
+		uint32_t const lead_out = cdrom_file::lba_to_msf(m_cdrom->get_track_start(0xaa) + 150);
+		uint8_t const first_control = cdic_hle::cdic_q_adr_control(uint8_t(m_cdrom->get_adr_control(0)));
+		uint8_t const last_control = cdic_hle::cdic_q_adr_control(uint8_t(m_cdrom->get_adr_control(toc.numtrks - 1)));
+		uint8_t const last_number = uint8_t((toc.numtrks / 10) << 4) | (toc.numtrks % 10);
+		// Retain the CD-i HLE's A0 disc-type policy (0x10 for a data-containing
+		// disc); this is separate from standard track-position construction.
+		append_entry(first_control, 0xa0, 0x01, has_data ? 0x10 : 0x00, 0x00);
+		append_entry(last_control, 0xa1, last_number, 0x00, 0x00);
+		append_entry(last_control, 0xa2, uint8_t(lead_out >> 16), uint8_t(lead_out >> 8), uint8_t(lead_out));
 
 		uint8_t *toc_data = &buffer[(m_curr_lba % entry_count) * 5];
 
 		subcode_buffer[SUBCODE_Q_CONTROL] = toc_data[0];
 		subcode_buffer[SUBCODE_Q_TRACK] = 0x00;
 		subcode_buffer[SUBCODE_Q_INDEX] = toc_data[1];
-		subcode_buffer[SUBCODE_Q_MODE1_MINS] = 0xa0;
+		subcode_buffer[SUBCODE_Q_MODE1_MINS] = mins_bcd;
 		subcode_buffer[SUBCODE_Q_MODE1_SECS] = secs_bcd;
 		subcode_buffer[SUBCODE_Q_MODE1_FRAC] = frac_bcd;
 		subcode_buffer[SUBCODE_Q_MODE1_ZERO] = 0x00;

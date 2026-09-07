@@ -63,10 +63,28 @@ above. All five Q cases contribute 2,175 assertions. Existing helper scope is
 unchanged. No percentage rises: higher-index preservation strengthens the current
 grade-3 position package, while generic CUE index metadata and wider formats remain open.
 
+## TOC completion update — 2026-09-07
+
+The live TOC fixture now verifies every track point and A0/A1/A2 over a complete
+45-packet cycle. It reproduces 165 failed assertions before the fix and passes
+546 afterwards. Full integration passes **2,745 assertions / 13 cases**.
+Track pointers and A2 use generic logical LBAs +150, including audio tracks and
+gaps, excluding storage padding. Track 12 is BCD 0x12; data copy flags survive.
+The running minute field is BCD rather than the invalid 0xa0 placeholder.
+The existing A0 0x10 data-disc policy is retained as Philips HLE behavior, not a
+universal CD-ROM disc-type claim. No physical lead-in address is modeled.
+
+Recalculated grades: Q TOC 1→3 gives 61.25→71.25 raw (60→70%); CDIC TOC 2→3
+gives 67.5→71.25 raw (70% unchanged); disc TOC 2→3 gives 56.25→60 (55→60%).
+CD-DA remains 65%. All retain Low/Medium confidence and their wider gaps.
+Next: generic CUE higher-index
+normalization and separate-file/virtual pregap fixtures; then seek-only completion
+and data-track PCM handoff evidence.
+
 ## Remaining work
 
 - Validate stored mode-2/3 packets and additional raw-subcode image containers.
-- Repair TOC A2 total length/audio-track address origin and missing data entries.
+- Wider TOC inputs: audio-only, data-only, CHD padding, multiple sessions and physical lead-in captures.
 - Generic CUE index normalization, separate-file/virtual pregaps and multisession.
 - Seek-only completion, read errors, physical lead-out signaling and servo timing.
 - CD-DA command crossing into data: the existing PCM handoff may play data sectors;

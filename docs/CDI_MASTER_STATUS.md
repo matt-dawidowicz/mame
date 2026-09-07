@@ -11,6 +11,24 @@ verified status updates affected worksheets; development resumes the next action
 [AGENTS.md](../AGENTS.md) defines those modes. The audio campaign remains the
 detailed audio ledger on this unified branch.
 
+## TOC completion update — 2026-09-07
+
+The live TOC fixture now verifies every track point and A0/A1/A2 over a complete
+45-packet cycle. It reproduces 165 failed assertions before the fix and passes
+546 afterwards. Full integration passes **2,745 assertions / 13 cases**.
+Track pointers and A2 use generic logical LBAs +150, including audio tracks and
+gaps, excluding storage padding. Track 12 is BCD 0x12; data copy flags survive.
+The running minute field is BCD rather than the invalid 0xa0 placeholder.
+The existing A0 0x10 data-disc policy is retained as Philips HLE behavior, not a
+universal CD-ROM disc-type claim. No physical lead-in address is modeled.
+
+Recalculated grades: Q TOC 1→3 gives 61.25→71.25 raw (60→70%); CDIC TOC 2→3
+gives 67.5→71.25 raw (70% unchanged); disc TOC 2→3 gives 56.25→60 (55→60%).
+CD-DA remains 65%. All retain Low/Medium confidence and their wider gaps.
+See [Q checkpoint](cdi_q_checkpoint_20260907.md). Next: generic CUE higher-index
+normalization and separate-file/virtual pregap fixtures; then seek-only completion
+and data-track PCM handoff evidence.
+
 Stored raw Q update: valid RW_RAW packets now preserve higher indexes; cooked R-W,
 absent Q and bad CRC use the metadata fallback. Full integration passes 2,199
 assertions / 12 cases. Percentages unchanged; see the [Q checkpoint](cdi_q_checkpoint_20260907.md).
@@ -76,14 +94,14 @@ fidelity percentage is invented when evidence is insufficient.
 | --- | ---: | ---: | --- | --- |
 | [SCC68070 CPU and internal peripherals](cdi_unified_verified_status_20260907.md#scc) | 55% | **75%** | Medium | Executed MMU recovery and live CDIC/DVC DMA pass; live timer/UART event sequences remain open. |
 | [SCC68070 MMU](cdi_unified_verified_status_20260907.md#mmu) | 65% | **75%** | Medium | Executed read/write/fetch/boundary fault/retry, format-F read frame and active-MMU save/load pass; full SSW and internal-cycle semantics remain open. |
-| [CDIC](cdi_unified_verified_status_20260907.md#cdic) | 55% | **70%** | Medium | DMA SRAM safety and synthetic twelve-track Q transport pass; TOC and physical error/status remain open. |
+| [CDIC](cdi_unified_verified_status_20260907.md#cdic) | 55% | **70%** | Medium | Live synthetic Q and full twelve-track TOC pass, including stored raw Q and error fallback. Wider disc layouts, physical status and timing remain open. |
 | [MCD212 display](cdi_unified_verified_status_20260907.md#mcd) | 65% | **65%** | Medium | Mode/control/QHY helpers pass; independent full frames and combined overlay remain unverified. |
 | [DVC overall](cdi_unified_verified_status_20260907.md#dvc) | 70% | **70%** | Medium | Live ingress/handshake and control-state tests pass; full decoded movie/physical board fidelity remains open. |
 | [MPEG video decode and presentation](cdi_unified_verified_status_20260907.md#mpeg_video) | 55% | **55%** | Low | Packet/event/conversion helpers pass; no retained independent full I/P/B picture corpus or combined displayed-frame oracle. |
 | [DVC audio](cdi_unified_verified_status_20260907.md#dvc_audio) | 80% | **80%** | Medium | Broad helper/reference tests and real DMA ingress pass; reference PCM tolerance and physical DSP/DAC edges remain. |
 | [XA routing and ADPCM](cdi_unified_verified_status_20260907.md#xa) | 75% | **75%** | Medium | Exhaustive helpers and retained exact 4-bit stereo reference exist; other independent modes, silicon and retail evidence remain incomplete. |
 | [CD-DA playback and transport](cdi_unified_verified_status_20260907.md#cdda) | 50% | **65%** | Low | Synthetic sequential audio/data Q transport and repositioning pass; audible output and broader transport semantics remain unverified. |
-| [CD-DA Q and other subcode](cdi_unified_verified_status_20260907.md#q) | 40% | **60%** | Low | Live Q track/index-0/1/time/control/CRC pass on a synthetic twelve-track disc; TOC and wider subcode remain open. |
+| [CD-DA Q and other subcode](cdi_unified_verified_status_20260907.md#q) | 40% | **70%** | Low | Live 45-packet TOC verifies all twelve tracks, triplicate points, absolute starts, first/last track and complete A2 lead-out. Physical lead-in and multisession remain open. |
 | [DMA integration](cdi_unified_verified_status_20260907.md#dma) | 60% | **70%** | Medium | Live DVC transfers and both CDIC SRAM boundary/error directions pass; advanced modes and physical arbitration remain open. |
 | [Interrupts](cdi_unified_verified_status_20260907.md#irq) | 65% | **70%** | Medium | Live DVC events, executed MMU fault/recovery and CDIC error status pass; expanded peripheral IRQ sequences remain open. |
 | [Device timing](cdi_unified_verified_status_20260907.md#timing) | 60% | **60%** | Medium | Arithmetic and DMA cadence tests pass; cycle-exact CPU/bus and physical cross-device calibration remain unverified. |
@@ -92,7 +110,7 @@ fidelity percentage is invented when evidence is insufficient.
 | [SLAVE HLE](cdi_unified_verified_status_20260907.md#slave) | 55% | **55%** | Medium | Command/pointer/readiness helpers pass; several protocols remain stubs and physical mailbox timing is modeled. |
 | [Input and peripherals](cdi_unified_verified_status_20260907.md#input) | 45% | **45%** | Medium | Pointer helpers pass; keyboard event delivery, controller breadth and serial waveforms are incomplete. |
 | [SERVO and MCU integration](cdi_unified_verified_status_20260907.md#servo) | 15% | **15%** | Low | Structural evidence only for much of the scope; live protocol, feedback and complete firmware runtime remain absent. |
-| [Disc handling](cdi_unified_verified_status_20260907.md#disc) | 50% | **55%** | Low | Synthetic mixed-mode Q transport passes; TOC, separate-file gaps, multisession and seek/error fidelity remain open. |
+| [Disc handling](cdi_unified_verified_status_20260907.md#disc) | 50% | **60%** | Low | Synthetic mixed-mode Q and TOC packet cycle pass with logical track starts and full-disc A2. Separate-file gaps, generic indexes and multisession remain open. |
 | [Mono-I/II board glue](cdi_unified_verified_status_20260907.md#glue) | 50% | **50%** | Low | Presence/IRQ helpers and live optional-DVC fixture pass; disabled DSP and unmapped MCU interfaces still block Mono-II. |
 | [Mono-II functional system](cdi_unified_verified_status_20260907.md#mono2) | 20% | **20%** | Low | Structural tests pass; host DTACK, SPI, enabled DSP and matching-ROM runtime remain absent. |
 | [Cross-system audio](cdi_unified_verified_status_20260907.md#all_audio) | 70% | **70%** | Medium | Strong component tests coexist with CD-DA transport defects and missing cross-stream output continuity evidence. |
@@ -119,7 +137,8 @@ fidelity percentage is invented when evidence is insufficient.
 ## Known gaps and next substantive tasks
 
 1. **CD-DA/Q:** track/index-0/1/relative time now pass live synthetic-disc tests.
-   Continue with stored Q and metadata-derived TOC lead packets.
+   Stored raw Q and the complete TOC packet cycle now pass too; continue with
+   generic CUE index and separate-file/virtual pregap fixtures.
 
 2. **Decoded A/V and save continuity:** retain decoded pictures and PCM across
    sustained presentation, interactive branches and save/load. Timestamp arithmetic

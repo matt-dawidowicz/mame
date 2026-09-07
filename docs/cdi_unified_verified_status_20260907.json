@@ -322,8 +322,8 @@
           "scope": "TOC and subcode",
           "weight": 15,
           "prior_grade": 1,
-          "grade": 2,
-          "rationale": "Live Q track/index-0/1/time/control fields pass; stored raw Q passes; TOC lead packets remain open.",
+          "grade": 3,
+          "rationale": "Live synthetic Q and full twelve-track TOC pass, including stored raw Q and error fallback. Wider disc layouts, physical status and timing remain open.",
           "prior_rationale": "Hard-coded position fields and partial TOC synthesis."
         },
         {
@@ -344,9 +344,9 @@
         }
       ],
       "implementation_status": "Commands, sector routing, double buffers, XA and AUDCTL are implemented.",
-      "verification_status": "DMA SRAM safety and synthetic twelve-track Q transport pass; TOC, stored Q and physical error/status remain open.",
-      "next_action": "Correct metadata-derived TOC lead packets.",
-      "raw_percent": 67.5,
+      "verification_status": "Live synthetic Q and full twelve-track TOC pass, including stored raw Q and error fallback. Wider disc layouts, physical status and timing remain open.",
+      "next_action": "Validate seek-only completion and mixed-mode data-track PCM gating; extend image-layout coverage.",
+      "raw_percent": 71.25,
       "percent": 70,
       "source": [
         "src/devices/machine/scc68070.cpp",
@@ -380,7 +380,7 @@
         "Measured double-buffer behavior; no full disc-device campaign.",
         "Audio fixes AUDCTL/playback/sector ownership; physical edges remain.",
         "Both live DMA directions stop safely at 16 KiB and report SCC device bus error; clipping/error policy is emulator safety, not measured silicon behavior.",
-        "Live Q track/index-0/1/time/control fields pass; stored raw Q passes; TOC lead packets remain open.",
+        "Live synthetic Q and full twelve-track TOC pass, including stored raw Q and error fallback. Wider disc layouts, physical status and timing remain open.",
         "Read failure is bounded; hardware error response incomplete.",
         "Fields are registered; CDIC live transport snapshot fixture missing."
       ],
@@ -396,7 +396,7 @@
       "last_reviewed_commit": "3a9d22a445819763c8b90f34bac95670fcbfba45",
       "last_verified_commit": "3a9d22a445819763c8b90f34bac95670fcbfba45",
       "last_verification_date": "2026-09-07",
-      "verification_basis": "Local integration: 2199 assertions / 12 cases; five synthetic image variants. See docs/cdi_q_checkpoint_20260907.md.",
+      "verification_basis": "Local full integration: 2745 assertions / 13 cases. See Q checkpoint for independent packet oracles and remaining limitations.",
       "prior_audio_raw_percent": 56.25,
       "last_test_date": "2026-09-07"
     },
@@ -1203,8 +1203,8 @@
           "scope": "TOC/lead packets",
           "weight": 20,
           "prior_grade": 1,
-          "grade": 1,
-          "rationale": "Synthesis remains partial; audio frames are omitted from frames accumulator.",
+          "grade": 3,
+          "rationale": "Live 45-packet TOC verifies all twelve tracks, triplicate points, absolute starts, first/last track and complete A2 lead-out. Physical lead-in and multisession remain open.",
           "prior_rationale": "Synthesis remains partial; audio frames are omitted from frames accumulator."
         },
         {
@@ -1233,10 +1233,10 @@
         }
       ],
       "implementation_status": "ADR/control, buffer placement, cadence and partial Q/TOC synthesis exist.",
-      "verification_status": "Live Q track/index-0/1/time/control/CRC pass on a synthetic twelve-track disc; stored Q, TOC and wider subcode remain open.",
-      "next_action": "Repair TOC lead packets; investigate generic index offsets and separate-file pregaps.",
-      "raw_percent": 61.25,
-      "percent": 60,
+      "verification_status": "Live 45-packet TOC verifies all twelve tracks, triplicate points, absolute starts, first/last track and complete A2 lead-out. Physical lead-in and multisession remain open.",
+      "next_action": "Test generic CUE higher-index normalization and separate-file/virtual pregap ownership; retain physical lead-in/status uncertainty.",
+      "raw_percent": 71.25,
+      "percent": 70,
       "source": [
         "src/mame/philips/cdicdic.cpp",
         "src/mame/philips/cdicdic_state.h"
@@ -1253,7 +1253,7 @@
       ],
       "known_inaccuracies_and_evidence_gaps": [
         "Live twelve-track CUE verifies INDEX 00/01, countdown, track-relative reset and continuous absolute MSF; valid stored raw Q preserves higher indexes; generic CUE indexes and wider formats remain open.",
-        "Synthesis remains partial; audio frames are omitted from frames accumulator.",
+        "Live 45-packet TOC verifies all twelve tracks, triplicate points, absolute starts, first/last track and complete A2 lead-out. Physical lead-in and multisession remain open.",
         "Independent bitwise ten-byte/inverted CRC oracle passes all 33 delivered packets; existing production CRC needs no change.",
         "Not implemented as faithful delivery.",
         "Synthetic mixed audio/data shared BIN/CUE runs through real CDIC commands, timer and SRAM; other image layouts, hardware and retail remain open."
@@ -1268,7 +1268,7 @@
       "last_reviewed_commit": "3a9d22a445819763c8b90f34bac95670fcbfba45",
       "last_verified_commit": "3a9d22a445819763c8b90f34bac95670fcbfba45",
       "last_verification_date": "2026-09-07",
-      "verification_basis": "Local integration: 2199 assertions / 12 cases; five synthetic image variants. See docs/cdi_q_checkpoint_20260907.md.",
+      "verification_basis": "Local full integration: 2745 assertions / 13 cases. See Q checkpoint for independent packet oracles and remaining limitations.",
       "prior_audio_raw_percent": 38.75,
       "last_test_date": "2026-09-07"
     },
@@ -2195,8 +2195,8 @@
           "scope": "TOC/subcode",
           "weight": 15,
           "prior_grade": 1,
-          "grade": 2,
-          "rationale": "Synthetic multi-track Q position fields pass; TOC lead-out and stored subcode remain open.",
+          "grade": 3,
+          "rationale": "Synthetic mixed-mode Q and TOC packet cycle pass with logical track starts and full-disc A2. Separate-file gaps, generic indexes and multisession remain open.",
           "prior_rationale": "Partial synthesis and concrete position defects."
         },
         {
@@ -2217,10 +2217,10 @@
         }
       ],
       "implementation_status": "Sector ingress, data/audio filters and command transport model exist.",
-      "verification_status": "Synthetic mixed-mode Q transport passes; TOC, separate-file gaps, multisession and seek/error fidelity remain open.",
-      "next_action": "Extend stored-subcode/TOC coverage, then generic image index/pregap and seek/error behavior.",
-      "raw_percent": 56.25,
-      "percent": 55,
+      "verification_status": "Synthetic mixed-mode Q and TOC packet cycle pass with logical track starts and full-disc A2. Separate-file gaps, generic indexes and multisession remain open.",
+      "next_action": "Reproduce generic CUE higher-index and separate-file/virtual pregap behavior before changing shared CD-ROM code.",
+      "raw_percent": 60.0,
+      "percent": 60,
       "source": [
         "src/devices/cpu/dsp56000/dsp56000.cpp",
         "src/mame/philips/cdi.cpp",
@@ -2249,7 +2249,7 @@
         "Audio distinguishes CD-DA/header validation and endian word paths.",
         "Audio has exhaustive routing helper; complete device/media proof pending.",
         "Read/stop model; seek-only behavior unresolved.",
-        "Synthetic multi-track Q position fields pass; TOC lead-out and stored subcode remain open.",
+        "Synthetic mixed-mode Q and TOC packet cycle pass with logical track starts and full-disc A2. Separate-file gaps, generic indexes and multisession remain open.",
         "Bounded failed reads without accurate error/status machinery.",
         "One synthetic shared-file mixed-mode disc passes Q delivery; multisession and broader image layouts remain open."
       ],
@@ -2264,7 +2264,7 @@
       "last_reviewed_commit": "3a9d22a445819763c8b90f34bac95670fcbfba45",
       "last_verified_commit": "3a9d22a445819763c8b90f34bac95670fcbfba45",
       "last_verification_date": "2026-09-07",
-      "verification_basis": "Local integration: 2199 assertions / 12 cases; five synthetic image variants. See docs/cdi_q_checkpoint_20260907.md.",
+      "verification_basis": "Local full integration: 2745 assertions / 13 cases. See Q checkpoint for independent packet oracles and remaining limitations.",
       "prior_audio_raw_percent": 50.0,
       "last_test_date": "2026-09-07"
     },
