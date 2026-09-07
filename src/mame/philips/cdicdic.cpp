@@ -935,6 +935,29 @@ void cdicdic_device::process_disc_sector()
 	subcode_buffer[SUBCODE_Q_CRC0] = (uint8_t)(crc_accum >> 8);
 	subcode_buffer[SUBCODE_Q_CRC1] = (uint8_t)crc_accum;
 
+	if (m_disc_mode != DISC_TOC)
+	{
+		// RW is packed R-W data, not a deinterleaved P-W block. Only raw
+		// symbols can carry Q here. Some RW_RAW images omit P/Q, so accept a
+		// recognized Q mode with a valid CRC before replacing the TOC fallback.
+		uint8_t stored_subcode[96];
+		uint32_t const sub_track = m_cdrom->get_track(m_curr_lba);
+		if (toc.tracks[sub_track].subtype == cdrom_file::CD_SUB_RAW
+			&& m_cdrom->read_subcode(m_curr_lba, stored_subcode))
+		{
+			uint8_t q[12] = { 0 };
+			for (unsigned bit = 0; bit < 96; ++bit)
+				q[bit / 8] |= BIT(stored_subcode[bit], 6) << (7 - bit % 8);
+			uint16_t crc = 0;
+			for (unsigned i = 0; i < 12; ++i)
+				crc = CRC_CCITT_ROUND(crc, (i < 10 ? q[i] : 0xff));
+			uint8_t const mode = q[0] & 0x0f;
+			if (mode >= 1 && mode <= 3 && q[10] == uint8_t(crc >> 8) && q[11] == uint8_t(crc))
+				memcpy(&subcode_buffer[SUBCODE_Q_CONTROL], q, sizeof(q));
+		}
+
+	}
+
 	process_sector_data(buffer, subcode_buffer, audio_sector);
 }
 

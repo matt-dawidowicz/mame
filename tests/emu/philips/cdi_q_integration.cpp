@@ -13,7 +13,7 @@ namespace
 class cdi_q_disc
 {
 public:
-	cdi_q_disc()
+	cdi_q_disc(int subcode = 0)
 	{
 		m_dir = std::filesystem::temp_directory_path() / ("mame-cdi-q-" + std::to_string(osd_ticks()));
 		REQUIRE(std::filesystem::create_directory(m_dir));
@@ -31,15 +31,45 @@ public:
 				sector[15] = 1;
 			}
 			bin.write(reinterpret_cast<char const *>(sector.data()), sector.size());
+			if (subcode)
+			{
+				unsigned const track = lba < 300 ? 1 : lba < 600 ? 2 : 3 + (lba - 600) / 75;
+				unsigned const start = track == 1 ? 0 : track == 2 ? 450 : 600 + (track - 3) * 75;
+				unsigned const relative = lba < start ? start - lba : lba - start;
+				std::array<uint8_t, 12> q{
+					uint8_t(track <= 2 ? 0x01 : 0x61), bcd(track),
+					uint8_t(lba < start ? 0 : track == 1 && lba >= 10 ? 2 : 1),
+					bcd(relative / 4500), bcd(relative / 75 % 60), bcd(relative % 75), 0,
+					bcd((lba + 150) / 4500), bcd((lba + 150) / 75 % 60), bcd((lba + 150) % 75), 0, 0 };
+				uint16_t crc = 0;
+				for (unsigned i = 0; i < 10; ++i)
+				{
+					crc ^= q[i] << 8;
+					for (unsigned bit = 0; bit < 8; ++bit)
+						crc = (crc << 1) ^ (crc & 0x8000 ? 0x1021 : 0);
+				}
+				q[10] = uint8_t(~crc >> 8);
+				q[11] = uint8_t(~crc);
+				std::array<uint8_t, 96> sub{};
+				if (subcode == 1) // cooked R-W is not P-W
+					std::fill(sub.begin(), sub.end(), 0x2d); // packed R-W, no Q
+				else // one PQRSTUVW symbol per byte; Q is bit 6
+					for (unsigned bit = 0; bit < 96; ++bit)
+						sub[bit] = 0xbf | (BIT(q[bit / 8], 7 - bit % 8) << 6);
+				if (subcode == 3) sub[95] ^= 0x40; // bad CRC
+				if (subcode == 4) for (auto &symbol : sub) symbol &= ~0x40; // Q absent
+				bin.write(reinterpret_cast<char const *>(sub.data()), sub.size());
+			}
 		}
 		REQUIRE(bin.good());
 		bin.close();
 		std::ofstream cue(m_dir / "disc.cue");
+		char const *format = subcode == 1 ? " RW" : subcode >= 2 ? " RW_RAW" : "";
 		cue << "FILE \"disc.bin\" BINARY\n"
-			"  TRACK 01 AUDIO\n    INDEX 01 00:00:00\n"
-			"  TRACK 02 AUDIO\n    INDEX 00 00:04:00\n    INDEX 01 00:06:00\n";
+			<< "  TRACK 01 AUDIO" << format << "\n    INDEX 01 00:00:00\n"
+			<< "  TRACK 02 AUDIO" << format << "\n    INDEX 00 00:04:00\n    INDEX 01 00:06:00\n";
 		for (unsigned track = 3; track <= 12; ++track)
-			cue << string_format("  TRACK %02u MODE1/2352\n    FLAGS DCP\n    INDEX 01 00:%02u:00\n", track, track + 5);
+			cue << string_format("  TRACK %02u MODE1/2352%s\n    FLAGS DCP\n    INDEX 01 00:%02u:00\n", track, format, track + 5);
 		REQUIRE(cue.good());
 	}
 
@@ -190,9 +220,9 @@ ROM_END
 GAME(2026, cdiqtest, 0, cdi_q_integration, cdi_dma_integration,
 	cdi_q_integration_state, empty_init, ROT0, "MAME", "CD-i synthetic Q transport fixture", 0)
 
-TEST_CASE("CDIC reports disc track/index and relative/absolute Q through live SRAM", "[emu][philips][cdic][q][integration]")
+void run_cdi_q_fixture(int subcode)
 {
-	cdi_q_disc disc;
+	cdi_q_disc disc(subcode);
 	emu_options options;
 	options.set_system_name(std::string(GAME_NAME(cdiqtest).name));
 	cdi_dma_test_osd osd;
@@ -222,7 +252,7 @@ TEST_CASE("CDIC reports disc track/index and relative/absolute Q through live SR
 		CHECK(result.generic_track == (pregap ? 0 : track - 1));
 		CHECK(result.q[0] == (track <= 2 ? 0x01 : 0x61));
 		CHECK(result.q[1] == cdi_q_disc::bcd(track));
-		CHECK(result.q[2] == (pregap ? 0 : 1));
+		CHECK(result.q[2] == (pregap ? 0 : subcode == 2 && track == 1 && result.lba >= 10 ? 2 : 1));
 		CHECK(result.q[3] == cdi_q_disc::bcd(relative / 4500));
 		CHECK(result.q[4] == cdi_q_disc::bcd(relative / 75 % 60));
 		CHECK(result.q[5] == cdi_q_disc::bcd(relative % 75));
@@ -241,6 +271,31 @@ TEST_CASE("CDIC reports disc track/index and relative/absolute Q through live SR
 		CHECK(result.q[10] == uint8_t(~crc >> 8));
 		CHECK(result.q[11] == uint8_t(~crc));
 	}
+}
+
+TEST_CASE("CDIC reports disc track/index and relative/absolute Q through live SRAM", "[emu][philips][cdic][q][integration]")
+{
+	run_cdi_q_fixture(0);
+}
+
+TEST_CASE("CDIC does not interpret cooked R-W bytes as Q", "[emu][philips][cdic][q][integration]")
+{
+	run_cdi_q_fixture(1);
+}
+
+TEST_CASE("CDIC extracts raw interleaved stored Q and higher indexes", "[emu][philips][cdic][q][integration]")
+{
+	run_cdi_q_fixture(2);
+}
+
+TEST_CASE("CDIC falls back to metadata on corrupt raw Q CRC", "[emu][philips][cdic][q][integration]")
+{
+	run_cdi_q_fixture(3);
+}
+
+TEST_CASE("CDIC falls back to metadata when raw subcode omits Q", "[emu][philips][cdic][q][integration]")
+{
+	run_cdi_q_fixture(4);
 }
 
 } // anonymous namespace

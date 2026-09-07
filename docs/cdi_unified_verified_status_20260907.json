@@ -323,7 +323,7 @@
           "weight": 15,
           "prior_grade": 1,
           "grade": 2,
-          "rationale": "Live Q track/index-0/1/time/control fields pass; TOC lead packets and stored subcode remain open.",
+          "rationale": "Live Q track/index-0/1/time/control fields pass; stored raw Q passes; TOC lead packets remain open.",
           "prior_rationale": "Hard-coded position fields and partial TOC synthesis."
         },
         {
@@ -345,7 +345,7 @@
       ],
       "implementation_status": "Commands, sector routing, double buffers, XA and AUDCTL are implemented.",
       "verification_status": "DMA SRAM safety and synthetic twelve-track Q transport pass; TOC, stored Q and physical error/status remain open.",
-      "next_action": "Preserve stored Q and correct metadata-derived TOC lead packets.",
+      "next_action": "Correct metadata-derived TOC lead packets.",
       "raw_percent": 67.5,
       "percent": 70,
       "source": [
@@ -380,7 +380,7 @@
         "Measured double-buffer behavior; no full disc-device campaign.",
         "Audio fixes AUDCTL/playback/sector ownership; physical edges remain.",
         "Both live DMA directions stop safely at 16 KiB and report SCC device bus error; clipping/error policy is emulator safety, not measured silicon behavior.",
-        "Live Q track/index-0/1/time/control fields pass; TOC lead packets and stored subcode remain open.",
+        "Live Q track/index-0/1/time/control fields pass; stored raw Q passes; TOC lead packets remain open.",
         "Read failure is bounded; hardware error response incomplete.",
         "Fields are registered; CDIC live transport snapshot fixture missing."
       ],
@@ -396,7 +396,7 @@
       "last_reviewed_commit": "3a9d22a445819763c8b90f34bac95670fcbfba45",
       "last_verified_commit": "3a9d22a445819763c8b90f34bac95670fcbfba45",
       "last_verification_date": "2026-09-07",
-      "verification_basis": "Source/test changes following 3a9d22a445819763c8b90f34bac95670fcbfba45; local full integration 459 assertions / 8 cases. See Q checkpoint; no hardware or retail certification.",
+      "verification_basis": "Local integration: 2199 assertions / 12 cases; five synthetic image variants. See docs/cdi_q_checkpoint_20260907.md.",
       "prior_audio_raw_percent": 56.25,
       "last_test_date": "2026-09-07"
     },
@@ -1114,7 +1114,7 @@
       ],
       "implementation_status": "PCM sector handoff, gating, cadence and de-emphasis exist.",
       "verification_status": "Synthetic sequential audio/data Q transport and repositioning pass; audible output and broader transport semantics remain unverified.",
-      "next_action": "Preserve stored Q and correct TOC; then validate data-track DAC gating and seek-only completion.",
+      "next_action": "Correct TOC; then validate data-track DAC gating and seek-only completion.",
       "raw_percent": 65.0,
       "percent": 65,
       "source": [
@@ -1162,7 +1162,7 @@
       "last_reviewed_commit": "3a9d22a445819763c8b90f34bac95670fcbfba45",
       "last_verified_commit": "3a9d22a445819763c8b90f34bac95670fcbfba45",
       "last_verification_date": "2026-09-07",
-      "verification_basis": "Source/test changes following 3a9d22a445819763c8b90f34bac95670fcbfba45; local full integration 459 assertions / 8 cases. See Q checkpoint; no hardware or retail certification.",
+      "verification_basis": "Local integration: 2199 assertions / 12 cases; five synthetic image variants. See docs/cdi_q_checkpoint_20260907.md.",
       "prior_audio_raw_percent": 48.75,
       "last_test_date": "2026-09-07"
     },
@@ -1196,7 +1196,7 @@
           "weight": 25,
           "prior_grade": 1,
           "grade": 3,
-          "rationale": "Live twelve-track CUE verifies INDEX 00/01, countdown, track-relative reset and continuous absolute MSF; higher indexes and stored Q remain open.",
+          "rationale": "Live twelve-track CUE verifies INDEX 00/01, countdown, track-relative reset and continuous absolute MSF; valid stored raw Q preserves higher indexes; generic CUE indexes and wider formats remain open.",
           "prior_rationale": "Hard-coded 01 fields and absolute MSF in relative slots."
         },
         {
@@ -1234,7 +1234,7 @@
       ],
       "implementation_status": "ADR/control, buffer placement, cadence and partial Q/TOC synthesis exist.",
       "verification_status": "Live Q track/index-0/1/time/control/CRC pass on a synthetic twelve-track disc; stored Q, TOC and wider subcode remain open.",
-      "next_action": "Preserve stored Q and repair TOC lead packets; investigate generic index offsets and separate-file pregaps.",
+      "next_action": "Repair TOC lead packets; investigate generic index offsets and separate-file pregaps.",
       "raw_percent": 61.25,
       "percent": 60,
       "source": [
@@ -1252,7 +1252,7 @@
         "docs/cdi_unified_verified_status_20260907.md#q"
       ],
       "known_inaccuracies_and_evidence_gaps": [
-        "Live twelve-track CUE verifies INDEX 00/01, countdown, track-relative reset and continuous absolute MSF; higher indexes and stored Q remain open.",
+        "Live twelve-track CUE verifies INDEX 00/01, countdown, track-relative reset and continuous absolute MSF; valid stored raw Q preserves higher indexes; generic CUE indexes and wider formats remain open.",
         "Synthesis remains partial; audio frames are omitted from frames accumulator.",
         "Independent bitwise ten-byte/inverted CRC oracle passes all 33 delivered packets; existing production CRC needs no change.",
         "Not implemented as faithful delivery.",
@@ -1268,7 +1268,7 @@
       "last_reviewed_commit": "3a9d22a445819763c8b90f34bac95670fcbfba45",
       "last_verified_commit": "3a9d22a445819763c8b90f34bac95670fcbfba45",
       "last_verification_date": "2026-09-07",
-      "verification_basis": "Source/test changes following 3a9d22a445819763c8b90f34bac95670fcbfba45; local full integration 459 assertions / 8 cases. See Q checkpoint; no hardware or retail certification.",
+      "verification_basis": "Local integration: 2199 assertions / 12 cases; five synthetic image variants. See docs/cdi_q_checkpoint_20260907.md.",
       "prior_audio_raw_percent": 38.75,
       "last_test_date": "2026-09-07"
     },
@@ -2264,7 +2264,7 @@
       "last_reviewed_commit": "3a9d22a445819763c8b90f34bac95670fcbfba45",
       "last_verified_commit": "3a9d22a445819763c8b90f34bac95670fcbfba45",
       "last_verification_date": "2026-09-07",
-      "verification_basis": "Source/test changes following 3a9d22a445819763c8b90f34bac95670fcbfba45; local full integration 459 assertions / 8 cases. See Q checkpoint; no hardware or retail certification.",
+      "verification_basis": "Local integration: 2199 assertions / 12 cases; five synthetic image variants. See docs/cdi_q_checkpoint_20260907.md.",
       "prior_audio_raw_percent": 50.0,
       "last_test_date": "2026-09-07"
     },

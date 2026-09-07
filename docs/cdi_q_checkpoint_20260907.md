@@ -44,9 +44,28 @@ with FF CRC placeholders passes this oracle; its unusual form is not a proven
 bug and was deliberately preserved. Philips SRAM placement is retained from
 the existing measured HLE model, not derived from the generic disc standard.
 
+## Stored raw Q — 2026-09-07
+
+Baseline `d73fd1500f27bbc583b895dad554f5d8a03016ff`. The raw-subcode fixture
+reproduces six lost INDEX 02 observations before the fix. CDIC now extracts bit 6
+of each RW_RAW symbol and accepts Q modes 1–3 only with a matching recorded CRC.
+Its twelve bytes then replace the synthetic fallback. No generic disc code changes.
+Cooked RW is packed R-W, not a deinterleaved Q block, as documented by
+[cdrdao](https://github.com/cdrdao/cdrdao/blob/master/dao/cdrdao.man).
+No-Q and corrupt-CRC raw images retain the metadata fallback. This is an explicit
+HLE policy; physical CDIC CRC-error flags/retry behavior remain unknown.
+
+Five live fixture variants (metadata only, cooked R-W, valid raw Q with INDEX 02,
+corrupt raw Q CRC, and absent raw Q) each inspect 33 SRAM packets. Raw fixture
+non-Q bits are set to expose incorrect channel extraction. Full integration:
+**2,199 assertions / 12 cases PASS**, using the same incremental build/run commands
+above. All five Q cases contribute 2,175 assertions. Existing helper scope is
+unchanged. No percentage rises: higher-index preservation strengthens the current
+grade-3 position package, while generic CUE index metadata and wider formats remain open.
+
 ## Remaining work
 
-- Preserve authoritative stored Q (RW and RW_RAW) including higher indexes.
+- Validate stored mode-2/3 packets and additional raw-subcode image containers.
 - Repair TOC A2 total length/audio-track address origin and missing data entries.
 - Generic CUE index normalization, separate-file/virtual pregaps and multisession.
 - Seek-only completion, read errors, physical lead-out signaling and servo timing.

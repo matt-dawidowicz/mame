@@ -11,6 +11,10 @@ verified status updates affected worksheets; development resumes the next action
 [AGENTS.md](../AGENTS.md) defines those modes. The audio campaign remains the
 detailed audio ledger on this unified branch.
 
+Stored raw Q update: valid RW_RAW packets now preserve higher indexes; cooked R-W,
+absent Q and bad CRC use the metadata fallback. Full integration passes 2,199
+assertions / 12 cases. Percentages unchanged; see the [Q checkpoint](cdi_q_checkpoint_20260907.md).
+
 ## CD-DA/Q transport update — 2026-09-07
 
 Following the MMU certification, the real CDIC path now derives track number,
@@ -72,14 +76,14 @@ fidelity percentage is invented when evidence is insufficient.
 | --- | ---: | ---: | --- | --- |
 | [SCC68070 CPU and internal peripherals](cdi_unified_verified_status_20260907.md#scc) | 55% | **75%** | Medium | Executed MMU recovery and live CDIC/DVC DMA pass; live timer/UART event sequences remain open. |
 | [SCC68070 MMU](cdi_unified_verified_status_20260907.md#mmu) | 65% | **75%** | Medium | Executed read/write/fetch/boundary fault/retry, format-F read frame and active-MMU save/load pass; full SSW and internal-cycle semantics remain open. |
-| [CDIC](cdi_unified_verified_status_20260907.md#cdic) | 55% | **70%** | Medium | DMA SRAM safety and synthetic twelve-track Q transport pass; TOC, stored Q and physical error/status remain open. |
+| [CDIC](cdi_unified_verified_status_20260907.md#cdic) | 55% | **70%** | Medium | DMA SRAM safety and synthetic twelve-track Q transport pass; TOC and physical error/status remain open. |
 | [MCD212 display](cdi_unified_verified_status_20260907.md#mcd) | 65% | **65%** | Medium | Mode/control/QHY helpers pass; independent full frames and combined overlay remain unverified. |
 | [DVC overall](cdi_unified_verified_status_20260907.md#dvc) | 70% | **70%** | Medium | Live ingress/handshake and control-state tests pass; full decoded movie/physical board fidelity remains open. |
 | [MPEG video decode and presentation](cdi_unified_verified_status_20260907.md#mpeg_video) | 55% | **55%** | Low | Packet/event/conversion helpers pass; no retained independent full I/P/B picture corpus or combined displayed-frame oracle. |
 | [DVC audio](cdi_unified_verified_status_20260907.md#dvc_audio) | 80% | **80%** | Medium | Broad helper/reference tests and real DMA ingress pass; reference PCM tolerance and physical DSP/DAC edges remain. |
 | [XA routing and ADPCM](cdi_unified_verified_status_20260907.md#xa) | 75% | **75%** | Medium | Exhaustive helpers and retained exact 4-bit stereo reference exist; other independent modes, silicon and retail evidence remain incomplete. |
 | [CD-DA playback and transport](cdi_unified_verified_status_20260907.md#cdda) | 50% | **65%** | Low | Synthetic sequential audio/data Q transport and repositioning pass; audible output and broader transport semantics remain unverified. |
-| [CD-DA Q and other subcode](cdi_unified_verified_status_20260907.md#q) | 40% | **60%** | Low | Live Q track/index-0/1/time/control/CRC pass on a synthetic twelve-track disc; stored Q, TOC and wider subcode remain open. |
+| [CD-DA Q and other subcode](cdi_unified_verified_status_20260907.md#q) | 40% | **60%** | Low | Live Q track/index-0/1/time/control/CRC pass on a synthetic twelve-track disc; TOC and wider subcode remain open. |
 | [DMA integration](cdi_unified_verified_status_20260907.md#dma) | 60% | **70%** | Medium | Live DVC transfers and both CDIC SRAM boundary/error directions pass; advanced modes and physical arbitration remain open. |
 | [Interrupts](cdi_unified_verified_status_20260907.md#irq) | 65% | **70%** | Medium | Live DVC events, executed MMU fault/recovery and CDIC error status pass; expanded peripheral IRQ sequences remain open. |
 | [Device timing](cdi_unified_verified_status_20260907.md#timing) | 60% | **60%** | Medium | Arithmetic and DMA cadence tests pass; cycle-exact CPU/bus and physical cross-device calibration remain unverified. |
