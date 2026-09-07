@@ -86,9 +86,8 @@ handoff evidence remain open.
 - Validate stored mode-2/3 packets and additional raw-subcode image containers.
 - Wider live TOC inputs: audio-only, data-only, CHD images, multiple sessions and physical lead-in captures.
 - Multisession and additional image containers; CUE index/file/pregap fixes are recorded below.
-- Seek-only completion, read errors, physical lead-out signaling and servo timing.
-- CD-DA command crossing into data: the existing PCM handoff may play data sectors;
-  no DAC assertion or sufficiently specific controller evidence yet supports a fix.
+- Broader seek/error semantics, physical lead-out signaling and servo timing; the driver-controlled seek handshake is verified in the transport checkpoint.
+- CD-DA data-track PCM handoff is fixed and digitally captured in the transport checkpoint; physical output transitions remain open.
 - Audible PCM continuity, retail playthroughs and physical alignment are untested.
 
 Percentages use the existing weights: position/transition packages 1→3, CRC 1→3,
@@ -179,3 +178,10 @@ Exact code certification: `fe5aabb5089aedb6cbb3a9dc8eac587886cf33e2`. CI [340776
 passes the same 219 helper cases / 17,393,781 assertions and 17 integration cases /
 11,718 assertions, generated-source freshness and DMA liveness. This document-only
 certification uses its code parent; it does not change production or test code.
+
+## Transport follow-up
+
+The [transport checkpoint](cdi_transport_checkpoint_20260907.md) supersedes the
+seek-handshake and data-track PCM next tasks above: driver-controlled seek passes,
+and data-track PCM leakage is reproduced and fixed with live DAC sample evidence.
+Broader physical/error behavior and active A/V save continuity remain open.

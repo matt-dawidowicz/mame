@@ -14,7 +14,7 @@ namespace
 class cdi_q_disc
 {
 public:
-	cdi_q_disc(int subcode = 0, unsigned layout = 0)
+	cdi_q_disc(int subcode = 0, unsigned layout = 0, bool pcm = false)
 	{
 		m_dir = std::filesystem::temp_directory_path() / ("mame-cdi-q-" + std::to_string(osd_ticks()));
 		REQUIRE(std::filesystem::create_directory(m_dir));
@@ -30,10 +30,15 @@ public:
 			if (layout >= 2 && lba >= 300 && lba < 450)
 				continue; // virtual pregap consumes logical time, no file bytes
 			std::array<uint8_t, 2352> sector{};
+			bool const pcm_audio = lba < 600 || (lba >= 675 && lba < 750);
+			if (pcm) sector.fill(pcm_audio ? 0x11 : 0x55);
 			// Paired bytes survive the audio sample endian conversion.
-			sector[32] = sector[33] = uint8_t(lba >> 8);
-			sector[34] = sector[35] = uint8_t(lba);
-			if (lba >= 600)
+			if (!pcm)
+			{
+				sector[32] = sector[33] = uint8_t(lba >> 8);
+				sector[34] = sector[35] = uint8_t(lba);
+			}
+			if (lba >= 600 && !(pcm && pcm_audio))
 			{
 				std::fill(sector.begin() + 1, sector.begin() + 11, 0xff);
 				unsigned const absolute = lba + 150;
@@ -95,7 +100,10 @@ public:
 		if (layout == 1 || layout == 2) cue << "FILE \"data.bin\" BINARY\n";
 		for (unsigned track = 3; track <= 12; ++track)
 		{
-			cue << string_format("  TRACK %02u MODE1/2352%s\n    FLAGS DCP\n", track, format);
+			if (pcm && track == 4)
+				cue << "  TRACK 04 AUDIO\n";
+			else
+				cue << string_format("  TRACK %02u MODE1/2352%s\n    FLAGS DCP\n", track, format);
 			unsigned const frame = (layout == 0 ? 600 : layout == 3 ? 450 : 0) + 75 * (track - 3);
 			index(1, frame);
 			if (track == 3) index(2, frame + 2);

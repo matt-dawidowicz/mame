@@ -15,7 +15,7 @@ STATUS:
 
 TODO:
 
-- Resolve seek-only completion and exact command-complete behavior.
+- Extend seek/command-complete evidence beyond the driver-controlled Q/DBUF handshake.
 - Improve TOC/subcode, EDC/ECC, error/status, and end-of-disc signaling.
 - Refine AUDCTL/audio ownership and cycle-level DMA/IRQ timing from hardware
   or firmware evidence rather than title-specific behavior.
@@ -756,7 +756,9 @@ void cdicdic_device::process_disc_sector()
 		if (audio_sector)
 			LOGMASKED(LOG_SECTORS, "Audio is selected\n");
 	}
-	else if (m_disc_mode == DISC_CDDA)
+	// CD-DA can still acquire Q on a data track, but its main-channel bytes
+	// are not PCM. Do not enqueue them, including in the pre-start buffer.
+	else if (m_disc_mode == DISC_CDDA && m_cdrom->get_track_type(q_track) == cdrom_file::CD_TRACK_AUDIO)
 	{
 		uint8_t const adr_control = uint8_t(
 			m_cdrom->get_adr_control(q_track));
@@ -1303,6 +1305,9 @@ void cdicdic_device::handle_cdic_command()
 			break;
 		case cdic_hle::command::read_mode1:
 		case cdic_hle::command::seek:
+			// cdapdriv completes a seek from successive Q positions, then clears
+			// DBUF bit 14. Rounded targets may need multiple sectors; do not
+			// invent a one-sector auto-stop (see the transport checkpoint).
 			init_disc_read(DISC_MODE1);
 			break;
 		case cdic_hle::command::read_mode2:

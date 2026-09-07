@@ -6,34 +6,35 @@ synthetic Q/TOC evidence. The current source certification is below. Historical 
 
 ## Current certification — 2026-09-07
 
-Verified code: `fe5aabb5089aedb6cbb3a9dc8eac587886cf33e2`. The generic CUE follow-up reproduces
-210 failed assertions before the fix (3 cases / 3,001 assertions), then passes
-3,436 assertions in those cases. Full expanded local gates pass:
+Transport candidate based on `b742233acc64e368e59ffc5bc3f65be11758d99c`; exact code certification follows the
+code/test/documentation commit. Local gates pass:
 
 - Production CD-i emulator build and `./mame -validate` (exit 0).
 - 17,393,781 assertions / 219 helper cases.
-- 11,718 assertions / 17 emulator-linked cases, including generic CD-ROM tests.
-- DVC DMA liveness GREEN; Musashi regeneration produces no tracked-source diff.
+- 11,796 assertions / 19 emulator-linked cases.
+- DVC DMA liveness GREEN; regenerated Musashi output matches committed sources.
 
-The reader now normalizes CUE indexes, owns pregaps in the upcoming track,
-distinguishes logical/physical storage offsets, resets offsets across FILE changes,
-and rejects short payload/subcode reads. CDIC uses these indexes for fallback Q.
-Four generated CUE layouts and padded CHDs exercise this without retail assets.
-Exact-source CI [34077601590](https://github.com/matt-dawidowicz/mame/actions/runs/34077601590) also passes: 219 helper cases / 17,393,781 assertions,
-17 integration cases / 11,718 assertions, DMA liveness and generated-source freshness. No sanitizer, all-system build,
-physical hardware or retail playthrough is claimed.
+The supplied cdapdriv firmware establishes driver-controlled seek completion:
+successive Q positions, XBUF IRQ acknowledgement, then software clearing DBUF bit
+14. Live rounded/backward seek, abort and read-after-seek fixtures pass without
+changing this production behavior. A separate PCM regression reproduces data-track
+bytes entering both DACs; the fix gates PCM handoff by image track type while
+retaining Q delivery. Exact audio sample counts and data-to-audio resumption pass.
+See the [transport checkpoint](cdi_transport_checkpoint_20260907.md).
 
-Same weighted worksheet: SCC **75%**, MMU **75%**, CDIC **70%**, DMA **70%**,
+Prior exact-source CI [34077601590](https://github.com/matt-dawidowicz/mame/actions/runs/34077601590)
+remains historical; transport CI is pending publication. No new physical capture,
+executed firmware playthrough, sanitizer or full all-system MAME build is claimed.
+
+Scoped estimates remain SCC **75%**, MMU **75%**, CDIC **70%**, DMA **70%**,
 interrupts **70%**, CD-DA **65%**, Q/subcode **70%**, disc handling **60%**.
-This strengthens existing obligations without closing their wider evidence gaps;
-physical fidelity and compatibility remain unestimated. See the
-[Q checkpoint](cdi_q_checkpoint_20260907.md#generic-cue-and-chd-follow-up--2026-09-07)
-for implementation, reproduction and uncertainty.
+The new evidence strengthens partial obligations; it does not close full command,
+save/restore, reference-media or hardware-fidelity scope.
 
-Generic CUE higher indexes and shared/separate stored/virtual gaps now pass,
-including live CDIC SRAM, CHD padding and explicit truncated-read failure.
-Next: seek-only completion and data-track PCM handoff once controller/output
-evidence establishes the expected behavior; multisession and other formats remain open.
+Driver-controlled seek completion now passes a live Q/IRQ/DBUF fixture.
+Data-track bytes are excluded from CD-DA PCM, with exact digital sample counts
+verified through audio/data transitions. Next: sustained decoded A/V and active
+save/load continuity, plus broader transport error and multisession evidence.
 
 ## Historical consolidation method and evidence boundary
 
@@ -108,7 +109,8 @@ within the same five-point reporting band.
    RTE, guest repair and instruction retry pass. Full silicon semantics remain open.
 3. **CD-DA/Q:** track/index-0/1/relative time now pass live synthetic-disc tests.
    Stored raw Q, complete TOC, CUE higher indexes and four file/pregap layouts
-   now pass. Continue with seek-only completion and data-track PCM evidence.
+   now pass. Driver-controlled seek and data-track PCM exclusion also pass;
+   continue with active PCM save/load and broader transport error semantics.
 
 4. **A/V and saves:** 30-minute arithmetic is not a decoded/presented movie.
    The live video save case uses a sequence header, not decoded picture history.
@@ -235,7 +237,7 @@ Verification: Live Q/TOC and four shared/separate CUE layouts with stored/virtua
 
 | Obligation | Weight | Previous grade | Current grade | Rationale and remaining gaps |
 | --- | ---: | ---: | ---: | --- |
-| Commands and transport | 15 | 2 | 2 | Read/stop state exists; seek-only completion and errors remain modeled. |
+| Commands and transport | 15 | 2 | 2 | Driver-controlled seek completion and abort pass live Q/IRQ/DBUF tests; wider command/error semantics remain modeled. |
 | Mode-2 routing and coding | 15 | 4 | 4 | Audio exhausts standards routing, coding and selected parameter policy. |
 | Buffers and delivery | 15 | 3 | 3 | Measured double-buffer behavior; no full disc-device campaign. |
 | Audio control and handoff | 15 | 3 | 3 | Audio fixes AUDCTL/playback/sector ownership; physical edges remain. |
@@ -252,7 +254,7 @@ Documentation: [docs/cdi_audio_compatibility_matrix_20260906.md](../docs/cdi_aud
 
 Next action: Validate seek-only completion and mixed-mode data-track PCM gating; extend image-layout coverage.
 
-Current live disc evidence: [Q checkpoint](cdi_q_checkpoint_20260907.md).
+Current live disc evidence: [Q checkpoint](cdi_q_checkpoint_20260907.md) and [transport checkpoint](cdi_transport_checkpoint_20260907.md).
 
 <a id="mcd"></a>
 
@@ -406,17 +408,17 @@ Next action: Keep core reference gates; acquire silicon arithmetic and retail-sc
 
 Implementation: PCM sector handoff, gating, cadence and de-emphasis exist.
 
-Verification: Synthetic audio/data Q, raw-subcode fallback, complete TOC and repositioning pass; audible output and broader transport semantics remain unverified.
+Verification: Live driver-controlled seek and exact digital PCM counts across audio/data transitions pass; physical output and broader transport/save semantics remain unverified.
 
 | Obligation | Weight | Previous grade | Current grade | Rationale and remaining gaps |
 | --- | ---: | ---: | ---: | --- |
-| Transport command state | 15 | 2 | 2 | Start/stop/read model; no complete pause/seek reference campaign. |
-| PCM sector handoff | 20 | 3 | 3 | Audio 588-frame sector model and pre-start buffer; no live output sample capture. |
+| Transport command state | 15 | 2 | 2 | Driver-style rounded/backward seek, Q IRQ acknowledgement, DBUF completion/abort and read-after-seek pass; complete pause/error and physical timing references remain open. |
+| PCM sector handoff | 20 | 3 | 3 | Live DAC hooks verify exact 588-frame sector counts, data-track exclusion and audio resumption. Physical analogue output and queued control edges remain open. |
 | Playback gating/cadence | 15 | 3 | 3 | Audio fixes AUDCTL and 75 Hz events. |
 | Track/index transitions | 15 | 1 | 3 | Live shared/separate-file stored/virtual pregaps and CUE indexes through 12 pass; wider formats and physical transition timing remain open. |
-| Position/subcode | 15 | 1 | 3 | Track-relative and absolute Q, backward command repositioning and lead-out no-fabrication checks pass; seek-only completion and hardware alignment remain open. |
+| Position/subcode | 15 | 1 | 3 | Live Q supports rounded/backward driver-controlled seek completion and abort, alongside track/time and lead-out guards. Other firmware, error/status and hardware alignment remain open. |
 | Pre-emphasis | 10 | 3 | 3 | Image flags and response tested. |
-| Mixed-mode runtime | 5 | 0 | 1 | Synthetic audio/data Q delivery passes; audible output, mixed-mode DAC gating and retail compatibility remain unverified. |
+| Mixed-mode runtime | 5 | 0 | 1 | Generated mixed-mode tracks pass Q delivery and exact digital PCM handoff/gating checks; physical output, active saves and retail compatibility remain unverified. |
 | Physical alignment/servo | 5 | 0 | 0 | Unmeasured. |
 
 Implementation: [src/mame/philips/cdiaudio.h](../src/mame/philips/cdiaudio.h), [src/mame/philips/cdiaudio_dsp56001.h](../src/mame/philips/cdiaudio_dsp56001.h), [src/mame/philips/cdicdic.cpp](../src/mame/philips/cdicdic.cpp), [src/mame/philips/cdicdic_state.h](../src/mame/philips/cdicdic_state.h), [src/mame/philips/cdidvc.cpp](../src/mame/philips/cdidvc.cpp).
@@ -425,9 +427,9 @@ Tests: [tests/emu/philips/cdi_audio_arithmetic.cpp](../tests/emu/philips/cdi_aud
 
 Documentation: [docs/cdi_audio_arithmetic_checkpoint.md](../docs/cdi_audio_arithmetic_checkpoint.md), [docs/cdi_audio_compatibility_matrix_20260906.md](../docs/cdi_audio_compatibility_matrix_20260906.md), [docs/cdi_audio_fidelity.md](../docs/cdi_audio_fidelity.md), [docs/cdi_audio_final_certification_20260906.md](../docs/cdi_audio_final_certification_20260906.md).
 
-Next action: Validate data-track DAC gating and seek-only completion; extend image layouts.
+Next action: Validate active PCM save/load and sustained playback; extend command/error and image-layout coverage.
 
-Current live disc evidence: [Q checkpoint](cdi_q_checkpoint_20260907.md).
+Current live disc evidence: [Q checkpoint](cdi_q_checkpoint_20260907.md) and [transport checkpoint](cdi_transport_checkpoint_20260907.md).
 
 <a id="q"></a>
 
@@ -457,7 +459,7 @@ Documentation: [docs/cdi_audio_compatibility_matrix_20260906.md](../docs/cdi_aud
 
 Next action: Validate stored Q modes 2/3 and multisession inputs; retain physical lead-in/status uncertainty.
 
-Current live disc evidence: [Q checkpoint](cdi_q_checkpoint_20260907.md).
+Current live disc evidence: [Q checkpoint](cdi_q_checkpoint_20260907.md) and [transport checkpoint](cdi_transport_checkpoint_20260907.md).
 
 <a id="dma"></a>
 
@@ -689,11 +691,11 @@ Verification: Synthetic Q/TOC, four CUE layouts, normalized higher indexes, payl
 | Obligation | Weight | Previous grade | Current grade | Rationale and remaining gaps |
 | --- | ---: | ---: | ---: | --- |
 | Sector ingress | 25 | 3 | 3 | Audio distinguishes CD-DA/header validation and endian word paths. |
-| Data/audio filtering | 20 | 3 | 3 | Audio has exhaustive routing helper; complete device/media proof pending. |
-| Command transport | 20 | 2 | 2 | Read/stop model; seek-only behavior unresolved. |
+| Data/audio filtering | 20 | 3 | 3 | Live CD-DA DAC output excludes data-track bytes and resumes audio; wider XA/device/media and physical filtering proof remains open. |
+| Command transport | 20 | 2 | 2 | Live driver-controlled seek Q/IRQ/DBUF completion, abort and read-after-seek pass; complete command/error behavior remains open. |
 | TOC/subcode | 15 | 1 | 3 | Synthetic Q/TOC, four CUE layouts, normalized higher indexes, payload/subcode offsets and truncated-read errors pass. Generic CHD gaps/padding pass; multisession and physical status remain open. |
 | Error recovery | 10 | 1 | 1 | Truncated generic payload/subcode reads fail explicitly; physical CDIC error/status recovery remains unmodeled. |
-| Mixed-mode/multisession | 10 | 0 | 1 | Four shared/separate stored/virtual-gap CUE layouts pass Q delivery; multisession, other containers and mixed-mode PCM output remain open. |
+| Mixed-mode/multisession | 10 | 0 | 1 | Four CUE layouts pass Q delivery and generated audio/data transitions pass exact digital PCM checks; multisession, active saves, other containers and hardware remain open. |
 
 Implementation: [src/devices/cpu/dsp56000/dsp56000.cpp](../src/devices/cpu/dsp56000/dsp56000.cpp), [src/mame/philips/cdi.cpp](../src/mame/philips/cdi.cpp), [src/mame/philips/cdicdic.cpp](../src/mame/philips/cdicdic.cpp), [src/mame/philips/cdicdic_memory.h](../src/mame/philips/cdicdic_memory.h), [src/mame/philips/cdicdic_state.h](../src/mame/philips/cdicdic_state.h), [src/mame/philips/cdimono2.h](../src/mame/philips/cdimono2.h).
 
@@ -701,9 +703,9 @@ Tests: [tests/emu/philips/cdi_dvc_edge_integration.cpp](../tests/emu/philips/cdi
 
 Documentation: [docs/cdi_audio_compatibility_matrix_20260906.md](../docs/cdi_audio_compatibility_matrix_20260906.md), [docs/cdi_audio_fidelity_campaign.md](../docs/cdi_audio_fidelity_campaign.md), [docs/cdi_audio_final_certification_20260906.md](../docs/cdi_audio_final_certification_20260906.md), [docs/cdi_dma_av_optional_dvc_checkpoint_20260906.md](../docs/cdi_dma_av_optional_dvc_checkpoint_20260906.md), [docs/cdi_modernization_status.md](../docs/cdi_modernization_status.md).
 
-Next action: Establish seek-only completion and data-track PCM handoff with controller/output evidence; expand multisession and malformed-image fixtures.
+Next action: Validate active PCM save/load, sustained decoded A/V and broader command/error transitions; expand multisession and malformed-image fixtures.
 
-Current live disc evidence: [Q checkpoint](cdi_q_checkpoint_20260907.md).
+Current live disc evidence: [Q checkpoint](cdi_q_checkpoint_20260907.md) and [transport checkpoint](cdi_transport_checkpoint_20260907.md).
 
 <a id="glue"></a>
 
@@ -774,7 +776,7 @@ Verification: Strong component tests and synthetic CD-DA Q/TOC coexist with miss
 | XA compressed decode | 20 | 3 | 3 | Native decode broad; silicon arithmetic unproven. |
 | Layer II compressed decode | 20 | 3 | 3 | Software reference is tolerant, not bit-exact. |
 | Buffer/output delivery | 20 | 3 | 3 | Software queues/cadence tested; physical edges missing. |
-| CD-DA transport | 15 | 2 | 2 | Synthetic Q/TOC delivery now passes; audible mixed-mode transport and complete seek/pause behavior remain open. |
+| CD-DA transport | 15 | 2 | 2 | Synthetic Q/TOC and driver-controlled seek pass; mixed-mode digital PCM gating is verified. Physical output, full pause/error behavior and retail playback remain open. |
 | Gain/emphasis/control | 15 | 3 | 3 | Q22 and filter tests; CDIC quantizer and switch unknown. |
 | Cross-stream/output continuity | 10 | 2 | 2 | Helpers/live commands; no true branching/movie/output capture. |
 

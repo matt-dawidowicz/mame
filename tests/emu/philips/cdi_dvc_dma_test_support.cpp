@@ -13,10 +13,11 @@
 #include "cdi_dvc_state_integration.cpp"
 #include "cdi_mmu_integration.cpp"
 #include "cdi_q_integration.cpp"
+#include "cdi_transport_integration.cpp"
 
 #include "drivenum.h"
 
-std::size_t const driver_list::s_driver_count = 9;
+std::size_t const driver_list::s_driver_count = 10;
 game_driver const * const driver_list::s_drivers_sorted[] =
 {
 	&GAME_NAME(cdiaudma),
@@ -27,7 +28,8 @@ game_driver const * const driver_list::s_drivers_sorted[] =
 	&GAME_NAME(cdihasdvct),
 	&GAME_NAME(cdimmaint),
 	&GAME_NAME(cdinodvct),
-	&GAME_NAME(cdiqtest)
+	&GAME_NAME(cdiqtest),
+	&GAME_NAME(cditrans)
 };
 
 const char *emulator_info::get_appname() { return "MAME"; }
@@ -43,6 +45,6 @@ int emulator_info::start_frontend(emu_options &options, osd_interface &osd, int 
 bool emulator_info::draw_user_interface(running_machine &machine) { return false; }
 void emulator_info::periodic_check() { }
 bool emulator_info::frame_hook() { return false; }
-void emulator_info::sound_hook(const std::map<std::string, std::vector<std::pair<const float *, int>>> &sound) { }
+void emulator_info::sound_hook(const std::map<std::string, std::vector<std::pair<const float *, int>>> &sound) { cdi_transport_sound_hook(sound); }
 void emulator_info::layout_script_cb(layout_file &file, const char *script) { }
 bool emulator_info::standalone() { return true; }

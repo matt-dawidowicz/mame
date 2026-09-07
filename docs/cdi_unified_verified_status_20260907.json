@@ -2,8 +2,8 @@
   "schema_version": 2,
   "audit_date": "2026-09-07",
   "branch": "cdi-unified",
-  "reviewed_head": "fe5aabb5089aedb6cbb3a9dc8eac587886cf33e2",
-  "verified_code_commit": "fe5aabb5089aedb6cbb3a9dc8eac587886cf33e2",
+  "reviewed_head": "b742233acc64e368e59ffc5bc3f65be11758d99c",
+  "verified_code_commit": null,
   "upstream_commit": "1fb001f9bfab5cf0148fdfe8755659c4a869831b",
   "prior_report": "cdi_verified_status_20260906.json",
   "prior_audio_baseline": "442e5050846e680ed653fc1297b66df588b314e2",
@@ -283,7 +283,7 @@
           "weight": 15,
           "prior_grade": 2,
           "grade": 2,
-          "rationale": "Read/stop state exists; seek-only completion and errors remain modeled.",
+          "rationale": "Driver-controlled seek completion and abort pass live Q/IRQ/DBUF tests; wider command/error semantics remain modeled.",
           "prior_rationale": "Read/stop state exists; seek-only completion and errors remain modeled."
         },
         {
@@ -365,7 +365,8 @@
         "tests/emu/philips/cdi_dvc_edge_integration.cpp",
         "tests/emu/philips/cdi_q_integration.cpp",
         "tests/emu/philips/cdicdic.cpp",
-        "tests/emu/philips/cdicdic_memory.cpp"
+        "tests/emu/philips/cdicdic_memory.cpp",
+        "tests/emu/philips/cdi_transport_integration.cpp"
       ],
       "documentation": [
         "docs/cdi_audio_compatibility_matrix_20260906.md",
@@ -374,10 +375,11 @@
         "docs/cdi_audio_final_certification_20260906.md",
         "docs/cdi_dma_av_optional_dvc_checkpoint_20260906.md",
         "docs/cdi_q_checkpoint_20260907.md",
-        "docs/cdi_unified_verified_status_20260907.md#cdic"
+        "docs/cdi_unified_verified_status_20260907.md#cdic",
+        "docs/cdi_transport_checkpoint_20260907.md"
       ],
       "known_inaccuracies_and_evidence_gaps": [
-        "Read/stop state exists; seek-only completion and errors remain modeled.",
+        "Driver-controlled seek completion and abort pass live Q/IRQ/DBUF tests; wider command/error semantics remain modeled.",
         "Measured double-buffer behavior; no full disc-device campaign.",
         "Audio fixes AUDCTL/playback/sector ownership; physical edges remain.",
         "Both live DMA directions stop safely at 16 KiB and report SCC device bus error; clipping/error policy is emulator safety, not measured silicon behavior.",
@@ -394,10 +396,10 @@
         "Error/status fidelity",
         "Active save/load"
       ],
-      "last_reviewed_commit": "fe5aabb5089aedb6cbb3a9dc8eac587886cf33e2",
-      "last_verified_commit": "fe5aabb5089aedb6cbb3a9dc8eac587886cf33e2",
+      "last_reviewed_commit": "b742233acc64e368e59ffc5bc3f65be11758d99c",
+      "last_verified_commit": null,
       "last_verification_date": "2026-09-07",
-      "verification_basis": "Exact source passes local production build/validity and CI with 17-case integration, 219-case helpers, generated-source freshness and DMA liveness; see Q checkpoint. Hardware and retail remain unverified.",
+      "verification_basis": "Live driver-style seek and DAC sample capture pass in the current candidate, with 19 integration cases and production build/validity. Firmware was disassembled, not executed; physical behavior remains unverified.",
       "prior_audio_raw_percent": 56.25,
       "last_test_date": "2026-09-07"
     },
@@ -1053,7 +1055,7 @@
           "weight": 15,
           "prior_grade": 2,
           "grade": 2,
-          "rationale": "Start/stop/read model; no complete pause/seek reference campaign.",
+          "rationale": "Driver-style rounded/backward seek, Q IRQ acknowledgement, DBUF completion/abort and read-after-seek pass; complete pause/error and physical timing references remain open.",
           "prior_rationale": "Start/stop/read model; no complete pause/seek reference campaign."
         },
         {
@@ -1061,7 +1063,7 @@
           "weight": 20,
           "prior_grade": 3,
           "grade": 3,
-          "rationale": "Audio 588-frame sector model and pre-start buffer; no live output sample capture.",
+          "rationale": "Live DAC hooks verify exact 588-frame sector counts, data-track exclusion and audio resumption. Physical analogue output and queued control edges remain open.",
           "prior_rationale": "Audio 588-frame sector model and pre-start buffer; no live output sample capture."
         },
         {
@@ -1085,7 +1087,7 @@
           "weight": 15,
           "prior_grade": 1,
           "grade": 3,
-          "rationale": "Track-relative and absolute Q, backward command repositioning and lead-out no-fabrication checks pass; seek-only completion and hardware alignment remain open.",
+          "rationale": "Live Q supports rounded/backward driver-controlled seek completion and abort, alongside track/time and lead-out guards. Other firmware, error/status and hardware alignment remain open.",
           "prior_rationale": "Relative fields reuse absolute MSF; no position oracle."
         },
         {
@@ -1101,7 +1103,7 @@
           "weight": 5,
           "prior_grade": 0,
           "grade": 1,
-          "rationale": "Synthetic audio/data Q delivery passes; audible output, mixed-mode DAC gating and retail compatibility remain unverified.",
+          "rationale": "Generated mixed-mode tracks pass Q delivery and exact digital PCM handoff/gating checks; physical output, active saves and retail compatibility remain unverified.",
           "prior_rationale": "No retained fixture."
         },
         {
@@ -1114,8 +1116,8 @@
         }
       ],
       "implementation_status": "PCM sector handoff, gating, cadence and de-emphasis exist.",
-      "verification_status": "Synthetic audio/data Q, raw-subcode fallback, complete TOC and repositioning pass; audible output and broader transport semantics remain unverified.",
-      "next_action": "Validate data-track DAC gating and seek-only completion; extend image layouts.",
+      "verification_status": "Live driver-controlled seek and exact digital PCM counts across audio/data transitions pass; physical output and broader transport/save semantics remain unverified.",
+      "next_action": "Validate active PCM save/load and sustained playback; extend command/error and image-layout coverage.",
       "raw_percent": 65.0,
       "percent": 65,
       "source": [
@@ -1131,7 +1133,8 @@
         "tests/emu/philips/cdi_fma_attenuation.cpp",
         "tests/emu/philips/cdi_q_integration.cpp",
         "tests/emu/philips/cdicdic.cpp",
-        "tests/emu/philips/cdidvc_audio_reference.cpp"
+        "tests/emu/philips/cdidvc_audio_reference.cpp",
+        "tests/emu/philips/cdi_transport_integration.cpp"
       ],
       "documentation": [
         "docs/cdi_audio_arithmetic_checkpoint.md",
@@ -1139,16 +1142,17 @@
         "docs/cdi_audio_fidelity.md",
         "docs/cdi_audio_final_certification_20260906.md",
         "docs/cdi_q_checkpoint_20260907.md",
-        "docs/cdi_unified_verified_status_20260907.md#cdda"
+        "docs/cdi_unified_verified_status_20260907.md#cdda",
+        "docs/cdi_transport_checkpoint_20260907.md"
       ],
       "known_inaccuracies_and_evidence_gaps": [
-        "Start/stop/read model; no complete pause/seek reference campaign.",
-        "Audio 588-frame sector model and pre-start buffer; no live output sample capture.",
+        "Driver-style rounded/backward seek, Q IRQ acknowledgement, DBUF completion/abort and read-after-seek pass; complete pause/error and physical timing references remain open.",
+        "Live DAC hooks verify exact 588-frame sector counts, data-track exclusion and audio resumption. Physical analogue output and queued control edges remain open.",
         "Audio fixes AUDCTL and 75 Hz events.",
         "Live shared/separate-file stored/virtual pregaps and CUE indexes through 12 pass; wider formats and physical transition timing remain open.",
-        "Track-relative and absolute Q, backward command repositioning and lead-out no-fabrication checks pass; seek-only completion and hardware alignment remain open.",
+        "Live Q supports rounded/backward driver-controlled seek completion and abort, alongside track/time and lead-out guards. Other firmware, error/status and hardware alignment remain open.",
         "Image flags and response tested.",
-        "Synthetic audio/data Q delivery passes; audible output, mixed-mode DAC gating and retail compatibility remain unverified.",
+        "Generated mixed-mode tracks pass Q delivery and exact digital PCM handoff/gating checks; physical output, active saves and retail compatibility remain unverified.",
         "Unmeasured."
       ],
       "remaining_work": [
@@ -1161,10 +1165,10 @@
         "Mixed-mode runtime",
         "Physical alignment/servo"
       ],
-      "last_reviewed_commit": "fe5aabb5089aedb6cbb3a9dc8eac587886cf33e2",
-      "last_verified_commit": "fe5aabb5089aedb6cbb3a9dc8eac587886cf33e2",
+      "last_reviewed_commit": "b742233acc64e368e59ffc5bc3f65be11758d99c",
+      "last_verified_commit": null,
       "last_verification_date": "2026-09-07",
-      "verification_basis": "Exact source passes local production build/validity and CI with 17-case integration, 219-case helpers, generated-source freshness and DMA liveness; see Q checkpoint. Hardware and retail remain unverified.",
+      "verification_basis": "Live driver-style seek and DAC sample capture pass in the current candidate, with 19 integration cases and production build/validity. Firmware was disassembled, not executed; physical behavior remains unverified.",
       "prior_audio_raw_percent": 48.75,
       "last_test_date": "2026-09-07"
     },
@@ -1246,13 +1250,15 @@
       ],
       "tests": [
         "tests/emu/philips/cdi_q_integration.cpp",
-        "tests/emu/philips/cdicdic.cpp"
+        "tests/emu/philips/cdicdic.cpp",
+        "tests/emu/philips/cdi_transport_integration.cpp"
       ],
       "documentation": [
         "docs/cdi_audio_compatibility_matrix_20260906.md",
         "docs/cdi_audio_final_certification_20260906.md",
         "docs/cdi_q_checkpoint_20260907.md",
-        "docs/cdi_unified_verified_status_20260907.md#q"
+        "docs/cdi_unified_verified_status_20260907.md#q",
+        "docs/cdi_transport_checkpoint_20260907.md"
       ],
       "known_inaccuracies_and_evidence_gaps": [
         "Four CUE layouts verify INDEX 00/01 and higher indexes through 12, countdown, relative reset and absolute MSF; valid raw Q overrides metadata. Wider formats and hardware remain open.",
@@ -1268,10 +1274,10 @@
         "P/R-W/multisession",
         "Disc reference campaign"
       ],
-      "last_reviewed_commit": "fe5aabb5089aedb6cbb3a9dc8eac587886cf33e2",
-      "last_verified_commit": "fe5aabb5089aedb6cbb3a9dc8eac587886cf33e2",
+      "last_reviewed_commit": "b742233acc64e368e59ffc5bc3f65be11758d99c",
+      "last_verified_commit": null,
       "last_verification_date": "2026-09-07",
-      "verification_basis": "Exact source passes local production build/validity and CI with 17-case integration, 219-case helpers, generated-source freshness and DMA liveness; see Q checkpoint. Hardware and retail remain unverified.",
+      "verification_basis": "Live driver-style seek and DAC sample capture pass in the current candidate, with 19 integration cases and production build/validity. Firmware was disassembled, not executed; physical behavior remains unverified.",
       "prior_audio_raw_percent": 38.75,
       "last_test_date": "2026-09-07"
     },
@@ -2183,7 +2189,7 @@
           "weight": 20,
           "prior_grade": 3,
           "grade": 3,
-          "rationale": "Audio has exhaustive routing helper; complete device/media proof pending.",
+          "rationale": "Live CD-DA DAC output excludes data-track bytes and resumes audio; wider XA/device/media and physical filtering proof remains open.",
           "prior_rationale": "Audio has exhaustive routing helper; complete device/media proof pending."
         },
         {
@@ -2191,7 +2197,7 @@
           "weight": 20,
           "prior_grade": 2,
           "grade": 2,
-          "rationale": "Read/stop model; seek-only behavior unresolved.",
+          "rationale": "Live driver-controlled seek Q/IRQ/DBUF completion, abort and read-after-seek pass; complete command/error behavior remains open.",
           "prior_rationale": "Read/stop model; seek-only behavior unresolved."
         },
         {
@@ -2215,13 +2221,13 @@
           "weight": 10,
           "prior_grade": 0,
           "grade": 1,
-          "rationale": "Four shared/separate stored/virtual-gap CUE layouts pass Q delivery; multisession, other containers and mixed-mode PCM output remain open.",
+          "rationale": "Four CUE layouts pass Q delivery and generated audio/data transitions pass exact digital PCM checks; multisession, active saves, other containers and hardware remain open.",
           "prior_rationale": "No retained reference campaign."
         }
       ],
       "implementation_status": "Sector ingress, data/audio filters and command transport model exist.",
       "verification_status": "Synthetic Q/TOC, four CUE layouts, normalized higher indexes, payload/subcode offsets and truncated-read errors pass. Generic CHD gaps/padding pass; multisession and physical status remain open.",
-      "next_action": "Establish seek-only completion and data-track PCM handoff with controller/output evidence; expand multisession and malformed-image fixtures.",
+      "next_action": "Validate active PCM save/load, sustained decoded A/V and broader command/error transitions; expand multisession and malformed-image fixtures.",
       "raw_percent": 60.0,
       "percent": 60,
       "source": [
@@ -2238,7 +2244,8 @@
         "tests/emu/philips/cdi_q_integration.cpp",
         "tests/emu/philips/cdicdic.cpp",
         "tests/emu/philips/cdicdic_memory.cpp",
-        "tests/emu/philips/cdimono2.cpp"
+        "tests/emu/philips/cdimono2.cpp",
+        "tests/emu/philips/cdi_transport_integration.cpp"
       ],
       "documentation": [
         "docs/cdi_audio_compatibility_matrix_20260906.md",
@@ -2247,15 +2254,16 @@
         "docs/cdi_dma_av_optional_dvc_checkpoint_20260906.md",
         "docs/cdi_modernization_status.md",
         "docs/cdi_q_checkpoint_20260907.md",
-        "docs/cdi_unified_verified_status_20260907.md#disc"
+        "docs/cdi_unified_verified_status_20260907.md#disc",
+        "docs/cdi_transport_checkpoint_20260907.md"
       ],
       "known_inaccuracies_and_evidence_gaps": [
         "Audio distinguishes CD-DA/header validation and endian word paths.",
-        "Audio has exhaustive routing helper; complete device/media proof pending.",
-        "Read/stop model; seek-only behavior unresolved.",
+        "Live CD-DA DAC output excludes data-track bytes and resumes audio; wider XA/device/media and physical filtering proof remains open.",
+        "Live driver-controlled seek Q/IRQ/DBUF completion, abort and read-after-seek pass; complete command/error behavior remains open.",
         "Synthetic Q/TOC, four CUE layouts, normalized higher indexes, payload/subcode offsets and truncated-read errors pass. Generic CHD gaps/padding pass; multisession and physical status remain open.",
         "Truncated generic payload/subcode reads fail explicitly; physical CDIC error/status recovery remains unmodeled.",
-        "Four shared/separate stored/virtual-gap CUE layouts pass Q delivery; multisession, other containers and mixed-mode PCM output remain open."
+        "Four CUE layouts pass Q delivery and generated audio/data transitions pass exact digital PCM checks; multisession, active saves, other containers and hardware remain open."
       ],
       "remaining_work": [
         "Sector ingress",
@@ -2265,10 +2273,10 @@
         "Error recovery",
         "Mixed-mode/multisession"
       ],
-      "last_reviewed_commit": "fe5aabb5089aedb6cbb3a9dc8eac587886cf33e2",
-      "last_verified_commit": "fe5aabb5089aedb6cbb3a9dc8eac587886cf33e2",
+      "last_reviewed_commit": "b742233acc64e368e59ffc5bc3f65be11758d99c",
+      "last_verified_commit": null,
       "last_verification_date": "2026-09-07",
-      "verification_basis": "Exact source passes local production build/validity and CI with 17-case integration, 219-case helpers, generated-source freshness and DMA liveness; see Q checkpoint. Hardware and retail remain unverified.",
+      "verification_basis": "Live driver-style seek and DAC sample capture pass in the current candidate, with 19 integration cases and production build/validity. Firmware was disassembled, not executed; physical behavior remains unverified.",
       "prior_audio_raw_percent": 50.0,
       "last_test_date": "2026-09-07"
     },
@@ -2519,7 +2527,7 @@
           "weight": 15,
           "prior_grade": 2,
           "grade": 2,
-          "rationale": "Synthetic Q/TOC delivery now passes; audible mixed-mode transport and complete seek/pause behavior remain open.",
+          "rationale": "Synthetic Q/TOC and driver-controlled seek pass; mixed-mode digital PCM gating is verified. Physical output, full pause/error behavior and retail playback remain open.",
           "prior_rationale": "Audio improves gating; track/subcode defects persist."
         },
         {
@@ -2580,7 +2588,7 @@
         "Native decode broad; silicon arithmetic unproven.",
         "Software reference is tolerant, not bit-exact.",
         "Software queues/cadence tested; physical edges missing.",
-        "Synthetic Q/TOC delivery now passes; audible mixed-mode transport and complete seek/pause behavior remain open.",
+        "Synthetic Q/TOC and driver-controlled seek pass; mixed-mode digital PCM gating is verified. Physical output, full pause/error behavior and retail playback remain open.",
         "Q22 and filter tests; CDIC quantizer and switch unknown.",
         "Helpers/live commands; no true branching/movie/output capture."
       ],
@@ -2820,32 +2828,22 @@
     "date": "2026-09-07"
   },
   "local_verification": {
-    "commit": "fe5aabb5089aedb6cbb3a9dc8eac587886cf33e2",
+    "commit": null,
     "date": "2026-09-07",
     "helper_cases": 219,
     "helper_assertions": 17393781,
-    "integration_cases": 17,
-    "integration_assertions": 11718,
+    "integration_cases": 19,
+    "integration_assertions": 11796,
     "conclusion": "success",
     "production_build": "make -j6 -C build/projects/sdl/mame/gmake-linux config=release64 mame",
     "production_validity": "./mame -validate: exit 0",
-    "generated_musashi": "Explicit m68kmake.py regeneration; committed .cpp/.h match exactly",
+    "generated_musashi": "Regenerated to scratch; both .h and .cpp compare byte-identical",
     "dma_liveness": "GREEN",
-    "commands_document": "docs/cdi_q_checkpoint_20260907.md",
-    "scope": "Exact committed production code; generated media only, CD-i-targeted build, no sanitizer/hardware/retail claim"
+    "commands_document": "docs/cdi_transport_checkpoint_20260907.md",
+    "scope": "Current transport candidate; generated media and driver-disassembly evidence, exact code certification follows",
+    "candidate_base_commit": "b742233acc64e368e59ffc5bc3f65be11758d99c"
   },
   "previous_final_ci": {
-    "url": "https://github.com/matt-dawidowicz/mame/actions/runs/34075842095",
-    "run_id": 34075842095,
-    "tested_commit": "ee18320370b6c7e0abfd901bf0deafa543da0d6b",
-    "conclusion": "success",
-    "helper_cases": 219,
-    "helper_assertions": 17393781,
-    "integration_cases": 13,
-    "integration_assertions": 2745,
-    "execution_date": "2026-09-07"
-  },
-  "final_ci": {
     "url": "https://github.com/matt-dawidowicz/mame/actions/runs/34077601590",
     "run_id": 34077601590,
     "tested_commit": "fe5aabb5089aedb6cbb3a9dc8eac587886cf33e2",
@@ -2855,5 +2853,10 @@
     "integration_cases": 17,
     "integration_assertions": 11718,
     "execution_date": "2026-09-07"
-  }
+  },
+  "final_ci": {
+    "tested_commit": null,
+    "conclusion": "pending_publication"
+  },
+  "candidate_base_commit": "b742233acc64e368e59ffc5bc3f65be11758d99c"
 }

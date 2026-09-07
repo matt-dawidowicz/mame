@@ -13,34 +13,35 @@ detailed audio ledger on this unified branch.
 
 ## Current certification — 2026-09-07
 
-Verified code: `fe5aabb5089aedb6cbb3a9dc8eac587886cf33e2`. The generic CUE follow-up reproduces
-210 failed assertions before the fix (3 cases / 3,001 assertions), then passes
-3,436 assertions in those cases. Full expanded local gates pass:
+Transport candidate based on `b742233acc64e368e59ffc5bc3f65be11758d99c`; exact code certification follows the
+code/test/documentation commit. Local gates pass:
 
 - Production CD-i emulator build and `./mame -validate` (exit 0).
 - 17,393,781 assertions / 219 helper cases.
-- 11,718 assertions / 17 emulator-linked cases, including generic CD-ROM tests.
-- DVC DMA liveness GREEN; Musashi regeneration produces no tracked-source diff.
+- 11,796 assertions / 19 emulator-linked cases.
+- DVC DMA liveness GREEN; regenerated Musashi output matches committed sources.
 
-The reader now normalizes CUE indexes, owns pregaps in the upcoming track,
-distinguishes logical/physical storage offsets, resets offsets across FILE changes,
-and rejects short payload/subcode reads. CDIC uses these indexes for fallback Q.
-Four generated CUE layouts and padded CHDs exercise this without retail assets.
-Exact-source CI [34077601590](https://github.com/matt-dawidowicz/mame/actions/runs/34077601590) also passes: 219 helper cases / 17,393,781 assertions,
-17 integration cases / 11,718 assertions, DMA liveness and generated-source freshness. No sanitizer, all-system build,
-physical hardware or retail playthrough is claimed.
+The supplied cdapdriv firmware establishes driver-controlled seek completion:
+successive Q positions, XBUF IRQ acknowledgement, then software clearing DBUF bit
+14. Live rounded/backward seek, abort and read-after-seek fixtures pass without
+changing this production behavior. A separate PCM regression reproduces data-track
+bytes entering both DACs; the fix gates PCM handoff by image track type while
+retaining Q delivery. Exact audio sample counts and data-to-audio resumption pass.
+See the [transport checkpoint](cdi_transport_checkpoint_20260907.md).
 
-Same weighted worksheet: SCC **75%**, MMU **75%**, CDIC **70%**, DMA **70%**,
+Prior exact-source CI [34077601590](https://github.com/matt-dawidowicz/mame/actions/runs/34077601590)
+remains historical; transport CI is pending publication. No new physical capture,
+executed firmware playthrough, sanitizer or full all-system MAME build is claimed.
+
+Scoped estimates remain SCC **75%**, MMU **75%**, CDIC **70%**, DMA **70%**,
 interrupts **70%**, CD-DA **65%**, Q/subcode **70%**, disc handling **60%**.
-This strengthens existing obligations without closing their wider evidence gaps;
-physical fidelity and compatibility remain unestimated. See the
-[Q checkpoint](cdi_q_checkpoint_20260907.md#generic-cue-and-chd-follow-up--2026-09-07)
-for implementation, reproduction and uncertainty.
+The new evidence strengthens partial obligations; it does not close full command,
+save/restore, reference-media or hardware-fidelity scope.
 
-Generic CUE higher indexes and shared/separate stored/virtual gaps now pass,
-including live CDIC SRAM, CHD padding and explicit truncated-read failure.
-Next: seek-only completion and data-track PCM handoff once controller/output
-evidence establishes the expected behavior; multisession and other formats remain open.
+Driver-controlled seek completion now passes a live Q/IRQ/DBUF fixture.
+Data-track bytes are excluded from CD-DA PCM, with exact digital sample counts
+verified through audio/data transitions. Next: sustained decoded A/V and active
+save/load continuity, plus broader transport error and multisession evidence.
 
 ## Meaning of the percentages
 
@@ -71,7 +72,7 @@ fidelity percentage is invented when evidence is insufficient.
 | [MPEG video decode and presentation](cdi_unified_verified_status_20260907.md#mpeg_video) | 55% | **55%** | Low | Packet/event/conversion helpers pass; no retained independent full I/P/B picture corpus or combined displayed-frame oracle. |
 | [DVC audio](cdi_unified_verified_status_20260907.md#dvc_audio) | 80% | **80%** | Medium | Broad helper/reference tests and real DMA ingress pass; reference PCM tolerance and physical DSP/DAC edges remain. |
 | [XA routing and ADPCM](cdi_unified_verified_status_20260907.md#xa) | 75% | **75%** | Medium | Exhaustive helpers and retained exact 4-bit stereo reference exist; other independent modes, silicon and retail evidence remain incomplete. |
-| [CD-DA playback and transport](cdi_unified_verified_status_20260907.md#cdda) | 50% | **65%** | Low | Synthetic audio/data Q, raw-subcode fallback, complete TOC and repositioning pass; audible output and broader transport semantics remain unverified. |
+| [CD-DA playback and transport](cdi_unified_verified_status_20260907.md#cdda) | 50% | **65%** | Low | Live driver-controlled seek and exact digital PCM counts across audio/data transitions pass; physical output and broader transport/save semantics remain unverified. |
 | [CD-DA Q and other subcode](cdi_unified_verified_status_20260907.md#q) | 40% | **70%** | Low | Live 45-packet TOC verifies all twelve tracks, triplicate points, absolute starts, first/last track and complete A2 lead-out. Physical lead-in and multisession remain open. |
 | [DMA integration](cdi_unified_verified_status_20260907.md#dma) | 60% | **70%** | Medium | Live DVC transfers and both CDIC SRAM boundary/error directions pass; advanced modes and physical arbitration remain open. |
 | [Interrupts](cdi_unified_verified_status_20260907.md#irq) | 65% | **70%** | Medium | Live DVC events, executed MMU fault/recovery and CDIC error status pass; expanded peripheral IRQ sequences remain open. |
@@ -109,7 +110,8 @@ fidelity percentage is invented when evidence is insufficient.
 
 1. **CD-DA/Q:** track/index-0/1/relative time now pass live synthetic-disc tests.
    Stored raw Q, complete TOC, CUE higher indexes and four file/pregap layouts
-   now pass. Continue with seek-only completion and data-track PCM evidence.
+   now pass. Driver-controlled seek and data-track PCM exclusion also pass;
+   continue with active PCM save/load and broader transport error semantics.
 
 2. **Decoded A/V and save continuity:** retain decoded pictures and PCM across
    sustained presentation, interactive branches and save/load. Timestamp arithmetic
