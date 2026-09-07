@@ -24,6 +24,12 @@ production code passes; no emulator fix was required. Local gates: 96 focused
 assertions, 11,892 assertions / 20 integration cases and 17,393,781 assertions /
 219 helper cases; validity exit 0 and DMA liveness GREEN. See the
 [save/load checkpoint](cdi_cdda_save_checkpoint_20260907.md) for scope and sensitivity evidence.
+Exact-source [CI 34082755572](https://github.com/matt-dawidowicz/mame/actions/runs/34082755572) passes for
+`65a6a7ac306a613cce4fd4e3c543a474476d437e`: 20 integration cases / 11,892 assertions,
+219 helper cases / 17,393,781 assertions, generated-source freshness and DMA
+liveness. This subsequent documentation-only certification changes no test or
+production behavior.
+
 Grades remain unchanged; sustained decoded A/V and other active modes remain open.
 
 ## Previous transport certification — 2026-09-07

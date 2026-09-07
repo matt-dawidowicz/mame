@@ -83,3 +83,11 @@ the broader CDIC active-mode, transport-error or system save-state obligations.
 Next: sustained decoded pictures and audio, scene/stream transitions and their
 save/load continuity; broader CDIC command/error and active peripheral scenarios.
 No fresh sanitizer or all-system MAME build is claimed.
+
+## Exact-source certification
+
+Exact-source [CI 34082755572](https://github.com/matt-dawidowicz/mame/actions/runs/34082755572) passes for
+`65a6a7ac306a613cce4fd4e3c543a474476d437e`: 20 integration cases / 11,892 assertions,
+219 helper cases / 17,393,781 assertions, generated-source freshness and DMA
+liveness. This subsequent documentation-only certification changes no test or
+production behavior.
