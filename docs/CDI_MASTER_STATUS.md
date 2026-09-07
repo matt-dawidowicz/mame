@@ -14,7 +14,19 @@ verified status updates affected worksheets; development resumes the next action
 [AGENTS.md](../AGENTS.md) defines those modes. The audio campaign remains the
 detailed audio ledger on this unified branch.
 
-## Current certification — 2026-09-07
+## Active CD-DA save/load checkpoint — 2026-09-07
+
+The new live regression saves during active playback, advances, restores and
+repeats the continuation. All 93,492 stereo channel samples, sound callback times,
+Q words/positions and IRQ/register observations match exactly in four scenarios,
+including pending IRQ, an audio-to-data transition and pre-emphasis. Existing
+production code passes; no emulator fix was required. Local gates: 96 focused
+assertions, 11,892 assertions / 20 integration cases and 17,393,781 assertions /
+219 helper cases; validity exit 0 and DMA liveness GREEN. See the
+[save/load checkpoint](cdi_cdda_save_checkpoint_20260907.md) for scope and sensitivity evidence.
+Grades remain unchanged; sustained decoded A/V and other active modes remain open.
+
+## Previous transport certification — 2026-09-07
 
 Verified source: `adf57f583a861e5573e73fa0519e6d5fc76f288a`. Local gates pass:
 
@@ -43,8 +55,9 @@ save/restore, reference-media or hardware-fidelity scope.
 
 Driver-controlled seek completion now passes a live Q/IRQ/DBUF fixture.
 Data-track bytes are excluded from CD-DA PCM, with exact digital sample counts
-verified through audio/data transitions. Next: sustained decoded A/V and active
-save/load continuity, plus broader transport error and multisession evidence.
+verified through audio/data transitions. Active CD-DA save/load now also passes
+the checkpoint above. Next: sustained decoded A/V and its save/load continuity,
+plus broader transport error and multisession evidence.
 
 ## Meaning of the percentages
 
@@ -75,13 +88,13 @@ fidelity percentage is invented when evidence is insufficient.
 | [MPEG video decode and presentation](cdi_unified_verified_status_20260907.md#mpeg_video) | 55% | **55%** | Low | Packet/event/conversion helpers pass; no retained independent full I/P/B picture corpus or combined displayed-frame oracle. |
 | [DVC audio](cdi_unified_verified_status_20260907.md#dvc_audio) | 80% | **80%** | Medium | Broad helper/reference tests and real DMA ingress pass; reference PCM tolerance and physical DSP/DAC edges remain. |
 | [XA routing and ADPCM](cdi_unified_verified_status_20260907.md#xa) | 75% | **75%** | Medium | Exhaustive helpers and retained exact 4-bit stereo reference exist; other independent modes, silicon and retail evidence remain incomplete. |
-| [CD-DA playback and transport](cdi_unified_verified_status_20260907.md#cdda) | 50% | **65%** | Low | Live driver-controlled seek and exact digital PCM counts across audio/data transitions pass; physical output and broader transport/save semantics remain unverified. |
+| [CD-DA playback and transport](cdi_unified_verified_status_20260907.md#cdda) | 50% | **65%** | Low | Live seek, exact mixed-mode PCM counts and four active CD-DA save/load continuations pass; physical output and broader transport/save semantics remain unverified. |
 | [CD-DA Q and other subcode](cdi_unified_verified_status_20260907.md#q) | 40% | **70%** | Low | Live 45-packet TOC verifies all twelve tracks, triplicate points, absolute starts, first/last track and complete A2 lead-out. Physical lead-in and multisession remain open. |
 | [DMA integration](cdi_unified_verified_status_20260907.md#dma) | 60% | **70%** | Medium | Live DVC transfers and both CDIC SRAM boundary/error directions pass; advanced modes and physical arbitration remain open. |
 | [Interrupts](cdi_unified_verified_status_20260907.md#irq) | 65% | **70%** | Medium | Live DVC events, executed MMU fault/recovery and CDIC error status pass; expanded peripheral IRQ sequences remain open. |
 | [Device timing](cdi_unified_verified_status_20260907.md#timing) | 60% | **60%** | Medium | Arithmetic and DMA cadence tests pass; cycle-exact CPU/bus and physical cross-device calibration remain unverified. |
 | [A/V synchronization](cdi_unified_verified_status_20260907.md#av) | 45% | **45%** | Medium | Long-run arithmetic passes; it is not a 30-minute decoded/presented movie or host-output drift measurement. |
-| [Save states](cdi_unified_verified_status_20260907.md#save) | 60% | **60%** | Medium | Live audio/control and MMU query snapshots pass; decoded pictures and active peripheral continuation lack complete fixtures. |
+| [Save states](cdi_unified_verified_status_20260907.md#save) | 60% | **60%** | Medium | Live audio/control, MMU and active CD-DA PCM/Q/IRQ snapshots pass; decoded pictures and other active peripherals lack complete continuation fixtures. |
 | [SLAVE HLE](cdi_unified_verified_status_20260907.md#slave) | 55% | **55%** | Medium | Command/pointer/readiness helpers pass; several protocols remain stubs and physical mailbox timing is modeled. |
 | [Input and peripherals](cdi_unified_verified_status_20260907.md#input) | 45% | **45%** | Medium | Pointer helpers pass; keyboard event delivery, controller breadth and serial waveforms are incomplete. |
 | [SERVO and MCU integration](cdi_unified_verified_status_20260907.md#servo) | 15% | **15%** | Low | Structural evidence only for much of the scope; live protocol, feedback and complete firmware runtime remain absent. |
@@ -114,7 +127,8 @@ fidelity percentage is invented when evidence is insufficient.
 1. **CD-DA/Q:** track/index-0/1/relative time now pass live synthetic-disc tests.
    Stored raw Q, complete TOC, CUE higher indexes and four file/pregap layouts
    now pass. Driver-controlled seek and data-track PCM exclusion also pass;
-   continue with active PCM save/load and broader transport error semantics.
+   active PCM save/load now passes four live scenarios. Continue with broader
+   transport error semantics and other active modes.
 
 2. **Decoded A/V and save continuity:** retain decoded pictures and PCM across
    sustained presentation, interactive branches and save/load. Timestamp arithmetic
@@ -139,6 +153,7 @@ and retail compatibility claims separate from passing software regression tests.
 
 The specifically named FMV clock/underflow experiment was unavailable in remote
 refs and accessible worktrees. No claim is made about its unpushed contents or
-the user's Windows checkout. Default-branch setup is complete; old branches remain
-recovery references. Historical zero-count/abort and absent-interpreter statements
+the user's Windows checkout. Default-branch setup and obsolete-branch deletion are complete;
+merged commits remain reachable on unified and staging recovery is documented
+in the branch cleanup record. Historical zero-count/abort and absent-interpreter statements
 are superseded by the current unified worksheets, not silently applied to this code.

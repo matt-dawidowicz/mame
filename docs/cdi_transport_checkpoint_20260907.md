@@ -101,3 +101,10 @@ Code `adf57f583a861e5573e73fa0519e6d5fc76f288a` passes [CI 34080100953](https://
 assertions, generated-source freshness and DMA liveness. The local production
 build and validity gate also pass. This documentation-only update certifies its
 code parent without changing production/test behavior.
+
+## Subsequent active-playback checkpoint
+
+[Active CD-DA save/load](cdi_cdda_save_checkpoint_20260907.md) now passes four live scheduled
+snapshot scenarios against this unchanged production implementation, including
+exact DAC samples and Q/IRQ continuation. Sustained decoded A/V, other active
+transport modes and physical/retail evidence remain open.

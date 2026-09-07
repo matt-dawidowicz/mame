@@ -14,7 +14,7 @@ namespace
 class cdi_q_disc
 {
 public:
-	cdi_q_disc(int subcode = 0, unsigned layout = 0, bool pcm = false)
+	cdi_q_disc(int subcode = 0, unsigned layout = 0, unsigned pcm = 0)
 	{
 		m_dir = std::filesystem::temp_directory_path() / ("mame-cdi-q-" + std::to_string(osd_ticks()));
 		REQUIRE(std::filesystem::create_directory(m_dir));
@@ -32,6 +32,13 @@ public:
 			std::array<uint8_t, 2352> sector{};
 			bool const pcm_audio = lba < 600 || (lba >= 675 && lba < 750);
 			if (pcm) sector.fill(pcm_audio ? 0x11 : 0x55);
+			if (pcm >= 2 && pcm_audio)
+				for (unsigned frame = 0; frame < 588; ++frame)
+				{
+					// Changing, distinct stereo words; paired bytes are endian-independent.
+					sector[frame * 4] = sector[frame * 4 + 1] = 1 + (lba * 7 + frame) % 63;
+					sector[frame * 4 + 2] = sector[frame * 4 + 3] = 0x81 + (lba * 11 + frame * 3) % 63;
+				}
 			// Paired bytes survive the audio sample endian conversion.
 			if (!pcm)
 			{
@@ -92,6 +99,7 @@ public:
 		index(2, 10);
 		if (layout == 1 || layout == 2) cue << "FILE \"audio.bin\" BINARY\n";
 		cue << "  TRACK 02 AUDIO" << format << "\n";
+		if (pcm == 3) cue << "    FLAGS PRE\n";
 		if (layout >= 2) cue << "    PREGAP 00:02:00\n";
 		else index(0, layout == 1 ? 0 : 300);
 		unsigned const origin = layout == 0 ? 450 : layout == 1 ? 150 : layout == 2 ? 0 : 300;
@@ -119,6 +127,7 @@ public:
 		std::filesystem::remove(m_dir / "audio.bin", error);
 		std::filesystem::remove(m_dir / "data.bin", error);
 		std::filesystem::remove(m_dir / "disc.chd", error);
+		std::filesystem::remove(m_dir / "continuity.sta", error);
 		std::filesystem::remove(m_dir, error);
 	}
 

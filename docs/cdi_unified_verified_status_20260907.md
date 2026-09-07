@@ -4,7 +4,19 @@ This report updates the consolidation assessment with executed MMU/CDIC and
 synthetic Q/TOC evidence. The current source certification is below. Historical figures remain in
 [the earlier audit](cdi_verified_status_20260906.md).
 
-## Current certification — 2026-09-07
+## Active CD-DA save/load checkpoint — 2026-09-07
+
+The new live regression saves during active playback, advances, restores and
+repeats the continuation. All 93,492 stereo channel samples, sound callback times,
+Q words/positions and IRQ/register observations match exactly in four scenarios,
+including pending IRQ, an audio-to-data transition and pre-emphasis. Existing
+production code passes; no emulator fix was required. Local gates: 96 focused
+assertions, 11,892 assertions / 20 integration cases and 17,393,781 assertions /
+219 helper cases; validity exit 0 and DMA liveness GREEN. See the
+[save/load checkpoint](cdi_cdda_save_checkpoint_20260907.md) for scope and sensitivity evidence.
+Grades remain unchanged; sustained decoded A/V and other active modes remain open.
+
+## Previous transport certification — 2026-09-07
 
 Verified source: `adf57f583a861e5573e73fa0519e6d5fc76f288a`. Local gates pass:
 
@@ -33,8 +45,9 @@ save/restore, reference-media or hardware-fidelity scope.
 
 Driver-controlled seek completion now passes a live Q/IRQ/DBUF fixture.
 Data-track bytes are excluded from CD-DA PCM, with exact digital sample counts
-verified through audio/data transitions. Next: sustained decoded A/V and active
-save/load continuity, plus broader transport error and multisession evidence.
+verified through audio/data transitions. Active CD-DA save/load now also passes
+the checkpoint above. Next: sustained decoded A/V and its save/load continuity,
+plus broader transport error and multisession evidence.
 
 ## Historical consolidation method and evidence boundary
 
@@ -244,15 +257,15 @@ Verification: Live Q/TOC and four shared/separate CUE layouts with stored/virtua
 | DMA SRAM boundaries | 15 | 1 | 3 | Both live DMA directions stop safely at 16 KiB and report SCC device bus error; clipping/error policy is emulator safety, not measured silicon behavior. |
 | TOC and subcode | 15 | 1 | 3 | Live Q/TOC and four shared/separate CUE layouts with stored/virtual pregaps pass; CUE higher indexes reach SRAM in BCD. Physical status and timing remain open. |
 | Error/status fidelity | 5 | 1 | 1 | Read failure is bounded; hardware error response incomplete. |
-| Active save/load | 5 | 2 | 2 | Fields are registered; CDIC live transport snapshot fixture missing. |
+| Active save/load | 5 | 2 | 2 | Four live CD-DA snapshots pass exact PCM/Q/IRQ continuation; other active CDIC commands and XA modes remain unverified. |
 
 Implementation: [src/devices/machine/scc68070.cpp](../src/devices/machine/scc68070.cpp), [src/mame/philips/cdi.cpp](../src/mame/philips/cdi.cpp), [src/mame/philips/cdi_dvc_dma_service.h](../src/mame/philips/cdi_dvc_dma_service.h), [src/mame/philips/cdicdic.cpp](../src/mame/philips/cdicdic.cpp), [src/mame/philips/cdicdic_memory.h](../src/mame/philips/cdicdic_memory.h), [src/mame/philips/cdicdic_state.h](../src/mame/philips/cdicdic_state.h).
 
-Tests: [tests/emu/machine/scc68070_peripherals.cpp](../tests/emu/machine/scc68070_peripherals.cpp), [tests/emu/philips/cdi_dvc_audio_dma_integration.cpp](../tests/emu/philips/cdi_dvc_audio_dma_integration.cpp), [tests/emu/philips/cdi_dvc_dma_integration.cpp](../tests/emu/philips/cdi_dvc_dma_integration.cpp), [tests/emu/philips/cdi_dvc_edge_integration.cpp](../tests/emu/philips/cdi_dvc_edge_integration.cpp), [tests/emu/philips/cdicdic.cpp](../tests/emu/philips/cdicdic.cpp), [tests/emu/philips/cdicdic_memory.cpp](../tests/emu/philips/cdicdic_memory.cpp).
+Tests: [active CD-DA save/load](../tests/emu/philips/cdi_cdda_save_integration.cpp), [tests/emu/machine/scc68070_peripherals.cpp](../tests/emu/machine/scc68070_peripherals.cpp), [tests/emu/philips/cdi_dvc_audio_dma_integration.cpp](../tests/emu/philips/cdi_dvc_audio_dma_integration.cpp), [tests/emu/philips/cdi_dvc_dma_integration.cpp](../tests/emu/philips/cdi_dvc_dma_integration.cpp), [tests/emu/philips/cdi_dvc_edge_integration.cpp](../tests/emu/philips/cdi_dvc_edge_integration.cpp), [tests/emu/philips/cdicdic.cpp](../tests/emu/philips/cdicdic.cpp), [tests/emu/philips/cdicdic_memory.cpp](../tests/emu/philips/cdicdic_memory.cpp).
 
 Documentation: [docs/cdi_audio_compatibility_matrix_20260906.md](../docs/cdi_audio_compatibility_matrix_20260906.md), [docs/cdi_audio_fidelity.md](../docs/cdi_audio_fidelity.md), [docs/cdi_audio_fidelity_campaign.md](../docs/cdi_audio_fidelity_campaign.md), [docs/cdi_audio_final_certification_20260906.md](../docs/cdi_audio_final_certification_20260906.md), [docs/cdi_dma_av_optional_dvc_checkpoint_20260906.md](../docs/cdi_dma_av_optional_dvc_checkpoint_20260906.md).
 
-Next action: Validate seek-only completion and mixed-mode data-track PCM gating; extend image-layout coverage.
+Next action: Extend command/error, active XA/read/seek save-state and image-layout coverage; seek completion and mixed-mode PCM gating already pass.
 
 Current live disc evidence: [Q checkpoint](cdi_q_checkpoint_20260907.md) and [transport checkpoint](cdi_transport_checkpoint_20260907.md).
 
@@ -408,7 +421,7 @@ Next action: Keep core reference gates; acquire silicon arithmetic and retail-sc
 
 Implementation: PCM sector handoff, gating, cadence and de-emphasis exist.
 
-Verification: Live driver-controlled seek and exact digital PCM counts across audio/data transitions pass; physical output and broader transport/save semantics remain unverified.
+Verification: Live seek, exact mixed-mode PCM counts and four active CD-DA save/load continuations pass; physical output and broader transport/save semantics remain unverified.
 
 | Obligation | Weight | Previous grade | Current grade | Rationale and remaining gaps |
 | --- | ---: | ---: | ---: | --- |
@@ -418,16 +431,16 @@ Verification: Live driver-controlled seek and exact digital PCM counts across au
 | Track/index transitions | 15 | 1 | 3 | Live shared/separate-file stored/virtual pregaps and CUE indexes through 12 pass; wider formats and physical transition timing remain open. |
 | Position/subcode | 15 | 1 | 3 | Live Q supports rounded/backward driver-controlled seek completion and abort, alongside track/time and lead-out guards. Other firmware, error/status and hardware alignment remain open. |
 | Pre-emphasis | 10 | 3 | 3 | Image flags and response tested. |
-| Mixed-mode runtime | 5 | 0 | 1 | Generated mixed-mode tracks pass Q delivery and exact digital PCM handoff/gating checks; physical output, active saves and retail compatibility remain unverified. |
+| Mixed-mode runtime | 5 | 0 | 1 | Generated mixed-mode tracks pass Q delivery and exact digital PCM handoff/gating checks; four active CD-DA snapshots also pass; physical output, other active modes and retail compatibility remain unverified. |
 | Physical alignment/servo | 5 | 0 | 0 | Unmeasured. |
 
 Implementation: [src/mame/philips/cdiaudio.h](../src/mame/philips/cdiaudio.h), [src/mame/philips/cdiaudio_dsp56001.h](../src/mame/philips/cdiaudio_dsp56001.h), [src/mame/philips/cdicdic.cpp](../src/mame/philips/cdicdic.cpp), [src/mame/philips/cdicdic_state.h](../src/mame/philips/cdicdic_state.h), [src/mame/philips/cdidvc.cpp](../src/mame/philips/cdidvc.cpp).
 
-Tests: [tests/emu/philips/cdi_audio_arithmetic.cpp](../tests/emu/philips/cdi_audio_arithmetic.cpp), [tests/emu/philips/cdi_fma_attenuation.cpp](../tests/emu/philips/cdi_fma_attenuation.cpp), [tests/emu/philips/cdicdic.cpp](../tests/emu/philips/cdicdic.cpp), [tests/emu/philips/cdidvc_audio_reference.cpp](../tests/emu/philips/cdidvc_audio_reference.cpp).
+Tests: [active CD-DA save/load](../tests/emu/philips/cdi_cdda_save_integration.cpp), [tests/emu/philips/cdi_audio_arithmetic.cpp](../tests/emu/philips/cdi_audio_arithmetic.cpp), [tests/emu/philips/cdi_fma_attenuation.cpp](../tests/emu/philips/cdi_fma_attenuation.cpp), [tests/emu/philips/cdicdic.cpp](../tests/emu/philips/cdicdic.cpp), [tests/emu/philips/cdidvc_audio_reference.cpp](../tests/emu/philips/cdidvc_audio_reference.cpp).
 
 Documentation: [docs/cdi_audio_arithmetic_checkpoint.md](../docs/cdi_audio_arithmetic_checkpoint.md), [docs/cdi_audio_compatibility_matrix_20260906.md](../docs/cdi_audio_compatibility_matrix_20260906.md), [docs/cdi_audio_fidelity.md](../docs/cdi_audio_fidelity.md), [docs/cdi_audio_final_certification_20260906.md](../docs/cdi_audio_final_certification_20260906.md).
 
-Next action: Validate active PCM save/load and sustained playback; extend command/error and image-layout coverage.
+Next action: Validate sustained playback and broader command/error, active-mode and image-layout coverage. Short active PCM save/load passes.
 
 Current live disc evidence: [Q checkpoint](cdi_q_checkpoint_20260907.md) and [transport checkpoint](cdi_transport_checkpoint_20260907.md).
 
@@ -576,25 +589,25 @@ Next action: Run a meaningful decoded/presented 30-minute A/V fixture and repeat
 
 Implementation: State registration and decoder replay cover multiple devices.
 
-Verification: Live audio/control and MMU query snapshots pass; decoded pictures and active peripheral continuation lack complete fixtures.
+Verification: Live audio/control, MMU and active CD-DA PCM/Q/IRQ snapshots pass; decoded pictures and other active peripherals lack complete continuation fixtures.
 
 | Obligation | Weight | Previous grade | Current grade | Rationale and remaining gaps |
 | --- | ---: | ---: | ---: | --- |
 | DVC audio replay/device state | 25 | 3 | 3 | Audio adds end/stream/live ram_state paths. |
 | Decoded video continuation | 20 | 2 | 2 | Queues mirrored; live fixture holds sequence header without decoded pictures. |
 | MMU state | 15 | 3 | 3 | Audio query/descriptor ram_state round trip; no faulted CPU continuation. |
-| CDIC active transport | 15 | 2 | 2 | Registered fields but no full device transport snapshot fixture. |
+| CDIC active transport | 15 | 2 | 2 | Scheduled active CD-DA saves reproduce exact stereo PCM/Q/IRQ across four scenarios; active XA/read/seek and broader transport states remain open. |
 | SLAVE partial commands | 10 | 2 | 2 | Registered parser/response state; partial-command round trip missing. |
 | Active UART/I2C/DMA | 10 | 1 | 1 | More UART/timer fields and held DREQ are saved, but no new active UART/I2C or held-request DMA round-trip fixture was added. Registration alone does not close continuation behavior. |
 | Capacity/error policy | 5 | 2 | 2 | 8 MiB/32 MiB replay caps can invalidate snapshots; recovery modeled. |
 
 Implementation: [src/devices/cpu/m68000/m68kcpu.cpp](../src/devices/cpu/m68000/m68kcpu.cpp), [src/devices/cpu/m68000/scc68070.cpp](../src/devices/cpu/m68000/scc68070.cpp), [src/devices/machine/scc68070.h](../src/devices/machine/scc68070.h), [src/devices/machine/scc68070_helpers.h](../src/devices/machine/scc68070_helpers.h), [src/mame/philips/cdicdic.cpp](../src/mame/philips/cdicdic.cpp), [src/mame/philips/cdicdic_memory.h](../src/mame/philips/cdicdic_memory.h), [src/mame/philips/cdicdic_state.h](../src/mame/philips/cdicdic_state.h), [src/mame/philips/cdidvc.cpp](../src/mame/philips/cdidvc.cpp), [src/mame/philips/cdidvc_save_state.h](../src/mame/philips/cdidvc_save_state.h), [src/mame/philips/cdislavehle.cpp](../src/mame/philips/cdislavehle.cpp).
 
-Tests: [tests/emu/machine/scc68070.cpp](../tests/emu/machine/scc68070.cpp), [tests/emu/philips/cdi_dvc_state_integration.cpp](../tests/emu/philips/cdi_dvc_state_integration.cpp), [tests/emu/philips/cdi_mmu_integration.cpp](../tests/emu/philips/cdi_mmu_integration.cpp), [tests/emu/philips/cdicdic.cpp](../tests/emu/philips/cdicdic.cpp), [tests/emu/philips/cdicdic_memory.cpp](../tests/emu/philips/cdicdic_memory.cpp), [tests/emu/philips/cdidvc_audio_replay.cpp](../tests/emu/philips/cdidvc_audio_replay.cpp), [tests/emu/philips/cdidvc_state_transitions.cpp](../tests/emu/philips/cdidvc_state_transitions.cpp).
+Tests: [active CD-DA save/load](../tests/emu/philips/cdi_cdda_save_integration.cpp), [tests/emu/machine/scc68070.cpp](../tests/emu/machine/scc68070.cpp), [tests/emu/philips/cdi_dvc_state_integration.cpp](../tests/emu/philips/cdi_dvc_state_integration.cpp), [tests/emu/philips/cdi_mmu_integration.cpp](../tests/emu/philips/cdi_mmu_integration.cpp), [tests/emu/philips/cdicdic.cpp](../tests/emu/philips/cdicdic.cpp), [tests/emu/philips/cdicdic_memory.cpp](../tests/emu/philips/cdicdic_memory.cpp), [tests/emu/philips/cdidvc_audio_replay.cpp](../tests/emu/philips/cdidvc_audio_replay.cpp), [tests/emu/philips/cdidvc_state_transitions.cpp](../tests/emu/philips/cdidvc_state_transitions.cpp).
 
 Documentation: [docs/cdi_audio_fidelity_campaign.md](../docs/cdi_audio_fidelity_campaign.md), [docs/cdi_scc68070_mmu_checkpoint_20260906.md](../docs/cdi_scc68070_mmu_checkpoint_20260906.md).
 
-Next action: Test real decoded A/V plus active CDIC/UART/I2C/SLAVE continuations.
+Next action: Test real decoded A/V, other active CDIC modes and UART/I2C/SLAVE continuations.
 
 <a id="slave"></a>
 
@@ -695,7 +708,7 @@ Verification: Synthetic Q/TOC, four CUE layouts, normalized higher indexes, payl
 | Command transport | 20 | 2 | 2 | Live driver-controlled seek Q/IRQ/DBUF completion, abort and read-after-seek pass; complete command/error behavior remains open. |
 | TOC/subcode | 15 | 1 | 3 | Synthetic Q/TOC, four CUE layouts, normalized higher indexes, payload/subcode offsets and truncated-read errors pass. Generic CHD gaps/padding pass; multisession and physical status remain open. |
 | Error recovery | 10 | 1 | 1 | Truncated generic payload/subcode reads fail explicitly; physical CDIC error/status recovery remains unmodeled. |
-| Mixed-mode/multisession | 10 | 0 | 1 | Four CUE layouts pass Q delivery and generated audio/data transitions pass exact digital PCM checks; multisession, active saves, other containers and hardware remain open. |
+| Mixed-mode/multisession | 10 | 0 | 1 | Four CUE layouts pass Q delivery and generated audio/data transitions pass exact digital PCM checks; short active CD-DA saves pass; multisession, other active modes/containers and hardware remain open. |
 
 Implementation: [src/devices/cpu/dsp56000/dsp56000.cpp](../src/devices/cpu/dsp56000/dsp56000.cpp), [src/mame/philips/cdi.cpp](../src/mame/philips/cdi.cpp), [src/mame/philips/cdicdic.cpp](../src/mame/philips/cdicdic.cpp), [src/mame/philips/cdicdic_memory.h](../src/mame/philips/cdicdic_memory.h), [src/mame/philips/cdicdic_state.h](../src/mame/philips/cdicdic_state.h), [src/mame/philips/cdimono2.h](../src/mame/philips/cdimono2.h).
 
@@ -703,7 +716,7 @@ Tests: [tests/emu/philips/cdi_dvc_edge_integration.cpp](../tests/emu/philips/cdi
 
 Documentation: [docs/cdi_audio_compatibility_matrix_20260906.md](../docs/cdi_audio_compatibility_matrix_20260906.md), [docs/cdi_audio_fidelity_campaign.md](../docs/cdi_audio_fidelity_campaign.md), [docs/cdi_audio_final_certification_20260906.md](../docs/cdi_audio_final_certification_20260906.md), [docs/cdi_dma_av_optional_dvc_checkpoint_20260906.md](../docs/cdi_dma_av_optional_dvc_checkpoint_20260906.md), [docs/cdi_modernization_status.md](../docs/cdi_modernization_status.md).
 
-Next action: Validate active PCM save/load, sustained decoded A/V and broader command/error transitions; expand multisession and malformed-image fixtures.
+Next action: Validate sustained decoded A/V and broader command/error or active-mode transitions; expand multisession and malformed-image fixtures.
 
 Current live disc evidence: [Q checkpoint](cdi_q_checkpoint_20260907.md) and [transport checkpoint](cdi_transport_checkpoint_20260907.md).
 
