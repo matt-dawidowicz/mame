@@ -47,7 +47,9 @@ permissions:
 jobs:
   cdi-fast:
     runs-on: ubuntu-24.04
-    timeout-minutes: 12
+    # Full-size composed-frame and snapshot coverage exceeded 12 minutes on
+    # run 34163549673 after a successful build/helper gate. Keep all tests.
+    timeout-minutes: 18
 
     env:
       OVERRIDE_CC: gcc

@@ -133,3 +133,17 @@ peripheral/mid-field saves; host output and physical/retail evidence. The previo
 evidence, not a new 30-minute run on this code. Full-size and synchronized scenarios
 are short tests. CPU firmware execution, SCC DMA ingress, physical VMPEG behavior
 and retained commercial-title gameplay are outside this fixture's scope.
+
+## CI runtime budget correction
+
+The first exact-source attempt, [CI 34163549673](https://github.com/matt-dawidowicz/mame/actions/runs/34163549673),
+was cancelled by the configured 12-minute job limit. GitHub's check annotation
+explicitly reports that limit. Generated-source freshness, helper build and all
+17405336 assertions / 225 helper cases passed; integration compilation finished
+and the integration suite ran until the job was terminated. No assertion failure
+was reported, but this is not a passing CI result.
+
+The job now permits 18 minutes for the expanded suite. Tests, production code,
+compiler settings and cache policy are unchanged. The final local 1336-second
+capacity run also passes all 26 assertions on the code commit; exact-source CI
+certification follows once the rerun completes.
