@@ -2,8 +2,8 @@
   "schema_version": 2,
   "audit_date": "2026-09-07",
   "branch": "cdi-unified",
-  "reviewed_head": "6785ea148341de1bf54fdd8e70cec0ab4115d24e",
-  "verified_code_commit": "6785ea148341de1bf54fdd8e70cec0ab4115d24e",
+  "reviewed_head": "ee18320370b6c7e0abfd901bf0deafa543da0d6b",
+  "verified_code_commit": "ee18320370b6c7e0abfd901bf0deafa543da0d6b",
   "upstream_commit": "1fb001f9bfab5cf0148fdfe8755659c4a869831b",
   "prior_report": "cdi_verified_status_20260906.json",
   "prior_audio_baseline": "442e5050846e680ed653fc1297b66df588b314e2",
@@ -161,10 +161,10 @@
         "MMU integration",
         "Reset and persistent state"
       ],
-      "last_reviewed_commit": "6785ea148341de1bf54fdd8e70cec0ab4115d24e",
-      "last_verified_commit": "6785ea148341de1bf54fdd8e70cec0ab4115d24e",
+      "last_reviewed_commit": "ee18320370b6c7e0abfd901bf0deafa543da0d6b",
+      "last_verified_commit": "ee18320370b6c7e0abfd901bf0deafa543da0d6b",
       "last_verification_date": "2026-09-07",
-      "verification_basis": "Local regenerated-source CD-i helper and full-machine integration gate; no hardware or retail certification.",
+      "verification_basis": "Final local production build/validity, regenerated-source helper/integration and DMA-liveness gates. See MMU and Q checkpoints; no hardware or retail certification. Final CI 34075842095 also passes helper/integration and generator/liveness gates.",
       "prior_audio_raw_percent": 55.0,
       "last_test_date": "2026-09-07"
     },
@@ -259,10 +259,10 @@
         "Save/load",
         "Silicon timing and ambiguous CAM edges"
       ],
-      "last_reviewed_commit": "6785ea148341de1bf54fdd8e70cec0ab4115d24e",
-      "last_verified_commit": "6785ea148341de1bf54fdd8e70cec0ab4115d24e",
+      "last_reviewed_commit": "ee18320370b6c7e0abfd901bf0deafa543da0d6b",
+      "last_verified_commit": "ee18320370b6c7e0abfd901bf0deafa543da0d6b",
       "last_verification_date": "2026-09-07",
-      "verification_basis": "Local regenerated-source CD-i helper and full-machine integration gate; no hardware or retail certification.",
+      "verification_basis": "Final local production build/validity, regenerated-source helper/integration and DMA-liveness gates. See MMU and Q checkpoints; no hardware or retail certification. Final CI 34075842095 also passes helper/integration and generator/liveness gates.",
       "prior_audio_raw_percent": 62.5,
       "last_test_date": "2026-09-07"
     },
@@ -393,10 +393,10 @@
         "Error/status fidelity",
         "Active save/load"
       ],
-      "last_reviewed_commit": "3a9d22a445819763c8b90f34bac95670fcbfba45",
-      "last_verified_commit": "3a9d22a445819763c8b90f34bac95670fcbfba45",
+      "last_reviewed_commit": "ee18320370b6c7e0abfd901bf0deafa543da0d6b",
+      "last_verified_commit": "ee18320370b6c7e0abfd901bf0deafa543da0d6b",
       "last_verification_date": "2026-09-07",
-      "verification_basis": "Local full integration: 2745 assertions / 13 cases. See Q checkpoint for independent packet oracles and remaining limitations.",
+      "verification_basis": "Final local production build/validity, regenerated-source helper/integration and DMA-liveness gates. See MMU and Q checkpoints; no hardware or retail certification. Final CI 34075842095 also passes helper/integration and generator/liveness gates.",
       "prior_audio_raw_percent": 56.25,
       "last_test_date": "2026-09-07"
     },
@@ -1113,8 +1113,8 @@
         }
       ],
       "implementation_status": "PCM sector handoff, gating, cadence and de-emphasis exist.",
-      "verification_status": "Synthetic sequential audio/data Q transport and repositioning pass; audible output and broader transport semantics remain unverified.",
-      "next_action": "Correct TOC; then validate data-track DAC gating and seek-only completion.",
+      "verification_status": "Synthetic audio/data Q, raw-subcode fallback, complete TOC and repositioning pass; audible output and broader transport semantics remain unverified.",
+      "next_action": "Validate data-track DAC gating and seek-only completion; extend image layouts.",
       "raw_percent": 65.0,
       "percent": 65,
       "source": [
@@ -1159,10 +1159,10 @@
         "Mixed-mode runtime",
         "Physical alignment/servo"
       ],
-      "last_reviewed_commit": "3a9d22a445819763c8b90f34bac95670fcbfba45",
-      "last_verified_commit": "3a9d22a445819763c8b90f34bac95670fcbfba45",
+      "last_reviewed_commit": "ee18320370b6c7e0abfd901bf0deafa543da0d6b",
+      "last_verified_commit": "ee18320370b6c7e0abfd901bf0deafa543da0d6b",
       "last_verification_date": "2026-09-07",
-      "verification_basis": "Local integration: 2199 assertions / 12 cases; five synthetic image variants. See docs/cdi_q_checkpoint_20260907.md.",
+      "verification_basis": "Final local production build/validity, regenerated-source helper/integration and DMA-liveness gates. See MMU and Q checkpoints; no hardware or retail certification. Final CI 34075842095 also passes helper/integration and generator/liveness gates.",
       "prior_audio_raw_percent": 48.75,
       "last_test_date": "2026-09-07"
     },
@@ -1265,10 +1265,10 @@
         "P/R-W/multisession",
         "Disc reference campaign"
       ],
-      "last_reviewed_commit": "3a9d22a445819763c8b90f34bac95670fcbfba45",
-      "last_verified_commit": "3a9d22a445819763c8b90f34bac95670fcbfba45",
+      "last_reviewed_commit": "ee18320370b6c7e0abfd901bf0deafa543da0d6b",
+      "last_verified_commit": "ee18320370b6c7e0abfd901bf0deafa543da0d6b",
       "last_verification_date": "2026-09-07",
-      "verification_basis": "Local full integration: 2745 assertions / 13 cases. See Q checkpoint for independent packet oracles and remaining limitations.",
+      "verification_basis": "Final local production build/validity, regenerated-source helper/integration and DMA-liveness gates. See MMU and Q checkpoints; no hardware or retail certification. Final CI 34075842095 also passes helper/integration and generator/liveness gates.",
       "prior_audio_raw_percent": 38.75,
       "last_test_date": "2026-09-07"
     },
@@ -1372,10 +1372,10 @@
         "Advanced request/error modes",
         "Bus timing"
       ],
-      "last_reviewed_commit": "6785ea148341de1bf54fdd8e70cec0ab4115d24e",
-      "last_verified_commit": "6785ea148341de1bf54fdd8e70cec0ab4115d24e",
+      "last_reviewed_commit": "ee18320370b6c7e0abfd901bf0deafa543da0d6b",
+      "last_verified_commit": "ee18320370b6c7e0abfd901bf0deafa543da0d6b",
       "last_verification_date": "2026-09-07",
-      "verification_basis": "Local regenerated-source CD-i helper and full-machine integration gate; no hardware or retail certification.",
+      "verification_basis": "Final local production build/validity, regenerated-source helper/integration and DMA-liveness gates. See MMU and Q checkpoints; no hardware or retail certification. Final CI 34075842095 also passes helper/integration and generator/liveness gates.",
       "prior_audio_raw_percent": 58.75,
       "last_test_date": "2026-09-07"
     },
@@ -1482,10 +1482,10 @@
         "All fault/error sources",
         "Physical IACK edge timing"
       ],
-      "last_reviewed_commit": "6785ea148341de1bf54fdd8e70cec0ab4115d24e",
-      "last_verified_commit": "6785ea148341de1bf54fdd8e70cec0ab4115d24e",
+      "last_reviewed_commit": "ee18320370b6c7e0abfd901bf0deafa543da0d6b",
+      "last_verified_commit": "ee18320370b6c7e0abfd901bf0deafa543da0d6b",
       "last_verification_date": "2026-09-07",
-      "verification_basis": "Local regenerated-source CD-i helper and full-machine integration gate; no hardware or retail certification.",
+      "verification_basis": "Final local production build/validity, regenerated-source helper/integration and DMA-liveness gates. See MMU and Q checkpoints; no hardware or retail certification. Final CI 34075842095 also passes helper/integration and generator/liveness gates.",
       "prior_audio_raw_percent": 66.25,
       "last_test_date": "2026-09-07"
     },
@@ -2261,10 +2261,10 @@
         "Error recovery",
         "Mixed-mode/multisession"
       ],
-      "last_reviewed_commit": "3a9d22a445819763c8b90f34bac95670fcbfba45",
-      "last_verified_commit": "3a9d22a445819763c8b90f34bac95670fcbfba45",
+      "last_reviewed_commit": "ee18320370b6c7e0abfd901bf0deafa543da0d6b",
+      "last_verified_commit": "ee18320370b6c7e0abfd901bf0deafa543da0d6b",
       "last_verification_date": "2026-09-07",
-      "verification_basis": "Local full integration: 2745 assertions / 13 cases. See Q checkpoint for independent packet oracles and remaining limitations.",
+      "verification_basis": "Final local production build/validity, regenerated-source helper/integration and DMA-liveness gates. See MMU and Q checkpoints; no hardware or retail certification. Final CI 34075842095 also passes helper/integration and generator/liveness gates.",
       "prior_audio_raw_percent": 50.0,
       "last_test_date": "2026-09-07"
     },
@@ -2515,7 +2515,7 @@
           "weight": 15,
           "prior_grade": 2,
           "grade": 2,
-          "rationale": "Audio improves gating; track/subcode defects persist.",
+          "rationale": "Synthetic Q/TOC delivery now passes; audible mixed-mode transport and complete seek/pause behavior remain open.",
           "prior_rationale": "Audio improves gating; track/subcode defects persist."
         },
         {
@@ -2536,7 +2536,7 @@
         }
       ],
       "implementation_status": "XA, MPEG audio, queues, control, gain and emphasis are implemented.",
-      "verification_status": "Strong component tests coexist with CD-DA transport defects and missing cross-stream output continuity evidence.",
+      "verification_status": "Strong component tests and synthetic CD-DA Q/TOC coexist with missing audible transport and cross-stream continuity evidence.",
       "next_action": "Fix source defects first, then reference-disc and real A/V output gaps.",
       "raw_percent": 68.75,
       "percent": 70,
@@ -2576,7 +2576,7 @@
         "Native decode broad; silicon arithmetic unproven.",
         "Software reference is tolerant, not bit-exact.",
         "Software queues/cadence tested; physical edges missing.",
-        "Audio improves gating; track/subcode defects persist.",
+        "Synthetic Q/TOC delivery now passes; audible mixed-mode transport and complete seek/pause behavior remain open.",
         "Q22 and filter tests; CDIC quantizer and switch unknown.",
         "Helpers/live commands; no true branching/movie/output capture."
       ],
@@ -2588,7 +2588,7 @@
         "Gain/emphasis/control",
         "Cross-stream/output continuity"
       ],
-      "last_reviewed_commit": "ad950937b72f258afe087bc2aa65cdb298e4e46b",
+      "last_reviewed_commit": "ee18320370b6c7e0abfd901bf0deafa543da0d6b",
       "last_verified_commit": "ade0f78abf4367f07c9d2fd3d383f448110c4cb2",
       "last_verification_date": "2026-09-07",
       "verification_basis": "Fresh unified source/delta and fixture-scope review; existing passing CI on identical production/test code, not a new runtime or hardware measurement.",
@@ -2816,14 +2816,28 @@
     "date": "2026-09-07"
   },
   "local_verification": {
-    "commit": "6785ea148341de1bf54fdd8e70cec0ab4115d24e",
+    "commit": "ee18320370b6c7e0abfd901bf0deafa543da0d6b",
     "date": "2026-09-07",
     "helper_cases": 219,
     "helper_assertions": 17393781,
-    "integration_cases": 7,
-    "integration_assertions": 24,
+    "integration_cases": 13,
+    "integration_assertions": 2745,
     "conclusion": "success",
-    "generated_musashi": "Explicit m68kmake.py; tracked output included",
-    "commands_document": "docs/cdi_scc68070_mmu_checkpoint_20260906.md"
+    "production_build": "make -j6 -C build/projects/sdl/mame/gmake-linux config=release64 mame",
+    "production_validity": "./mame -validate: exit 0",
+    "generated_musashi": "Explicit m68kmake.py regeneration; committed .cpp/.h match exactly",
+    "dma_liveness": "GREEN",
+    "commands_document": "docs/cdi_q_checkpoint_20260907.md"
+  },
+  "final_ci": {
+    "url": "https://github.com/matt-dawidowicz/mame/actions/runs/34075842095",
+    "run_id": 34075842095,
+    "tested_commit": "ee18320370b6c7e0abfd901bf0deafa543da0d6b",
+    "conclusion": "success",
+    "helper_cases": 219,
+    "helper_assertions": 17393781,
+    "integration_cases": 13,
+    "integration_assertions": 2745,
+    "execution_date": "2026-09-07"
   }
 }

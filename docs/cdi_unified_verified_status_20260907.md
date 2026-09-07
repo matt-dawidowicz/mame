@@ -1,69 +1,42 @@
 # Unified CD-i verified status — 2026-09-07
 
-This report reassesses `cdi-unified` at `ad950937b72f258afe087bc2aa65cdb298e4e46b` after consolidation of all 32
-available project branches and the 60-commit upstream synchronization. It replaces
-the pre-merge numbers as the current assessment. Historical figures remain in
+This report updates the consolidation assessment with executed MMU/CDIC and
+synthetic Q/TOC evidence. The current source certification is below. Historical figures remain in
 [the earlier audit](cdi_verified_status_20260906.md).
 
-## TOC completion update — 2026-09-07
+## Current certification — 2026-09-07
 
-The live TOC fixture now verifies every track point and A0/A1/A2 over a complete
-45-packet cycle. It reproduces 165 failed assertions before the fix and passes
-546 afterwards. Full integration passes **2,745 assertions / 13 cases**.
-Track pointers and A2 use generic logical LBAs +150, including audio tracks and
-gaps, excluding storage padding. Track 12 is BCD 0x12; data copy flags survive.
-The running minute field is BCD rather than the invalid 0xa0 placeholder.
-The existing A0 0x10 data-disc policy is retained as Philips HLE behavior, not a
-universal CD-ROM disc-type claim. No physical lead-in address is modeled.
+Verified source: `ee18320370b6c7e0abfd901bf0deafa543da0d6b`. This certification covers the published CDIC DMA
+safety, executed SCC68070/MMU recovery, metadata-derived Q, stored raw-Q handling
+and complete TOC construction. Local gates all pass:
 
-Recalculated grades: Q TOC 1→3 gives 61.25→71.25 raw (60→70%); CDIC TOC 2→3
-gives 67.5→71.25 raw (70% unchanged); disc TOC 2→3 gives 56.25→60 (55→60%).
-CD-DA remains 65%. All retain Low/Medium confidence and their wider gaps.
-See [Q checkpoint](cdi_q_checkpoint_20260907.md). Next: generic CUE higher-index
-normalization and separate-file/virtual pregap fixtures; then seek-only completion
-and data-track PCM handoff evidence.
+- Production CD-i emulator build and `./mame -validate` (exit 0).
+- 17,393,781 assertions / 219 helper cases.
+- 2,745 assertions / 13 emulator-linked cases (six Q/TOC cases, 2,721 assertions).
+- DVC DMA liveness GREEN; committed Musashi output exactly matches regeneration.
 
-Stored raw Q update: valid RW_RAW packets now preserve higher indexes; cooked R-W,
-absent Q and bad CRC use the metadata fallback. Full integration passes 2,199
-assertions / 12 cases. Percentages unchanged; see the [Q checkpoint](cdi_q_checkpoint_20260907.md).
+The new Q corpus uses generated media only: 165 position packets across five
+image variants plus all 45 packets of a twelve-track TOC cycle. No retail or
+physical-device capture, sanitizer run or full all-system MAME build is claimed.
+MMU CI [34074599579](https://github.com/matt-dawidowicz/mame/actions/runs/34074599579)
+passed 219 helper cases / 17,393,781 assertions and 7 integration cases / 24
+assertions. Final Q/TOC CI [34075842095](https://github.com/matt-dawidowicz/mame/actions/runs/34075842095)
+also passed on the exact source above: 219 helper cases / 17,393,781 assertions,
+13 integration cases / 2,745 assertions, generated-source freshness and DMA liveness.
 
-## CD-DA/Q transport update — 2026-09-07
+Same weighted worksheet: SCC **75%**, MMU **75%**, CDIC **70%**, DMA **70%**,
+interrupts **70%**, CD-DA **65%**, Q/subcode **70%**, disc handling **60%**.
+These are engineering completion estimates; physical fidelity and compatibility
+remain unestimated. Unchanged rows retain historical evidence dates in JSON.
+Exact scope, intermediate results and remaining gaps are in the
+[MMU checkpoint](cdi_scc68070_mmu_checkpoint_20260906.md),
+[DMA checkpoint](cdi_dma_av_optional_dvc_checkpoint_20260906.md) and
+[Q checkpoint](cdi_q_checkpoint_20260907.md).
 
-Following the MMU certification, the real CDIC path now derives track number,
-INDEX 00/01, relative MSF and control bits from disc metadata. A generated
-twelve-track mixed-mode fixture passes 435 assertions; the complete integration
-gate passes 459 assertions / 8 cases. It checks 33 sector deliveries, sequential
-track/gap transitions, backward repositioning and no fabricated lead-out Q.
-The independent CRC oracle passes without changing the production CRC algorithm.
-See [the Q checkpoint](cdi_q_checkpoint_20260907.md) for scope and remaining gaps.
-Same weighted rubric: CD-DA 48.75→65 raw (50→65%), Q 38.75→61.25 (40→60%),
-CDIC 63.75→67.5 (65→70%), disc handling 50→56.25 (50→55%).
-Physical fidelity remains unestimated. MMU CI run
-[34074599579](https://github.com/matt-dawidowicz/mame/actions/runs/34074599579)
-is now successful: 219 helpers / 17,393,781 assertions, 7 integration cases / 24 assertions.
-
-## Publication certification — 2026-09-07
-
-Verified production source: `6785ea148341de1bf54fdd8e70cec0ab4115d24e`. Local regenerated-source gate passes
-17,393,781 assertions / 219 helper cases and 24 top-level assertions / 7
-emulator-linked cases; DVC DMA liveness GREEN. Exact commands and limitations:
-[MMU checkpoint](cdi_scc68070_mmu_checkpoint_20260906.md).
-CDIC bounds were already published at `f330c0901c7d1aaf5581f50735ee03c6b8aeaa1f`,
-supported by CI run [34070663002](https://github.com/matt-dawidowicz/mame/actions/runs/34070663002)
-and rerun in this local integration gate. MMU staging run 34073320088 failed;
-there was no green candidate to fast-forward. Explicit regeneration of tracked
-Musashi output supplied the missing RTE branch, now committed with a CI freshness gate.
-
-Weighted changes (same worksheet, no added denominator): SCC 63.75→72.5 raw
-(65→75%), MMU 62.5→75 (65→75%), CDIC 56.25→63.75 (55→65%),
-DMA 61.25→71.25 (60→70%), interrupts 66.25→68.75 (65→70%).
-SCC CPU/MMU packages rise 2→3, MMU exception/restart 1→3,
-CDIC SRAM and DMA channel-1 packages 1→3, all fault/error sources 1→2.
-Remaining rows keep their historical grades, evidence dates and gaps.
-Emulator-safe CDIC clipping/error behavior is not a silicon claim. MMU recovery
-is whole-instruction retry; exact internal-cycle behavior, complete SSW/lane forms,
-RR=1, ambiguous CAM and timing remain open. No hardware-fidelity or compatibility
-percentage is invented. Next substantive task: synthetic multi-track CD-DA/Q.
+The next task is to reproduce CUE higher-index normalization and separate-file /
+virtual pregap ownership through generic CD-ROM and live CDIC fixtures before
+changing shared disc code. Follow with seek-only completion and data-track PCM
+handoff once controller/output evidence establishes the expected behavior.
 
 ## Historical consolidation method and evidence boundary
 
@@ -136,7 +109,7 @@ within the same five-point reporting band.
    and boundary/error behavior pass; physical clipping/wrap policy is unmeasured.
 2. **MMU executed fault delivery: closed tested software gap.** Regenerated format-F
    RTE, guest repair and instruction retry pass. Full silicon semantics remain open.
-1. **CD-DA/Q:** track/index-0/1/relative time now pass live synthetic-disc tests.
+3. **CD-DA/Q:** track/index-0/1/relative time now pass live synthetic-disc tests.
    Stored raw Q and the complete TOC packet cycle now pass too; continue with
    generic CUE index and separate-file/virtual pregap fixtures.
 
@@ -192,7 +165,7 @@ de-emphasis or recovered-Q22 work is reopened by this reassessment.
 
 ## Subsystem worksheets
 
-Changed SCC/MMU/CDIC/DMA/interrupt rows use the publication certification above;
+Changed SCC/MMU/CDIC/DMA/interrupt/CD-DA/Q/disc rows use the current certification above;
 other rows retain their historical evidence dates as recorded in JSON.
 Linked implementation, tests and documentation are repository paths at that HEAD.
 Each below-grade-4 rationale is also an explicit remaining obligation/evidence gap.
@@ -436,7 +409,7 @@ Next action: Keep core reference gates; acquire silicon arithmetic and retail-sc
 
 Implementation: PCM sector handoff, gating, cadence and de-emphasis exist.
 
-Verification: Synthetic sequential audio/data Q transport and repositioning pass; audible output and broader transport semantics remain unverified.
+Verification: Synthetic audio/data Q, raw-subcode fallback, complete TOC and repositioning pass; audible output and broader transport semantics remain unverified.
 
 | Obligation | Weight | Previous grade | Current grade | Rationale and remaining gaps |
 | --- | ---: | ---: | ---: | --- |
@@ -797,14 +770,14 @@ Next action: Complete and validate the DSP firmware path plus host DTACK and MCU
 
 Implementation: XA, MPEG audio, queues, control, gain and emphasis are implemented.
 
-Verification: Strong component tests coexist with CD-DA transport defects and missing cross-stream output continuity evidence.
+Verification: Strong component tests and synthetic CD-DA Q/TOC coexist with missing audible transport and cross-stream continuity evidence.
 
 | Obligation | Weight | Previous grade | Current grade | Rationale and remaining gaps |
 | --- | ---: | ---: | ---: | --- |
 | XA compressed decode | 20 | 3 | 3 | Native decode broad; silicon arithmetic unproven. |
 | Layer II compressed decode | 20 | 3 | 3 | Software reference is tolerant, not bit-exact. |
 | Buffer/output delivery | 20 | 3 | 3 | Software queues/cadence tested; physical edges missing. |
-| CD-DA transport | 15 | 2 | 2 | Audio improves gating; track/subcode defects persist. |
+| CD-DA transport | 15 | 2 | 2 | Synthetic Q/TOC delivery now passes; audible mixed-mode transport and complete seek/pause behavior remain open. |
 | Gain/emphasis/control | 15 | 3 | 3 | Q22 and filter tests; CDIC quantizer and switch unknown. |
 | Cross-stream/output continuity | 10 | 2 | 2 | Helpers/live commands; no true branching/movie/output capture. |
 

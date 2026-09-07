@@ -94,3 +94,23 @@ and data-track PCM handoff evidence.
 Percentages use the existing weights: position/transition packages 1→3, CRC 1→3,
 synthetic disc reference 0→2, mixed-mode runtime 0→1, and partial TOC/subcode 1→2.
 They are scoped engineering estimates, not hardware or game compatibility rates.
+
+## Final production gate
+
+Source `ee18320370b6c7e0abfd901bf0deafa543da0d6b` built locally as the production CD-i emulator:
+
+```
+make -j6 -C build/projects/sdl/mame/gmake-linux config=release64 mame
+./mame -validate
+./cdihelpertests
+python3 scripts/cdi_dvc_dma_liveness_audit.py
+```
+
+Build and validity: PASS, exit 0. Helpers: 17,393,781 assertions / 219 cases.
+Integration: 2,745 assertions / 13 cases. DMA liveness: GREEN. Musashi regeneration
+produces no tracked-source diff. This is a CD-i-targeted production build, not all
+MAME systems, a sanitizer run or a firmware/retail playthrough.
+
+Final Q/TOC CI [34075842095](https://github.com/matt-dawidowicz/mame/actions/runs/34075842095)
+also passed on the exact source above: 219 helper cases / 17,393,781 assertions,
+13 integration cases / 2,745 assertions, generated-source freshness and DMA liveness.
