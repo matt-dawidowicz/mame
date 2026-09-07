@@ -1,6 +1,6 @@
 # CD-i Audio Fidelity Campaign
 
-> Fresh completion estimates and code/test findings: [CDI_MASTER_STATUS.md](CDI_MASTER_STATUS.md) and [verified audit](cdi_verified_status_20260906.md). The pre-campaign numbers below are historical. CDIC DMA bounds/Q generation and actual decoded A/V verification remain software work.
+> Fresh completion estimates and code/test findings: [CDI_MASTER_STATUS.md](CDI_MASTER_STATUS.md) and [current unified audit](cdi_unified_verified_status_20260907.md). The pre-campaign numbers below are historical. CDIC DMA bounds/Q generation and actual decoded A/V verification remain software work.
 
 ## Goal
 
@@ -19,8 +19,9 @@ Active work branch:
   [merge record](cdi_branch_consolidation_20260906.md)).
 - Historical campaign branch: `audio/cdi-fidelity-100-campaign-20260905`.
 
-## Current baseline
+## Historical pre-campaign estimates
 
+These are not the current unified matrix and use a different denominator.
 Approximate engineering-completion estimates before this campaign:
 
 - DVC MPEG parser: 97%

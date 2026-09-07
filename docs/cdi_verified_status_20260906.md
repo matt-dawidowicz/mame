@@ -1,5 +1,7 @@
 # CD-i verified status audit — 2026-09-06
 
+> Historical pre-merge assessment. Current unified scores, corrected SCC/DSP descriptions and closed CI filter issue are in [the unified audit](cdi_unified_verified_status_20260907.md) and [master status](CDI_MASTER_STATUS.md).
+
 This is a fresh, chunked **source/test/evidence audit** and recalculation, replacing
 the initialization's carried percentages. It is not a claim of fresh hardware
 measurements, a complete instruction-level proof or a retail-title playthrough.

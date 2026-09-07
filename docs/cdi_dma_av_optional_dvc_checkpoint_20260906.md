@@ -1,5 +1,7 @@
 # CD-i DVC DMA, A/V-clock, transition, and optional-presence checkpoint — 2026-09-06
 
+> Historical audio-branch checkpoint. Unified START/MTC=0 (65536 operands), held-request re-arm and immediate abort behavior supersede the zero-count/abort descriptions below; see [the unified audit](cdi_unified_verified_status_20260907.md) and [merge record](cdi_branch_consolidation_20260906.md).
+
 Branch: `audio/cdi-fidelity-100-campaign-20260905`
 
 ## Scope
