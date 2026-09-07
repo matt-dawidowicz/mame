@@ -7,6 +7,7 @@
 // unit so the driver-list shim can reference the anonymous-namespace drivers
 // without exporting test-only symbols from the fixtures.
 #include "cdi_dvc_dma_integration.cpp"
+#include "cdi_cdic_dma_integration.cpp"
 #include "cdi_dvc_audio_dma_integration.cpp"
 #include "cdi_dvc_edge_integration.cpp"
 #include "cdi_dvc_state_integration.cpp"
@@ -14,11 +15,12 @@
 
 #include "drivenum.h"
 
-std::size_t const driver_list::s_driver_count = 7;
+std::size_t const driver_list::s_driver_count = 8;
 game_driver const * const driver_list::s_drivers_sorted[] =
 {
 	&GAME_NAME(cdiaudma),
 	&GAME_NAME(cdiavsave),
+	&GAME_NAME(cdicdmab),
 	&GAME_NAME(cdidmaedge),
 	&GAME_NAME(cdidmaint),
 	&GAME_NAME(cdihasdvct),
