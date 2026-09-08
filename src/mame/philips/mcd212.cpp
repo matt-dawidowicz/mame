@@ -1091,6 +1091,10 @@ void mcd212_device::dca2_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 
 TIMER_CALLBACK_MEMBER(mcd212_device::ica_tick)
 {
+	// PA is a field-timing status bit, not rendering state.  Advance it at the
+	// field boundary so firmware sees parity changes even when blanking rows are
+	// outside the screen's visible clip rectangle.
+	m_csrr[0] ^= CSR1R_PA;
 	m_csrr[0] &= ~CSR1R_DA;
 
 	// Process ICA
@@ -1256,12 +1260,6 @@ uint32_t mcd212_device::screen_update(screen_device &screen, bitmap_rgb32 &bitma
 				std::copy_n(external_video, 768, external_video2);
 				std::copy_n(out, 768, out2);
 			}
-		}
-
-		// Toggle frame parity at the end of the visible frame (even in non-interlaced mode).
-		if (scanline == (m_total_height - 1))
-		{
-			m_csrr[0] ^= CSR1R_PA;
 		}
 
 		m_scanline_cache_scanline = scanline;
