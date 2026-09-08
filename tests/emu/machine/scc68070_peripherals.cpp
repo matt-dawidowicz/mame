@@ -8,14 +8,31 @@
 
 #include "scc68070_helpers.h"
 
-TEST_CASE("SCC68070 UART register addresses match the Philips map", "[emu][machine][scc68070][uart][map]")
+TEST_CASE("SCC68070 UART register addresses match CD-i firmware map", "[emu][machine][scc68070][uart][map]")
 {
-	REQUIRE(scc68070::UART_RHR_ADDRESS == 0x80002011);
-	REQUIRE(scc68070::UART_THR_ADDRESS == 0x80002013);
-	REQUIRE(scc68070::UART_USR_ADDRESS == 0x80002015);
-	REQUIRE(scc68070::UART_UMR_ADDRESS == 0x80002019);
-	REQUIRE(scc68070::UART_UCR_ADDRESS == 0x8000201d);
-	REQUIRE(scc68070::UART_UCS_ADDRESS == 0x8000201f);
+	REQUIRE(scc68070::UART_UMR_ADDRESS == 0x80002011);
+	REQUIRE(scc68070::UART_USR_ADDRESS == 0x80002013);
+	REQUIRE(scc68070::UART_UCS_ADDRESS == 0x80002015);
+	REQUIRE(scc68070::UART_UCR_ADDRESS == 0x80002017);
+	REQUIRE(scc68070::UART_THR_ADDRESS == 0x80002019);
+	REQUIRE(scc68070::UART_RHR_ADDRESS == 0x8000201b);
+
+	// MAME reports the 68070 low-byte access at the aligned word address when
+	// no handler exists.  These are the exact UART addresses observed in the
+	// CD-i BIOS boot-loop regression: UCR, UCS, UMR, RHR, then USR polling.
+	constexpr std::array<std::uint32_t, 5> bios_bus_addresses = {
+		0x80002016, 0x80002014, 0x80002010, 0x8000201a, 0x80002012
+	};
+	constexpr std::array<std::uint32_t, 5> mapped_byte_addresses = {
+		scc68070::UART_UCR_ADDRESS,
+		scc68070::UART_UCS_ADDRESS,
+		scc68070::UART_UMR_ADDRESS,
+		scc68070::UART_RHR_ADDRESS,
+		scc68070::UART_USR_ADDRESS
+	};
+
+	for (std::size_t index = 0; index < bios_bus_addresses.size(); ++index)
+		REQUIRE(mapped_byte_addresses[index] == bios_bus_addresses[index] + 1);
 }
 
 TEST_CASE("SCC68070 UART mode controls exact frame length and character mask", "[emu][machine][scc68070][uart][timing]")
