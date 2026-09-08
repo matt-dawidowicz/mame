@@ -7,6 +7,7 @@ on:
       - '.github/workflows/ci-cdi-fast.yml'
       - 'makefile'
       - 'scripts/src/**'
+      - 'scripts/cdi_mcd212_field_parity_audit.py'
       - 'src/emu/**'
       - 'src/lib/util/**'
       - 'src/frontend/mame/**'
@@ -24,6 +25,7 @@ on:
       - '.github/workflows/ci-cdi-fast.yml'
       - 'makefile'
       - 'scripts/src/**'
+      - 'scripts/cdi_mcd212_field_parity_audit.py'
       - 'src/emu/**'
       - 'src/lib/util/**'
       - 'src/frontend/mame/**'
@@ -74,6 +76,9 @@ jobs:
             src/devices/cpu/m68000/m68kops.h \
             src/devices/cpu/m68000/m68kops.cpp
           git diff --exit-code -- src/devices/cpu/m68000/m68kops.h src/devices/cpu/m68000/m68kops.cpp
+
+      - name: Check MCD212 field-parity wiring
+        run: python3 scripts/cdi_mcd212_field_parity_audit.py
 
       - name: Install build dependencies
         run: |
