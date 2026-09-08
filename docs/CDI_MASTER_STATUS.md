@@ -1,6 +1,6 @@
 # Philips CD-i / DVC master status
 
-**Active and default branch: `cdi-unified`. Current unified assessment: 2026-09-07.**
+**Active and default branch: `cdi-unified`. Current unified assessment: 2026-09-08.**
 All 32 available project branches are consolidated and the 60 missing upstream
 commits through `1fb001f9bfab5cf0148fdfe8755659c4a869831b` are merged. Original
 branches and fork `master` were subsequently deleted at the user's request; only
@@ -13,6 +13,39 @@ This is the canonical high-level index. Routine status reads this document;
 verified status updates affected worksheets; development resumes the next action.
 [AGENTS.md](../AGENTS.md) defines those modes. The audio campaign remains the
 detailed audio ledger on this unified branch.
+
+## Active BIOS runtime checkpoint — 2026-09-08
+
+A real Mono-I BIOS run exposed two modernization regressions in sequence and both
+are now fixed. The SCC68070 UART map had been internally self-consistent but wrong
+for production firmware, causing an approximately 1 GB unmapped polling log; the
+firmware-visible UMR/USR/UCS/UCR/THR/RHR layout was restored and the exact BIOS
+access sequence is now covered by tests. The post-fix BIOS rerun eliminated that
+storm and progressed into normal RAM tests and later display initialization.
+
+A bounded debugger probe then isolated the remaining cyan-screen stall at
+`0x0041c738`–`0x0041c754`: firmware waited for MCD212 CSR1 Display Active to cycle
+and for PA field parity to advance. DA changed and IRQ 6 continued, but PA remained
+zero. Dynamic visible-area timing had left the PA toggle in `screen_update()` on a
+final blanking line that was never rendered. Code commit
+`4b70e032b11a514a046075dcc07fdb2f301574b7` moves PA advancement to the MCD212
+field-boundary callback. The rebuilt production `cdi` executable then advanced
+through the cyan startup screen into the actual CD-i BIOS UI at 100.01% average
+speed over a 17-second observed run.
+
+Regression commit `bbc96e45bb0eda560b4e9d2547fd547c91387766` adds a fast-CI source
+guard requiring PA advancement in `ica_tick()` before the DA clear and forbidding
+renderer-owned parity advancement. See the
+[MCD212 BIOS parity checkpoint](cdi_mcd212_bios_parity_checkpoint_20260908.md) and
+the updated [SCC68070 UART BIOS checkpoint](cdi_scc_uart_bios_checkpoint_20260908.md).
+The source-guard CI run `34181211181` was still in progress when this documentation
+checkpoint was prepared; its final result must be recorded separately.
+
+Scoped grades remain unchanged: SCC68070 **75% (Medium)**, MCD212 **70% (Medium)**,
+device timing **60% (Medium)** and compatibility **Not estimated (Low)**. The live
+boot materially strengthens firmware-visible register and field-timing evidence,
+but does not close wider UART/timer modes, interlace/QHY combinations, physical
+calibration or retained retail-title compatibility.
 
 ## Active MPEG ingress and timestamp checkpoint — 2026-09-07
 
@@ -182,10 +215,10 @@ fidelity percentage is invented when evidence is insufficient.
 
 | Subsystem | Prior A2 | Unified | Confidence | Implementation / verification boundary |
 | --- | ---: | ---: | --- | --- |
-| [SCC68070 CPU and internal peripherals](cdi_unified_verified_status_20260907.md#scc) | 55% | **75%** | Medium | Executed MMU recovery and live CDIC/DVC DMA pass; live timer/UART event sequences remain open. |
+| [SCC68070 CPU and internal peripherals](cdi_unified_verified_status_20260907.md#scc) | 55% | **75%** | Medium | Real Mono-I BIOS now clears the former UART unmapped polling regression and reaches the BIOS UI after the independent MCD212 parity fix; live UART mode/break/overrun, timer-event combinations and active-peripheral saves remain open. |
 | [SCC68070 MMU](cdi_unified_verified_status_20260907.md#mmu) | 65% | **75%** | Medium | Executed read/write/fetch/boundary fault/retry, format-F read frame and active-MMU save/load pass; full SSW and internal-cycle semantics remain open. |
 | [CDIC](cdi_unified_verified_status_20260907.md#cdic) | 55% | **70%** | Medium | Live Q/TOC and four shared/separate CUE layouts with stored/virtual pregaps pass; CUE higher indexes reach SRAM in BCD. Physical status and timing remain open. |
-| [MCD212 display](cdi_unified_verified_status_20260907.md#mcd) | 65% | **70%** | Medium | Four native configurations pass exact native pixels with full-size composed video and saves; interlace/QHY, other combinations and physical output remain open. |
+| [MCD212 display](cdi_unified_verified_status_20260907.md#mcd) | 65% | **70%** | Medium | Real Mono-I BIOS DA/PA field-boundary polling now advances into the BIOS UI, alongside four native configurations with exact native pixels and full-size composed-video saves; broader interlace/QHY combinations and physical output remain open. |
 | [DVC overall](cdi_unified_verified_status_20260907.md#dvc) | 70% | **75%** | Medium | Exact-code CD-i CI passes the full helper/integration suites, including live ingress/PTS references and fifteen exact saved continuations. Historical capacity/30-minute evidence retains its original code scope. |
 | [MPEG video decode and presentation](cdi_unified_verified_status_20260907.md#mpeg_video) | 55% | **70%** | Low | Exact-code CD-i CI passes the full helper/integration suites, including live ingress/PTS references and fifteen exact saved continuations. Historical capacity/30-minute evidence retains its original code scope. |
 | [DVC audio](cdi_unified_verified_status_20260907.md#dvc_audio) | 80% | **80%** | Medium | Exact-code CD-i CI passes the full helper/integration suites, including live ingress/PTS references and fifteen exact saved continuations. Historical capacity/30-minute evidence retains its original code scope. |
@@ -194,7 +227,7 @@ fidelity percentage is invented when evidence is insufficient.
 | [CD-DA Q and other subcode](cdi_unified_verified_status_20260907.md#q) | 40% | **70%** | Low | Live 45-packet TOC verifies all twelve tracks, triplicate points, absolute starts, first/last track and complete A2 lead-out. Physical lead-in and multisession remain open. |
 | [DMA integration](cdi_unified_verified_status_20260907.md#dma) | 60% | **70%** | Medium | Live DVC transfers and both CDIC SRAM boundary/error directions pass; advanced modes and physical arbitration remain open. |
 | [Interrupts](cdi_unified_verified_status_20260907.md#irq) | 65% | **70%** | Medium | Moving DVC snapshots and continuous status/acknowledgement pass alongside existing MMU/CDIC gates; wider event combinations and physical timing remain open. |
-| [Device timing](cdi_unified_verified_status_20260907.md#timing) | 60% | **60%** | Medium | Varied-rate composed fields and 30-minute decoded timing pass; host output, CPU/bus cycles and physical calibration remain unverified. |
+| [Device timing](cdi_unified_verified_status_20260907.md#timing) | 60% | **60%** | Medium | Firmware-visible MCD212 DA/PA field-boundary polling now passes the real Mono-I BIOS boot path, and varied-rate composed fields plus 30-minute decoded timing pass; CPU/bus cycles, host output and physical calibration remain unverified. |
 | [A/V synchronization](cdi_unified_verified_status_20260907.md#av) | 45% | **60%** | Medium | Exact-code CD-i CI passes the full helper/integration suites, including live ingress/PTS references and fifteen exact saved continuations. Historical capacity/30-minute evidence retains its original code scope. |
 | [Save states](cdi_unified_verified_status_20260907.md#save) | 60% | **65%** | Medium | Exact-code CD-i CI passes the full helper/integration suites, including live ingress/PTS references and fifteen exact saved continuations. Historical capacity/30-minute evidence retains its original code scope. |
 | [SLAVE HLE](cdi_unified_verified_status_20260907.md#slave) | 55% | **55%** | Medium | Command/pointer/readiness helpers pass; several protocols remain stubs and physical mailbox timing is modeled. |
@@ -206,7 +239,7 @@ fidelity percentage is invented when evidence is insufficient.
 | [Cross-system audio](cdi_unified_verified_status_20260907.md#all_audio) | 70% | **70%** | Medium | Exact-code CD-i CI passes the full helper/integration suites, including live ingress/PTS references and fifteen exact saved continuations. Historical capacity/30-minute evidence retains its original code scope. |
 | [Cross-system video](cdi_unified_verified_status_20260907.md#all_video) | 55% | **65%** | Low | Exact-code CD-i CI passes the full helper/integration suites, including live ingress/PTS references and fifteen exact saved continuations. Historical capacity/30-minute evidence retains its original code scope. |
 | [DSP56000/56001 standalone core](cdi_unified_verified_status_20260907.md#dsp) | New row | **40%** | Low | Three helper test files cover host words, bootstrap relocation, masks, loops and wrapping. No emulator-linked complete firmware, interrupt, ALU or cycle-accuracy campaign. |
-| [Compatibility](cdi_audio_compatibility_matrix_20260906.md) | Not estimated | **Not estimated** | Low | Retained retail-runtime certification is missing for required XA/DVC/CD-DA categories; this does not mean no games work. |
+| [Compatibility](cdi_audio_compatibility_matrix_20260906.md) | Not estimated | **Not estimated** | Low | A real Mono-I BIOS boot is now demonstrated, but retained retail-runtime certification is still missing for required XA/DVC/CD-DA categories; this does not mean no games work. |
 
 ## Historical consolidation progress (superseded for changed rows above)
 
@@ -235,8 +268,10 @@ fidelity percentage is invented when evidence is insufficient.
 2. **Queued audio and independent clock changes:** reproduce timestamped PES
    behind already queued PCM and independent SCR jumps with reference output.
    Keep wider malformed/GOP/input limits separate from physical buffer claims.
-3. **Newly merged peripheral verification:** live timer match/capture/count IRQs,
-   UART mode/break/overrun, active peripheral saves and DMA error injection.
+3. **Wider peripheral verification:** the real Mono-I BIOS now passes the restored
+   firmware UART map and MCD212 DA/PA field-boundary handshake. Continue with live
+   timer match/capture/count IRQs, UART mode/break/overrun, active peripheral saves
+   and DMA error injection.
 4. **Mono-II/DSP:** complete standalone architectural/firmware execution and
    address-space integration, then required board interfaces; do not enable an
    incomplete device to manufacture system completion.
@@ -247,6 +282,8 @@ and retail compatibility claims separate from passing software regression tests.
 
 ## Documentation and history
 
+- [MCD212 BIOS field-parity checkpoint](cdi_mcd212_bios_parity_checkpoint_20260908.md).
+- [SCC68070 UART BIOS regression checkpoint](cdi_scc_uart_bios_checkpoint_20260908.md).
 - [Current unified evidence and worksheets](cdi_unified_verified_status_20260907.md).
 - [Detailed audio campaign](cdi_audio_fidelity_campaign.md).
 - [Historical pre-merge audit and branch baselines](cdi_verified_status_20260906.md).

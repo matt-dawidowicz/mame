@@ -55,20 +55,27 @@ GitHub Actions run `34172619049` (`CI (CD-i fast)`) passes on
 - integration suite: **12,201 assertions / 26 test cases**, PASS.
 
 The linked integration build compiles the live SCC68070 and Philips CD-i driver
-sources, so the restored map is compile- and regression-clean against the current
-project gate.
+sources, so the restored map is compile- and regression-clean against that project
+gate.
+
+The required post-fix BIOS rerun has now also been performed on the corrected
+branch. With `-log`, the Mono-I BIOS no longer emits the `0x80002010`–`0x8000201a`
+unmapped UART storm and advances through its RAM tests into later MCD212 firmware
+initialization. A subsequent debugger trace isolated a different blocker: firmware
+was polling MCD212 CSR1 DA/PA state at `0x004ffff1`. After the independent MCD212
+field-parity fix in `4b70e032b11a514a046075dcc07fdb2f301574b7`, the same real BIOS
+advances through the cyan startup screen into the actual CD-i BIOS UI. See
+[`cdi_mcd212_bios_parity_checkpoint_20260908.md`](cdi_mcd212_bios_parity_checkpoint_20260908.md).
 
 ## Evidence boundary
 
-This checkpoint does **not** claim a successful post-fix BIOS boot. The BIOS ROM
-and the user's exact runtime environment were not available to the automated gate.
-The next required observation is to rerun the same BIOS invocation on the corrected
-branch and verify that the `0x80002010`–`0x8000201a` unmapped polling loop is gone.
-Any subsequent first repeated error or unmapped access becomes the next runtime
-blocker.
+The original BIOS-blocking UART register-map regression is therefore closed by
+both automated and real-firmware evidence. The successful boot does **not** prove
+complete SCC68070 UART behavior: live mode changes, break, overrun, electrical
+waveforms, active-peripheral save/restore and wider timer/UART event combinations
+remain open.
 
-No hardware-fidelity, UART electrical waveform, retail-title compatibility, or
-complete live UART mode/break/overrun claim is made here. The SCC68070 engineering
-completion grade therefore remains **75% (Medium confidence)** pending the BIOS
-rerun and the wider live UART/timer verification already listed in the master
-status.
+No hardware-fidelity or retail-title compatibility claim is made here. The
+SCC68070 engineering completion grade remains **75% (Medium confidence)** because
+the new boot evidence closes the specific map/regression obligation but not those
+wider live peripheral-verification items.
