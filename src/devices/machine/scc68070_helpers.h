@@ -15,14 +15,14 @@ namespace scc68070
 
 constexpr std::uint32_t DMA_ADDRESS_MASK = 0x00ffffff;
 
-// Philips documents the UART as eight byte-wide registers on odd addresses.
-// Keep the canonical map here so register mapping tests cannot silently drift.
-constexpr std::uint32_t UART_RHR_ADDRESS = 0x80002011;
-constexpr std::uint32_t UART_THR_ADDRESS = 0x80002013;
-constexpr std::uint32_t UART_USR_ADDRESS = 0x80002015;
-constexpr std::uint32_t UART_UMR_ADDRESS = 0x80002019;
-constexpr std::uint32_t UART_UCR_ADDRESS = 0x8000201d;
-constexpr std::uint32_t UART_UCS_ADDRESS = 0x8000201f;
+// The SCC68070 UART firmware-visible registers occupy odd byte addresses.
+// Keep the production map here so firmware and register tests cannot silently drift.
+constexpr std::uint32_t UART_UMR_ADDRESS = 0x80002011;
+constexpr std::uint32_t UART_USR_ADDRESS = 0x80002013;
+constexpr std::uint32_t UART_UCS_ADDRESS = 0x80002015;
+constexpr std::uint32_t UART_UCR_ADDRESS = 0x80002017;
+constexpr std::uint32_t UART_THR_ADDRESS = 0x80002019;
+constexpr std::uint32_t UART_RHR_ADDRESS = 0x8000201b;
 
 constexpr std::uint32_t dma_address_high_write(std::uint32_t current, std::uint16_t data, std::uint16_t mem_mask)
 {
@@ -197,7 +197,6 @@ constexpr bool mmu_descriptor_valid(const Descriptor &desc)
 {
 	return (desc.segment & MMU_DESCRIPTOR_FLUSH_VALID) != 0;
 }
-
 template <typename Descriptor>
 constexpr std::uint8_t mmu_descriptor_segment(std::uint8_t control, const Descriptor &desc)
 {
