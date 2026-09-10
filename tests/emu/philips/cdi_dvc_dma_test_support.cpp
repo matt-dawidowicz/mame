@@ -56,3 +56,5 @@ bool emulator_info::frame_hook() { return false; }
 void emulator_info::sound_hook(const std::map<std::string, std::vector<std::pair<const float *, int>>> &sound) { cdi_transport_sound_hook(sound); cdi_cdda_save_sound_hook(sound); cdi_decoded_av_sound_hook(sound); cdi_motion_sound_hook(sound); }
 void emulator_info::layout_script_cb(layout_file &file, const char *script) { }
 bool emulator_info::standalone() { return true; }
+
+// This branch intentionally retains the phantom aperture so the new fixture must fail.
