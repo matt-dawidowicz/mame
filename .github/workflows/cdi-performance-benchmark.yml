@@ -29,7 +29,7 @@ jobs:
 
       - name: Build benchmark
         run: |
-          g++ -O3 -DNDEBUG -std=c++17 -Isrc/mame/philips \
+          g++ -O3 -DNDEBUG -std=c++17 \
             scripts/cdi_audio_mix_benchmark.cpp -o /tmp/cdi_audio_mix_benchmark
 
       - name: Verify equivalence and measure
@@ -38,8 +38,7 @@ jobs:
       - name: Publish result
         if: always()
         run: |
-          echo '## CD-i FMA audio mix microbenchmark' >> "$GITHUB_STEP_SUMMARY"
-          echo 'The executable first exhaustively checks direct int16 mixing against the legacy normalized-double path, then reports timing. Timing is informational and intentionally has no flaky CI threshold.' >> "$GITHUB_STEP_SUMMARY"
+          echo '## CD-i audio-mix microbenchmark' >> "$GITHUB_STEP_SUMMARY"
           if test -f /tmp/cdi_audio_mix_benchmark.txt; then
             echo '```text' >> "$GITHUB_STEP_SUMMARY"
             cat /tmp/cdi_audio_mix_benchmark.txt >> "$GITHUB_STEP_SUMMARY"
@@ -62,14 +61,16 @@ jobs:
           g++ -O3 -DNDEBUG -std=c++17 \
             scripts/cdi_plmpeg_ingress_benchmark.cpp -o /tmp/cdi_plmpeg_ingress_benchmark
 
-      - name: Measure ingress granularity
-        run: /tmp/cdi_plmpeg_ingress_benchmark | tee /tmp/cdi_plmpeg_ingress_benchmark.txt
+      - name: Verify byte-word equivalence and measure ingress granularity
+        run: |
+          /tmp/cdi_plmpeg_ingress_benchmark | tee /tmp/cdi_plmpeg_ingress_benchmark.txt
+          grep -q '^byte_word_equivalence=pass$' /tmp/cdi_plmpeg_ingress_benchmark.txt
 
       - name: Publish result
         if: always()
         run: |
           echo '## CD-i PL_MPEG ingress microbenchmark' >> "$GITHUB_STEP_SUMMARY"
-          echo 'Models the DVC dynamic-buffer refill pattern and compares one-byte, one-16-bit-bus-word, and whole-PES writes. Timing is informational; semantic equivalence is enforced by the emulator integration suite, not a noisy benchmark threshold.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Models the DVC dynamic-buffer refill pattern and compares one-byte, one-16-bit-bus-word, and whole-PES writes. The benchmark hard-gates exact logical unread-byte-stream equivalence for byte-vs-word writes across repeated consume/refill cycles. Timing remains informational; emulator-level semantics are enforced by the CD-i integration suite.' >> "$GITHUB_STEP_SUMMARY"
           if test -f /tmp/cdi_plmpeg_ingress_benchmark.txt; then
             echo '```text' >> "$GITHUB_STEP_SUMMARY"
             cat /tmp/cdi_plmpeg_ingress_benchmark.txt >> "$GITHUB_STEP_SUMMARY"
