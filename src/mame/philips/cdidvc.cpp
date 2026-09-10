@@ -1445,9 +1445,9 @@ void cdi_dvc_device::audio_decoder_recreate(
 	m_audio_decoder = plm_audio_create_with_buffer(m_audio_buffer, 1);
 }
 
-void cdi_dvc_device::audio_decoder_feed(uint8_t data)
+void cdi_dvc_device::audio_decoder_observe_byte(uint8_t data)
 {
-	// A write reopens PL_MPEG's dynamic ring after signal_end().  Mirror that
+	// A write reopens PL_MPEG's dynamic ring after signal_end(). Mirror that
 	// otherwise-opaque transition so a later save reconstructs it exactly.
 	m_audio_decoder_end_signalled = false;
 	m_audio_backend_ended = false;
@@ -1459,7 +1459,8 @@ void cdi_dvc_device::audio_decoder_feed(uint8_t data)
 	else if (!m_audio_replay_overflow)
 	{
 		m_audio_replay_overflow = true;
-		logerror("DVC_SAVE_STATE_AUDIO_REPLAY_OVERFLOW capacity=%u\n",
+		logerror("DVC_SAVE_STATE_AUDIO_REPLAY_OVERFLOW capacity=%u
+",
 				unsigned(cdi_dvc::SAVE_AUDIO_REPLAY_CAPACITY));
 	}
 
@@ -1484,23 +1485,28 @@ void cdi_dvc_device::audio_decoder_feed(uint8_t data)
 				m_audio_backend_status |= 0x08;
 				++m_audio_profile_violations;
 				LOGMASKED(LOG_AUDIO,
-						"%s: DVC AUDIO Green Book profile violation flags=%02x bitrate=%u rate=%u mode=%u private=%u emphasis=%u event=%u\n",
+						"%s: DVC AUDIO Green Book profile violation flags=%02x bitrate=%u rate=%u mode=%u private=%u emphasis=%u event=%u
+",
 						machine().describe_context(), profile_violations,
 						header.bitrate_kbps, header.sample_rate_hz,
 						header.channel_mode, header.private_bit ? 1U : 0U,
 						header.emphasis, m_audio_profile_violations);
 			}
 			++m_audio_header_events;
-			LOGMASKED(LOG_AUDIO, "%s: DVC AUDIO ES header bitrate=%u rate=%u mode=%u status=%02x event=%u\n",
+			LOGMASKED(LOG_AUDIO, "%s: DVC AUDIO ES header bitrate=%u rate=%u mode=%u status=%02x event=%u
+",
 				machine().describe_context(), m_audio_bitrate_kbps, m_audio_samplerate,
 				m_audio_channel_mode, m_audio_backend_status, m_audio_header_events);
 		}
 	}
+}
 
-	if (!m_audio_buffer || !m_audio_decoder)
+void cdi_dvc_device::audio_decoder_commit_bytes(uint8_t *data, unsigned count)
+{
+	if (!count || !m_audio_buffer || !m_audio_decoder)
 		return;
 
-	plm_buffer_write(m_audio_buffer, &data, 1);
+	plm_buffer_write(m_audio_buffer, data, count);
 
 	if (!m_audio_have_header && plm_audio_has_header(m_audio_decoder))
 	{
@@ -1534,10 +1540,25 @@ void cdi_dvc_device::audio_decoder_feed(uint8_t data)
 		m_fma_interrupt_status |= cdi_dvc::FMA_IRQ_DECODING_STARTED;
 		update_interrupt_state();
 		++m_audio_header_events;
-		LOGMASKED(LOG_AUDIO, "%s: DVC AUDIO backend header rate=%u status=%02x event=%u\n",
+		LOGMASKED(LOG_AUDIO, "%s: DVC AUDIO backend header rate=%u status=%02x event=%u
+",
 				machine().describe_context(), backend_rate,
 				m_audio_backend_status, m_audio_header_events);
 	}
+}
+
+void cdi_dvc_device::audio_decoder_feed(uint8_t data)
+{
+	audio_decoder_observe_byte(data);
+	audio_decoder_commit_bytes(&data, 1);
+}
+
+void cdi_dvc_device::audio_decoder_feed_word(uint8_t high, uint8_t low)
+{
+	uint8_t data[2] = { high, low };
+	audio_decoder_observe_byte(high);
+	audio_decoder_observe_byte(low);
+	audio_decoder_commit_bytes(data, 2);
 }
 
 void cdi_dvc_device::audio_decoder_pump()
@@ -1998,7 +2019,7 @@ void cdi_dvc_device::video_decoder_reset()
 	m_video_decoder = plm_video_create_with_buffer(m_video_buffer, 1);
 }
 
-void cdi_dvc_device::video_decoder_feed(uint8_t data)
+void cdi_dvc_device::video_decoder_observe_byte(uint8_t data)
 {
 	if (m_video_replay_journal.size() < cdi_dvc::SAVE_VIDEO_REPLAY_CAPACITY)
 	{
@@ -2007,7 +2028,8 @@ void cdi_dvc_device::video_decoder_feed(uint8_t data)
 	else if (!m_video_replay_overflow)
 	{
 		m_video_replay_overflow = true;
-		logerror("DVC_SAVE_STATE_VIDEO_REPLAY_OVERFLOW capacity=%u\n",
+		logerror("DVC_SAVE_STATE_VIDEO_REPLAY_OVERFLOW capacity=%u
+",
 				unsigned(cdi_dvc::SAVE_VIDEO_REPLAY_CAPACITY));
 	}
 
@@ -2031,7 +2053,8 @@ void cdi_dvc_device::video_decoder_feed(uint8_t data)
 	{
 		++m_video_sequence_headers;
 		m_video_picture_marker_interrupts |= cdi_dvc::FMV_IRQ_SEQUENCE;
-		LOGMASKED(LOG_VIDEO, "%s: DVC VIDEO ES sequence headers=%u\n",
+		LOGMASKED(LOG_VIDEO, "%s: DVC VIDEO ES sequence headers=%u
+",
 				machine().describe_context(), m_video_sequence_headers);
 	}
 	else if (m_video_es_prefix == 0x000001b7U)
@@ -2042,18 +2065,21 @@ void cdi_dvc_device::video_decoder_feed(uint8_t data)
 		m_fmv_interrupt_status |= cdi_dvc::FMV_IRQ_END_SEQUENCE;
 		update_interrupt_state();
 		LOGMASKED(LOG_SEQUENCE,
-				"DVC_FMV_TRACE sequence-end event=%u queue=%u decoded=%u irq=%04x ctx=%s\n",
+				"DVC_FMV_TRACE sequence-end event=%u queue=%u decoded=%u irq=%04x ctx=%s
+",
 				m_video_sequence_end_events, unsigned(m_video_queue.size()),
 				m_video_decoded_frames, m_fmv_interrupt_status,
 				machine().describe_context());
-		LOGMASKED(LOG_VIDEO, "%s: DVC VIDEO ES sequence end events=%u\n",
+		LOGMASKED(LOG_VIDEO, "%s: DVC VIDEO ES sequence end events=%u
+",
 				machine().describe_context(), m_video_sequence_end_events);
 	}
 	else if (m_video_es_prefix == 0x000001b8U)
 	{
 		++m_video_gop_headers;
 		m_video_picture_marker_interrupts |= cdi_dvc::FMV_IRQ_GOP;
-		LOGMASKED(LOG_VIDEO, "%s: DVC VIDEO ES GOP headers=%u\n",
+		LOGMASKED(LOG_VIDEO, "%s: DVC VIDEO ES GOP headers=%u
+",
 				machine().describe_context(), m_video_gop_headers);
 	}
 	else if (m_video_es_prefix == 0x00000100U)
@@ -2063,18 +2089,20 @@ void cdi_dvc_device::video_decoder_feed(uint8_t data)
 			m_video_packet_pts = UINT64_MAX;
 		++m_video_picture_headers;
 		m_video_picture_header_bytes = 2;
-		// More picture data after a flushed sequence means the previously
-		// queued picture was not the end of the complete presentation.
 		if (!m_video_sequence_end_pending)
 			m_video_last_picture_pending = false;
-		LOGMASKED(LOG_VIDEO, "%s: DVC VIDEO ES picture headers=%u\n",
+		LOGMASKED(LOG_VIDEO, "%s: DVC VIDEO ES picture headers=%u
+",
 				machine().describe_context(), m_video_picture_headers);
 	}
+}
 
-	if (!m_video_buffer || !m_video_decoder)
+void cdi_dvc_device::video_decoder_commit_bytes(uint8_t *data, unsigned count)
+{
+	if (!count || !m_video_buffer || !m_video_decoder)
 		return;
 
-	plm_buffer_write(m_video_buffer, &data, 1);
+	plm_buffer_write(m_video_buffer, data, count);
 
 	if (!m_video_have_sequence && plm_video_has_header(m_video_decoder))
 	{
@@ -2083,10 +2111,25 @@ void cdi_dvc_device::video_decoder_feed(uint8_t data)
 		m_video_height = uint16_t(plm_video_get_height(m_video_decoder));
 		m_video_framerate_millihz = uint32_t(plm_video_get_framerate(m_video_decoder) * 1000.0 + 0.5);
 
-		LOGMASKED(LOG_VIDEO, "%s: DVC VIDEO backend sequence=%ux%u fps_milli=%u\n",
+		LOGMASKED(LOG_VIDEO, "%s: DVC VIDEO backend sequence=%ux%u fps_milli=%u
+",
 				machine().describe_context(),
 				m_video_width, m_video_height, m_video_framerate_millihz);
 	}
+}
+
+void cdi_dvc_device::video_decoder_feed(uint8_t data)
+{
+	video_decoder_observe_byte(data);
+	video_decoder_commit_bytes(&data, 1);
+}
+
+void cdi_dvc_device::video_decoder_feed_word(uint8_t high, uint8_t low)
+{
+	uint8_t data[2] = { high, low };
+	video_decoder_observe_byte(high);
+	video_decoder_observe_byte(low);
+	video_decoder_commit_bytes(data, 2);
 }
 
 void cdi_dvc_device::video_picture_event(uint8_t picture_type)
@@ -2611,6 +2654,25 @@ void cdi_dvc_device::mpeg_payload_byte(unsigned target, uint8_t data)
 		video_decoder_feed(data);
 }
 
+void cdi_dvc_device::mpeg_payload_word(unsigned target, uint8_t high, uint8_t low)
+{
+	mpeg_begin_payload(target);
+
+	if (!m_mpeg_have_payload[target])
+	{
+		m_mpeg_first_payload[target] = high;
+		m_mpeg_have_payload[target] = true;
+	}
+
+	m_mpeg_last_payload[target] = low;
+	m_mpeg_payload_bytes[target] += 2;
+
+	if (target == MPEG_FMA)
+		audio_decoder_feed_word(high, low);
+	else if (target == MPEG_FMV)
+		video_decoder_feed_word(high, low);
+}
+
 void cdi_dvc_device::mpeg_packet_done(unsigned target)
 {
 	mpeg_schedule_packet(target);
@@ -2935,6 +2997,33 @@ void cdi_dvc_device::mpeg_byte_w(unsigned target, uint8_t data)
 void cdi_dvc_device::mpeg_word_w(bool for_fma, uint16_t data, uint16_t mem_mask)
 {
 	const unsigned target = for_fma ? MPEG_FMA : MPEG_FMV;
+
+	// Once the raw decoder has established its header, a full DVC bus word
+	// entirely inside a selected PES payload can be committed to PL_MPEG in one
+	// two-byte write. Parser state, ES/header observation, replay journals and
+	// timestamp bookkeeping still advance byte-by-byte. Packet boundaries,
+	// partial bus writes and initial decoder-header discovery deliberately stay
+	// on the original byte path.
+	bool const full_word = (mem_mask & 0xff00U) && (mem_mask & 0x00ffU);
+	bool const backend_ready = target == MPEG_FMA ? m_audio_have_header : m_video_have_sequence;
+	bool const audio_accepting = target != MPEG_FMA
+			|| cdi_dvc::mpeg_audio_input_accepting({
+				m_fma_stream,
+				m_fma_current_stream,
+				m_fma_stream_change_pending,
+				m_fma_program_ended
+			});
+	if (full_word && backend_ready && audio_accepting
+			&& m_mpeg_state[target] == MPEG_PAYLOAD
+			&& m_mpeg_selected[target]
+			&& m_mpeg_packet_remaining[target] >= 2)
+	{
+		m_mpeg_packet_remaining[target] -= 2;
+		mpeg_payload_word(target, uint8_t(data >> 8), uint8_t(data));
+		if (m_mpeg_packet_remaining[target] == 0)
+			mpeg_packet_done(target);
+		return;
+	}
 
 	if (mem_mask & 0xff00)
 		mpeg_byte_w(target, uint8_t(data >> 8));
