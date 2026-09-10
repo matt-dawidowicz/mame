@@ -1,1 +1,1 @@
-repair generated C++ newline escapes after equivalence test
+repair generated C++ newline escapes on macOS runner
