@@ -1459,8 +1459,7 @@ void cdi_dvc_device::audio_decoder_observe_byte(uint8_t data)
 	else if (!m_audio_replay_overflow)
 	{
 		m_audio_replay_overflow = true;
-		logerror("DVC_SAVE_STATE_AUDIO_REPLAY_OVERFLOW capacity=%u
-",
+		logerror("DVC_SAVE_STATE_AUDIO_REPLAY_OVERFLOW capacity=%u\n",
 				unsigned(cdi_dvc::SAVE_AUDIO_REPLAY_CAPACITY));
 	}
 
@@ -1485,16 +1484,14 @@ void cdi_dvc_device::audio_decoder_observe_byte(uint8_t data)
 				m_audio_backend_status |= 0x08;
 				++m_audio_profile_violations;
 				LOGMASKED(LOG_AUDIO,
-						"%s: DVC AUDIO Green Book profile violation flags=%02x bitrate=%u rate=%u mode=%u private=%u emphasis=%u event=%u
-",
+						"%s: DVC AUDIO Green Book profile violation flags=%02x bitrate=%u rate=%u mode=%u private=%u emphasis=%u event=%u\n",
 						machine().describe_context(), profile_violations,
 						header.bitrate_kbps, header.sample_rate_hz,
 						header.channel_mode, header.private_bit ? 1U : 0U,
 						header.emphasis, m_audio_profile_violations);
 			}
 			++m_audio_header_events;
-			LOGMASKED(LOG_AUDIO, "%s: DVC AUDIO ES header bitrate=%u rate=%u mode=%u status=%02x event=%u
-",
+			LOGMASKED(LOG_AUDIO, "%s: DVC AUDIO ES header bitrate=%u rate=%u mode=%u status=%02x event=%u\n",
 				machine().describe_context(), m_audio_bitrate_kbps, m_audio_samplerate,
 				m_audio_channel_mode, m_audio_backend_status, m_audio_header_events);
 		}
@@ -1540,8 +1537,7 @@ void cdi_dvc_device::audio_decoder_commit_bytes(uint8_t *data, unsigned count)
 		m_fma_interrupt_status |= cdi_dvc::FMA_IRQ_DECODING_STARTED;
 		update_interrupt_state();
 		++m_audio_header_events;
-		LOGMASKED(LOG_AUDIO, "%s: DVC AUDIO backend header rate=%u status=%02x event=%u
-",
+		LOGMASKED(LOG_AUDIO, "%s: DVC AUDIO backend header rate=%u status=%02x event=%u\n",
 				machine().describe_context(), backend_rate,
 				m_audio_backend_status, m_audio_header_events);
 	}
@@ -2028,8 +2024,7 @@ void cdi_dvc_device::video_decoder_observe_byte(uint8_t data)
 	else if (!m_video_replay_overflow)
 	{
 		m_video_replay_overflow = true;
-		logerror("DVC_SAVE_STATE_VIDEO_REPLAY_OVERFLOW capacity=%u
-",
+		logerror("DVC_SAVE_STATE_VIDEO_REPLAY_OVERFLOW capacity=%u\n",
 				unsigned(cdi_dvc::SAVE_VIDEO_REPLAY_CAPACITY));
 	}
 
@@ -2053,8 +2048,7 @@ void cdi_dvc_device::video_decoder_observe_byte(uint8_t data)
 	{
 		++m_video_sequence_headers;
 		m_video_picture_marker_interrupts |= cdi_dvc::FMV_IRQ_SEQUENCE;
-		LOGMASKED(LOG_VIDEO, "%s: DVC VIDEO ES sequence headers=%u
-",
+		LOGMASKED(LOG_VIDEO, "%s: DVC VIDEO ES sequence headers=%u\n",
 				machine().describe_context(), m_video_sequence_headers);
 	}
 	else if (m_video_es_prefix == 0x000001b7U)
@@ -2065,21 +2059,18 @@ void cdi_dvc_device::video_decoder_observe_byte(uint8_t data)
 		m_fmv_interrupt_status |= cdi_dvc::FMV_IRQ_END_SEQUENCE;
 		update_interrupt_state();
 		LOGMASKED(LOG_SEQUENCE,
-				"DVC_FMV_TRACE sequence-end event=%u queue=%u decoded=%u irq=%04x ctx=%s
-",
+				"DVC_FMV_TRACE sequence-end event=%u queue=%u decoded=%u irq=%04x ctx=%s\n",
 				m_video_sequence_end_events, unsigned(m_video_queue.size()),
 				m_video_decoded_frames, m_fmv_interrupt_status,
 				machine().describe_context());
-		LOGMASKED(LOG_VIDEO, "%s: DVC VIDEO ES sequence end events=%u
-",
+		LOGMASKED(LOG_VIDEO, "%s: DVC VIDEO ES sequence end events=%u\n",
 				machine().describe_context(), m_video_sequence_end_events);
 	}
 	else if (m_video_es_prefix == 0x000001b8U)
 	{
 		++m_video_gop_headers;
 		m_video_picture_marker_interrupts |= cdi_dvc::FMV_IRQ_GOP;
-		LOGMASKED(LOG_VIDEO, "%s: DVC VIDEO ES GOP headers=%u
-",
+		LOGMASKED(LOG_VIDEO, "%s: DVC VIDEO ES GOP headers=%u\n",
 				machine().describe_context(), m_video_gop_headers);
 	}
 	else if (m_video_es_prefix == 0x00000100U)
@@ -2091,8 +2082,7 @@ void cdi_dvc_device::video_decoder_observe_byte(uint8_t data)
 		m_video_picture_header_bytes = 2;
 		if (!m_video_sequence_end_pending)
 			m_video_last_picture_pending = false;
-		LOGMASKED(LOG_VIDEO, "%s: DVC VIDEO ES picture headers=%u
-",
+		LOGMASKED(LOG_VIDEO, "%s: DVC VIDEO ES picture headers=%u\n",
 				machine().describe_context(), m_video_picture_headers);
 	}
 }
@@ -2111,8 +2101,7 @@ void cdi_dvc_device::video_decoder_commit_bytes(uint8_t *data, unsigned count)
 		m_video_height = uint16_t(plm_video_get_height(m_video_decoder));
 		m_video_framerate_millihz = uint32_t(plm_video_get_framerate(m_video_decoder) * 1000.0 + 0.5);
 
-		LOGMASKED(LOG_VIDEO, "%s: DVC VIDEO backend sequence=%ux%u fps_milli=%u
-",
+		LOGMASKED(LOG_VIDEO, "%s: DVC VIDEO backend sequence=%ux%u fps_milli=%u\n",
 				machine().describe_context(),
 				m_video_width, m_video_height, m_video_framerate_millihz);
 	}
