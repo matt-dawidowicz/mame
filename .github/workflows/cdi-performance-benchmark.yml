@@ -1,0 +1,45 @@
+name: CD-i performance benchmark
+
+on:
+  pull_request:
+    paths:
+      - 'src/mame/philips/cdiaudio.h'
+      - 'src/mame/philips/cdidvc.cpp'
+      - 'scripts/cdi_audio_mix_benchmark.cpp'
+      - '.github/workflows/cdi-performance-benchmark.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audio-mix:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          sparse-checkout: |
+            src/mame/philips/cdiaudio.h
+            src/mame/philips/cdiaudio_dsp56001.h
+            scripts/cdi_audio_mix_benchmark.cpp
+          sparse-checkout-cone-mode: false
+
+      - name: Build benchmark
+        run: |
+          g++ -O3 -DNDEBUG -std=c++17 -Isrc/mame/philips \
+            scripts/cdi_audio_mix_benchmark.cpp -o /tmp/cdi_audio_mix_benchmark
+
+      - name: Verify equivalence and measure
+        run: /tmp/cdi_audio_mix_benchmark | tee /tmp/cdi_audio_mix_benchmark.txt
+
+      - name: Publish result
+        if: always()
+        run: |
+          echo '## CD-i FMA audio mix microbenchmark' >> "$GITHUB_STEP_SUMMARY"
+          echo 'The executable first exhaustively checks direct int16 mixing against the legacy normalized-double path, then reports timing. Timing is informational and intentionally has no flaky CI threshold.' >> "$GITHUB_STEP_SUMMARY"
+          if test -f /tmp/cdi_audio_mix_benchmark.txt; then
+            echo '```text' >> "$GITHUB_STEP_SUMMARY"
+            cat /tmp/cdi_audio_mix_benchmark.txt >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          fi

@@ -1351,16 +1351,18 @@ void cdi_dvc_device::sound_stream_update(sound_stream &stream)
 			}
 		}
 
-		cdi_audio::stereo_sample const mixed = cdi_audio::mix_attenuated_stereo(
-				attenuation,
-				double(output.left) / 32768.0,
-				double(output.right) / 32768.0);
+		// The queue is already signed 16-bit PCM.  Stay in that domain for the
+		// firmware-derived Q22 matrix instead of normalizing to double only for
+		// mix_attenuated_stereo() to quantize the exact same values back to int16.
+		cdi_audio::stereo_pcm16 const mixed = cdi_audio::mix_fma_attenuated_pcm16(
+				attenuation, output.left, output.right);
+		constexpr double pcm16_normalization = 1.0 / 32768.0;
 
 		// Clamp only at MAME's normalized output boundary.  This prevents an
 		// over-range four-path mix escaping the sound stream, but is not a claim
 		// about the DSP56001 accumulator width or its final rounding circuit.
-		stream.put_clamp(0, i, mixed.left);
-		stream.put_clamp(1, i, mixed.right);
+		stream.put_clamp(0, i, double(mixed.left) * pcm16_normalization);
+		stream.put_clamp(1, i, double(mixed.right) * pcm16_normalization);
 
 		if (have_pcm && output.drained)
 		{
