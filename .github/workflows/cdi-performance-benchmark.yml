@@ -3,9 +3,11 @@ name: CD-i performance benchmark
 on:
   pull_request:
     paths:
+      - '3rdparty/pl_mpeg/pl_mpeg.h'
       - 'src/mame/philips/cdiaudio.h'
       - 'src/mame/philips/cdidvc.cpp'
       - 'scripts/cdi_audio_mix_benchmark.cpp'
+      - 'scripts/cdi_plmpeg_ingress_benchmark.cpp'
       - '.github/workflows/cdi-performance-benchmark.yml'
   workflow_dispatch:
 
@@ -41,5 +43,35 @@ jobs:
           if test -f /tmp/cdi_audio_mix_benchmark.txt; then
             echo '```text' >> "$GITHUB_STEP_SUMMARY"
             cat /tmp/cdi_audio_mix_benchmark.txt >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  plmpeg-ingress:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          sparse-checkout: |
+            3rdparty/pl_mpeg/pl_mpeg.h
+            scripts/cdi_plmpeg_ingress_benchmark.cpp
+          sparse-checkout-cone-mode: false
+
+      - name: Build benchmark
+        run: |
+          g++ -O3 -DNDEBUG -std=c++17 \
+            scripts/cdi_plmpeg_ingress_benchmark.cpp -o /tmp/cdi_plmpeg_ingress_benchmark
+
+      - name: Measure ingress granularity
+        run: /tmp/cdi_plmpeg_ingress_benchmark | tee /tmp/cdi_plmpeg_ingress_benchmark.txt
+
+      - name: Publish result
+        if: always()
+        run: |
+          echo '## CD-i PL_MPEG ingress microbenchmark' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Models the DVC dynamic-buffer refill pattern and compares one-byte, one-16-bit-bus-word, and whole-PES writes. Timing is informational; semantic equivalence is enforced by the emulator integration suite, not a noisy benchmark threshold.' >> "$GITHUB_STEP_SUMMARY"
+          if test -f /tmp/cdi_plmpeg_ingress_benchmark.txt; then
+            echo '```text' >> "$GITHUB_STEP_SUMMARY"
+            cat /tmp/cdi_plmpeg_ingress_benchmark.txt >> "$GITHUB_STEP_SUMMARY"
             echo '```' >> "$GITHUB_STEP_SUMMARY"
           fi
