@@ -909,13 +909,9 @@ void cdicdic_device::process_sector_data(const uint8_t *buffer, const uint8_t *s
 	}
 	else
 	{
-		for (int i = SECTOR_HEADER; i < SECTOR_FILE2; i += 2)
-		{
-			cdic_hle::write_ram_word(&m_ram[dev_buffer], uint16_t((uint16_t(buffer[i]) << 8) | buffer[i + 1]));
-			dev_buffer += 2;
-		}
-
-		for (int i = SECTOR_FILE2; i < SECTOR_SIZE; i += 2)
+		// Header and payload are contiguous here; the former split loops had
+		// identical bodies and no semantic boundary at SECTOR_FILE2.
+		for (int i = SECTOR_HEADER; i < SECTOR_SIZE; i += 2)
 		{
 			cdic_hle::write_ram_word(&m_ram[dev_buffer], uint16_t((uint16_t(buffer[i]) << 8) | buffer[i + 1]));
 			dev_buffer += 2;
