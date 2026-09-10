@@ -23,6 +23,11 @@ jobs:
         with:
           ref: perf/cdi-consolidation-benchmark-20260910
           fetch-depth: 1
+          sparse-checkout: |
+            src/mame/philips
+            scripts/cdi_audio_mix_benchmark.cpp
+            scripts/cdi-consolidation-perf-apply.py
+          sparse-checkout-cone-mode: false
 
       - name: Build and run focused audio benchmark
         run: |
