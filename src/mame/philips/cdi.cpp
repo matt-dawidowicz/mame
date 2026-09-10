@@ -110,7 +110,8 @@ void cdi_state::cdimono1_mem(address_map &map)
 	map(0x320000, 0x323fff).rw("mk48t08", FUNC(timekeeper_device::read), FUNC(timekeeper_device::write)).umask16(0xff00);    /* nvram (only low bytes used) */
 	map(0x400000, 0x47ffff).r(FUNC(cdi_state::main_rom_r));
 	map(0x4fffe0, 0x4fffff).m(m_mcd212, FUNC(mcd212_device::map));
-	map(0x500000, 0x57ffff).ram();
+	// 0x500000-0xcfffff is unmapped expansion-probe space on Mono-I.
+	// Leave the base bus-error mapping visible until a real expansion owns it.
 	// 0xd00000-0xefffff is reserved for the optional Digital Video Cartridge.
 	// Do not populate it in the base Mono-I machine.  A DVC-equipped
 	// configuration will install the cartridge device in this address space.
