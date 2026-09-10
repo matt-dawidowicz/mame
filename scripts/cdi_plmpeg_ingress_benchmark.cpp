@@ -132,6 +132,10 @@ int main()
 	auto const packet = make_packet();
 	volatile std::size_t sink = 0;
 
+	// Production uses the two-byte case only for a complete DVC bus word fully
+	// contained in an already-selected PES payload after the decoder header is
+	// established.  This gate verifies that changing only PL_MPEG write
+	// granularity cannot alter the logical unread elementary-stream bytes.
 	if (!verify_byte_word_equivalence(packet))
 	{
 		std::cerr << "byte_word_equivalence=FAIL\n";
