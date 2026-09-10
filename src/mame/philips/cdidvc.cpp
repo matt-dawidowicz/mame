@@ -23,6 +23,7 @@
 #include "cdidvc.h"
 #include "cdidvc_plmpeg_state.h"
 #include "cdidvc_fidelity.h"
+#include "cdidvc_presentation.h"
 #include "cdidvc_mpeg_format.h"
 #include "cdidvc_save_state.h"
 #include "cdidvc_utils.h"
@@ -76,6 +77,7 @@ void cdi_dvc_device::device_start()
 
 	save_item(NAME(m_dclk_epoch_ticks));
 	save_item(NAME(m_fmv_dclk_offset));
+	save_item(NAME(m_fmv_syscr_programmed));
 	save_item(NAME(m_fma_dclk_latch));
 
 	save_item(NAME(m_vcd_control));
@@ -842,6 +844,7 @@ void cdi_dvc_device::device_reset()
 	m_scheduler_vblanks = 0;
 	m_dclk_epoch_ticks = machine().time().as_ticks(45'000);
 	m_fmv_dclk_offset = 0;
+	m_fmv_syscr_programmed = false;
 	m_fma_dclk_latch = 0;
 
 	m_vcd_control = 0;
@@ -942,6 +945,7 @@ void cdi_dvc_device::set_fmv_syscr(uint16_t data, uint16_t mem_mask)
 		(current & ~0x003fffc0U) | (uint32_t(syscr) << 6);
 
 	m_fmv_dclk_offset += desired - current;
+	m_fmv_syscr_programmed = true;
 }
 
 void cdi_dvc_device::update_timer()
@@ -1707,37 +1711,47 @@ void cdi_dvc_device::video_latch_frame()
 
 	if (!single_step
 			&& (m_fmv_system_control & 0x0004U)
-			&& m_video_queue.front().timestamp_valid
-			&& m_mpeg_have_scr[MPEG_FMV])
+			&& m_video_queue.front().timestamp_valid)
 	{
-		clock90 = current_mpeg_clock90(MPEG_FMV);
-		cdi_dvc::presentation_selection selection { 0, 0, false };
-		for (std::size_t index = 0; index < m_video_queue.size(); ++index)
+		cdi_dvc::video_sync_clock const sync_clock = cdi_dvc::select_video_sync_clock(
+			m_fmv_syscr_programmed, current_fmv_dclk(),
+			m_mpeg_have_scr[MPEG_FMV], m_mpeg_last_scr[MPEG_FMV],
+			m_mpeg_scr_dclk_anchor[MPEG_FMV]);
+		if (sync_clock.valid)
 		{
-			queued_video_frame const &queued = m_video_queue[index];
-			if (!queued.timestamp_valid
-					|| !cdi_dvc::mpeg_presentation_due(queued.timestamp90, clock90))
-				break;
+			clock90 = sync_clock.clock90;
+			cdi_dvc::presentation_selection selection { 0, 0, false };
+			for (std::size_t index = 0; index < m_video_queue.size(); ++index)
+			{
+				queued_video_frame const &queued = m_video_queue[index];
+				if (!queued.timestamp_valid
+						|| !cdi_dvc::mpeg_presentation_due(queued.timestamp90, clock90))
+					break;
 
-			selection.selected_index = index;
-			selection.consume_count = index + 1;
-			selection.valid = true;
+				selection.selected_index = index;
+				selection.consume_count = index + 1;
+				selection.valid = true;
+			}
+			if (!selection.valid)
+			{
+				++m_scheduler_wait_vblanks;
+				return;
+			}
+
+			selected_index = selection.selected_index;
+			consume_count = selection.consume_count;
+			timestamp_driven = true;
 		}
-		if (!selection.valid)
+		else
 		{
-			++m_scheduler_wait_vblanks;
-			return;
+			++m_scheduler_fallback_presented;
 		}
-
-		selected_index = selection.selected_index;
-		consume_count = selection.consume_count;
-		timestamp_driven = true;
 	}
 	else if (!single_step)
 	{
-		// Compatibility fallback for streams that have not established both a
-		// frame timestamp and an FMV SCR clock.  Preserve queued order and do not
-		// reintroduce the old single-slot overwrite behavior.
+		// Compatibility fallback for streams that have not established a usable
+		// timestamp clock. Preserve queued order and do not reintroduce the old
+		// single-slot overwrite behavior.
 		++m_scheduler_fallback_presented;
 	}
 
@@ -1883,35 +1897,35 @@ void cdi_dvc_device::video_overlay_scanline(uint32_t *pixels, unsigned pixel_cou
 
 	unsigned const src_y = unsigned(m_video_crop_y)
 		+ unsigned(rel_y / int(cdi_dvc::VIDEO_PIXEL_Y_SCALE));
-	for (unsigned x = 0; x < window_w; ++x)
+	bool const vcd_mode = cdi_dvc::vcd_pixel_clock_enabled(m_vcd_control);
+	unsigned const output_w = cdi_dvc::video_output_width(window_w, vcd_mode);
+	for (unsigned output_x = 0; output_x < output_w; ++output_x)
 	{
-		unsigned const src_x = unsigned(m_video_crop_x) + x;
+		unsigned const src_x = unsigned(m_video_crop_x)
+			+ cdi_dvc::video_source_x_for_output(output_x, window_w, vcd_mode);
 		uint32_t const color = m_video_present_frame[size_t(src_y) * m_video_present_width + src_x];
-		for (unsigned repeat = 0; repeat < cdi_dvc::VIDEO_PIXEL_X_SCALE; ++repeat)
-		{
-			int const out_x = dst_x + int(x * cdi_dvc::VIDEO_PIXEL_X_SCALE + repeat);
-			if (out_x < 0 || out_x >= int(pixel_count) || out_x >= int(external_count))
-				continue;
-			if (out_x < clip_min_x || out_x > clip_max_x || !external_video[out_x])
-				continue;
+		int const out_x = dst_x + int(output_x);
+		if (out_x < 0 || out_x >= int(pixel_count) || out_x >= int(external_count))
+			continue;
+		if (out_x < clip_min_x || out_x > clip_max_x || !external_video[out_x])
+			continue;
 
-			pixels[out_x] = color;
+		pixels[out_x] = color;
 #if (VERBOSE & LOG_VIDEO)
-			uint8_t const r = uint8_t(color >> 16);
-			uint8_t const g = uint8_t(color >> 8);
-			uint8_t const b = uint8_t(color);
-			m_video_overlay_hash ^= r;
-			m_video_overlay_hash *= 16777619U;
-			m_video_overlay_hash ^= g;
-			m_video_overlay_hash *= 16777619U;
-			m_video_overlay_hash ^= b;
-			m_video_overlay_hash *= 16777619U;
-			++m_video_overlay_pixels;
+		uint8_t const r = uint8_t(color >> 16);
+		uint8_t const g = uint8_t(color >> 8);
+		uint8_t const b = uint8_t(color);
+		m_video_overlay_hash ^= r;
+		m_video_overlay_hash *= 16777619U;
+		m_video_overlay_hash ^= g;
+		m_video_overlay_hash *= 16777619U;
+		m_video_overlay_hash ^= b;
+		m_video_overlay_hash *= 16777619U;
+		++m_video_overlay_pixels;
 #endif
-			++m_video_overlay_total_pixels;
-			if (physical_y >= visible_top && physical_y < visible_top + 64)
-				++m_video_overlay_top64_pixels;
-		}
+		++m_video_overlay_total_pixels;
+		if (physical_y >= visible_top && physical_y < visible_top + 64)
+			++m_video_overlay_top64_pixels;
 	}
 
 #if (VERBOSE & LOG_VIDEO)
