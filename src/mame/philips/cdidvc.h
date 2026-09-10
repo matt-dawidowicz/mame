@@ -68,6 +68,7 @@ private:
 	void mpeg_byte_w(unsigned target, uint8_t data);
 	void mpeg_begin_payload(unsigned target);
 	void mpeg_payload_byte(unsigned target, uint8_t data);
+	void mpeg_payload_word(unsigned target, uint8_t high, uint8_t low);
 	void mpeg_packet_done(unsigned target);
 	void mpeg_scr_byte(unsigned target, uint8_t data);
 	void mpeg_timestamp_start(unsigned target, uint8_t data, bool with_dts);
@@ -82,7 +83,10 @@ private:
 	void audio_decoder_reset();
 	void audio_decoder_stream_change();
 	void audio_decoder_destroy();
+	void audio_decoder_observe_byte(uint8_t data);
+	void audio_decoder_commit_bytes(uint8_t *data, unsigned count);
 	void audio_decoder_feed(uint8_t data);
+	void audio_decoder_feed_word(uint8_t high, uint8_t low);
 	void audio_decoder_pump();
 	void audio_decoder_flush();
 
@@ -94,7 +98,10 @@ private:
 	void video_overlay_reset();
 	void video_decoder_reset();
 	void video_decoder_destroy();
+	void video_decoder_observe_byte(uint8_t data);
+	void video_decoder_commit_bytes(uint8_t *data, unsigned count);
 	void video_decoder_feed(uint8_t data);
+	void video_decoder_feed_word(uint8_t high, uint8_t low);
 	void video_decoder_pump(bool end_signalled = false);
 	void video_decoder_flush();
 	void video_picture_event(uint8_t picture_type);

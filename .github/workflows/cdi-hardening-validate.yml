@@ -25,9 +25,15 @@ jobs:
           sudo apt-get install -y libsdl2-dev libsdl2-ttf-dev libfontconfig-dev libasound2-dev libxinerama-dev libxi-dev qt6-base-dev qt6-base-dev-tools
 
       - name: Source integrity
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
-          git diff --check 894bae709845dc823d915c3ac9b52a8bc19c2486 HEAD
+          BASE_SHA="${PR_BASE_SHA}"
+          if test -z "${BASE_SHA}"; then
+            BASE_SHA="$(git rev-parse HEAD^1)"
+          fi
+          git diff --check "${BASE_SHA}" HEAD
           git status --short
 
       - name: Build native tests
@@ -62,6 +68,12 @@ jobs:
         run: ./cdivalidate -validate
 
       - name: Final diff check
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
-          git diff --check 894bae709845dc823d915c3ac9b52a8bc19c2486 HEAD
+          BASE_SHA="${PR_BASE_SHA}"
+          if test -z "${BASE_SHA}"; then
+            BASE_SHA="$(git rev-parse HEAD^1)"
+          fi
+          git diff --check "${BASE_SHA}" HEAD
           git status --short
