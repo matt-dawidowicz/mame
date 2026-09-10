@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   apply:
-    runs-on: ubuntu-24.04
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
         with:
@@ -39,5 +39,5 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add src/mame/philips/cdidvc.cpp src/mame/philips/cdidvc.h
-          git commit -m 'philips/cdi: batch steady-state PL_MPEG payload words'
+          git commit -m 'philips/cdi: repair and batch steady-state PL_MPEG payload words'
           git push origin HEAD:perf/cdi-plmpeg-ingress-20260910
