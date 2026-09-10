@@ -89,7 +89,7 @@ jobs:
           OVERRIDE_CXX: ${{ matrix.cxx }}
           ARCHOPTS: "-fuse-ld=lld"
           SUBTARGET: mame
-          SOURCES: src/mame/philips/cdi.cpp
+          SOURCES: src/mame/philips/cdi.cpp,src/mame/philips/cdidvc_plmpeg.cpp
           TOOLS: 0
           USE_SDL3: 1
         run: make -j"$(nproc)"

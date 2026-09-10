@@ -46,7 +46,7 @@ jobs:
         run: ./mametests
 
       - name: Build CD-i validation emulator
-        run: make SUBTARGET=cdivalidate SOURCES=src/mame/philips/cdi.cpp REGENIE=1 -j2
+        run: make SUBTARGET=cdivalidate SOURCES=src/mame/philips/cdi.cpp,src/mame/philips/cdidvc_plmpeg.cpp REGENIE=1 -j2
 
       - name: Validate CD-i emulator
         run: ./cdivalidate -validate
@@ -60,7 +60,7 @@ jobs:
         run: ./mametests
 
       - name: Build ASan CD-i validation emulator
-        run: make SUBTARGET=cdivalidate SOURCES=src/mame/philips/cdi.cpp SANITIZE=address BUILDDIR=build-asan-cdivalidate REGENIE=1 -j2
+        run: make SUBTARGET=cdivalidate SOURCES=src/mame/philips/cdi.cpp,src/mame/philips/cdidvc_plmpeg.cpp SANITIZE=address BUILDDIR=build-asan-cdivalidate REGENIE=1 -j2
 
       - name: ASan validate CD-i emulator
         env:
