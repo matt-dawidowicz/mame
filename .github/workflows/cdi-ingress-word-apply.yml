@@ -1,0 +1,43 @@
+name: CD-i ingress word apply
+
+on:
+  push:
+    branches:
+      - perf/cdi-plmpeg-ingress-20260910
+    paths:
+      - '.cdi-ingress-word-apply-trigger'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          sparse-checkout: |
+            src/mame/philips/cdidvc.cpp
+            src/mame/philips/cdidvc.h
+            scripts/cdi-plmpeg-ingress-word-apply.py
+          sparse-checkout-cone-mode: false
+
+      - name: Apply guarded source patch
+        run: python3 scripts/cdi-plmpeg-ingress-word-apply.py
+
+      - name: Validate source shape
+        run: |
+          git diff --check
+          grep -q 'mpeg_payload_word' src/mame/philips/cdidvc.cpp
+          grep -q 'audio_decoder_feed_word' src/mame/philips/cdidvc.cpp
+          grep -q 'video_decoder_feed_word' src/mame/philips/cdidvc.cpp
+          grep -q 'm_mpeg_packet_remaining\[target\] >= 2' src/mame/philips/cdidvc.cpp
+
+      - name: Commit production change
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/mame/philips/cdidvc.cpp src/mame/philips/cdidvc.h
+          git commit -m 'philips/cdi: batch steady-state PL_MPEG payload words'
+          git push origin HEAD:perf/cdi-plmpeg-ingress-20260910
