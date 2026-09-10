@@ -136,6 +136,7 @@ private:
 	// VMPEG clock state.  Both FMA and FMV clocks advance at 45 kHz.
 	uint64_t m_dclk_epoch_ticks = 0;
 	uint32_t m_fmv_dclk_offset = 0;
+	bool m_fmv_syscr_programmed = false;
 	uint16_t m_fma_dclk_latch = 0;
 
 	uint16_t m_vcd_control = 0;
