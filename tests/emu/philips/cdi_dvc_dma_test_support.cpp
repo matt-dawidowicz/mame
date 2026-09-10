@@ -12,6 +12,7 @@
 #include "cdi_dvc_edge_integration.cpp"
 #include "cdi_dvc_state_integration.cpp"
 #include "cdi_mmu_integration.cpp"
+#include "cdi_ram_map_integration.cpp"
 #include "cdi_q_integration.cpp"
 #include "cdi_transport_integration.cpp"
 #include "cdi_cdda_save_integration.cpp"
@@ -20,7 +21,7 @@
 
 #include "drivenum.h"
 
-std::size_t const driver_list::s_driver_count = 13;
+std::size_t const driver_list::s_driver_count = 14;
 game_driver const * const driver_list::s_drivers_sorted[] =
 {
 	&GAME_NAME(cdiaudma),
@@ -35,6 +36,7 @@ game_driver const * const driver_list::s_drivers_sorted[] =
 	&GAME_NAME(cdimotion),
 	&GAME_NAME(cdinodvct),
 	&GAME_NAME(cdiqtest),
+	&GAME_NAME(cdiramap),
 	&GAME_NAME(cditrans)
 };
 
