@@ -54,8 +54,11 @@ private:
 	static constexpr uint32_t DMA1_MAC_HI = 0x8000400cU;
 	static constexpr uint32_t DMA1_MAC_LO = 0x8000400eU;
 	static constexpr uint32_t CDIC_DMACTL = 0x00303ff8U;
-	static constexpr uint32_t SOURCE = 0x00500100U;
-	static constexpr uint32_t DESTINATION = 0x00500200U;
+	// DMA memory-side buffers must live in genuine Mono-I plane RAM.  The old
+	// 0x500xxx locations were the phantom expansion aperture guarded by the
+	// board-level RAM-map regression.
+	static constexpr uint32_t SOURCE = 0x00040100U;
+	static constexpr uint32_t DESTINATION = 0x00040200U;
 	static constexpr uint16_t WORDS = 3;
 	static constexpr uint16_t DMACTL_LAST_TWO_WORDS = 0x3ffc;
 	static constexpr uint16_t DEVICE_BUS_ERROR = 0x000a;
