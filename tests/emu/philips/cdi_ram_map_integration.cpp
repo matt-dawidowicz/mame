@@ -4,6 +4,7 @@
 // Board-level Mono-I memory-map regression.  This is deliberately separate from
 // the SCC68070 MMU fixture: the MMU translates CPU logical addresses, while this
 // test verifies what the physical CD-i board actually decodes after translation.
+// Keep this fixture on the production fast-CI path: it guards expansion probing.
 
 namespace
 {
