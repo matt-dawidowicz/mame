@@ -75,13 +75,13 @@ private:
 	static constexpr uint16_t VALID_SEGMENT_0 = 0x0080U;
 	static constexpr uint16_t VALID_SEGMENT_1 = 0x0081U;
 	static constexpr uint16_t BASE_IDENTITY = 0x0000U;
-	static constexpr uint16_t BASE_RAM = 0x1400U; // 0x500000 physical RAM
+	static constexpr uint16_t BASE_RAM = 0x0100U; // 0x040000 physical plane RAM
 
 	static constexpr uint32_t LOGICAL_QUERY = 0x001234U;
-	static constexpr uint16_t BASE_A = 0x1400U;
-	static constexpr uint16_t BASE_B = 0x1500U;
-	static constexpr uint32_t PHYSICAL_A = 0x501234U;
-	static constexpr uint32_t PHYSICAL_B = 0x541234U;
+	static constexpr uint16_t BASE_A = 0x0040U;
+	static constexpr uint16_t BASE_B = 0x0080U;
+	static constexpr uint32_t PHYSICAL_A = 0x011234U;
+	static constexpr uint32_t PHYSICAL_B = 0x021234U;
 
 	static constexpr uint32_t BOOT_PC = 0x000800U;
 	static constexpr uint32_t STACK_TOP = 0x070000U;
@@ -99,10 +99,10 @@ private:
 	static constexpr uint32_t LOGICAL_WRITE = 0x200120U;
 	static constexpr uint32_t LOGICAL_BOUNDARY = 0x2003feU;
 	static constexpr uint32_t LOGICAL_FETCH = 0x200000U;
-	static constexpr uint32_t PHYSICAL_DATA = 0x500100U;
-	static constexpr uint32_t PHYSICAL_WRITE = 0x500120U;
-	static constexpr uint32_t PHYSICAL_BOUNDARY = 0x5003feU;
-	static constexpr uint32_t PHYSICAL_FETCH = 0x500000U;
+	static constexpr uint32_t PHYSICAL_DATA = 0x040100U;
+	static constexpr uint32_t PHYSICAL_WRITE = 0x040120U;
+	static constexpr uint32_t PHYSICAL_BOUNDARY = 0x0403feU;
+	static constexpr uint32_t PHYSICAL_FETCH = 0x040000U;
 
 	void expect(bool condition, std::string message)
 	{

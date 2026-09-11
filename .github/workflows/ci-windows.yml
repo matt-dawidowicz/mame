@@ -3,22 +3,35 @@ name: CI (Windows)
 on:
   workflow_dispatch:
   push:
+    branches:
+      - cdi-unified
     paths:
-    - '.github/workflows/ci-windows.yml'
-    - '.cdi-full-ci-trigger'
-    - '3rdparty/**'
-    - 'scripts/**'
-    - 'src/**'
-    - 'COPYING'
-    - 'makefile'
+      - '.github/workflows/ci-windows.yml'
+      - '3rdparty/**'
+      - 'scripts/**'
+      - 'src/emu/**'
+      - 'src/lib/util/**'
+      - 'src/frontend/mame/**'
+      - 'src/devices/cpu/m68000/**'
+      - 'src/devices/cpu/dsp56000/**'
+      - 'src/devices/machine/scc68070*'
+      - 'src/mame/philips/**'
+      - 'COPYING'
+      - 'makefile'
   pull_request:
     paths:
-    - '.github/workflows/ci-windows.yml'
-    - '3rdparty/**'
-    - 'scripts/**'
-    - 'src/**'
-    - 'COPYING'
-    - 'makefile'
+      - '.github/workflows/ci-windows.yml'
+      - '3rdparty/**'
+      - 'scripts/**'
+      - 'src/emu/**'
+      - 'src/lib/util/**'
+      - 'src/frontend/mame/**'
+      - 'src/devices/cpu/m68000/**'
+      - 'src/devices/cpu/dsp56000/**'
+      - 'src/devices/machine/scc68070*'
+      - 'src/mame/philips/**'
+      - 'COPYING'
+      - 'makefile'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -28,9 +41,14 @@ permissions:
   contents: read
 
 jobs:
-  build-windows:
-    if: github.event_name == 'workflow_dispatch' || (github.ref != 'refs/heads/audio/cdi-fidelity-100-campaign-20260905' && github.ref != 'refs/heads/cdi-unified')
+  # Fast, relevant Windows portability coverage for normal CD-i development.
+  # All three compilers build the same source-filtered CD-i target; none of
+  # these automatic jobs should compile the full MAME driver tree or tools.
+  build-windows-cdi:
+    if: github.event_name != 'workflow_dispatch'
+    timeout-minutes: 45
     strategy:
+      fail-fast: false
       matrix:
         compiler: [gcc-x64, clang-x64, clang-arm64]
         include:
@@ -40,8 +58,6 @@ jobs:
             slug: mingw-w64-ucrt-x86_64
             cc: gcc
             cxx: g++
-            subtarget: mame
-            executable: mame
           - compiler: clang-x64
             os: windows-latest
             msys: CLANG64
@@ -49,8 +65,6 @@ jobs:
             extrapkg: mingw-w64-clang-x86_64-gcc-compat
             cc: clang
             cxx: clang++
-            subtarget: tiny
-            executable: mametiny
           - compiler: clang-arm64
             os: windows-11-arm
             msys: CLANGARM64
@@ -58,37 +72,93 @@ jobs:
             extrapkg: mingw-w64-clang-aarch64-gcc-compat
             cc: clang
             cxx: clang++
-            subtarget: mame
-            executable: mame
     runs-on: ${{ matrix.os }}
     defaults:
       run:
         shell: msys2 {0}
     steps:
-    - uses: msys2/setup-msys2@e9898307ac31d1a803454791be09ab9973336e1c # v2.31.1
-      with:
-        msystem: ${{ matrix.msys }}
-        install: git make ${{ matrix.slug }}-${{ matrix.cc }} ${{ matrix.slug }}-python ${{ matrix.slug }}-lld ${{ matrix.slug }}-llvm ${{ matrix.slug }}-libc++ ${{ matrix.slug }}-sdl3 ${{ matrix.extrapkg }}
-    - uses: actions/checkout@main
-      with:
-        fetch-depth: 0
-    - name: Build
-      env:
-        OVERRIDE_AR: "llvm-ar"
-        OVERRIDE_CC: ${{ matrix.cc }}
-        OVERRIDE_CXX: ${{ matrix.cxx }}
-        ARCHOPTS: "-fuse-ld=lld"
-        SUBTARGET: ${{ matrix.subtarget }}
-        TOOLS: 1
-        USE_SDL3: 1
-      run: make -j3
-    - name: Validate
-      run: ./${{ matrix.executable }}.exe -validate
-    - uses: actions/upload-artifact@main
-      with:
-        name: ${{ matrix.executable }}-windows-${{ matrix.compiler }}-${{ github.sha }}
-        path: |
-          ${{ matrix.executable }}.exe
-          chdman.exe
-          unidasm.exe
-        if-no-files-found: error
+      - uses: msys2/setup-msys2@e9898307ac31d1a803454791be09ab9973336e1c # v2.31.1
+        with:
+          msystem: ${{ matrix.msys }}
+          install: git make ${{ matrix.slug }}-${{ matrix.cc }} ${{ matrix.slug }}-python ${{ matrix.slug }}-lld ${{ matrix.slug }}-llvm ${{ matrix.slug }}-libc++ ${{ matrix.slug }}-sdl3 ${{ matrix.extrapkg }}
+      - uses: actions/checkout@v4
+      - name: Build CD-i target
+        env:
+          OVERRIDE_AR: "llvm-ar"
+          OVERRIDE_CC: ${{ matrix.cc }}
+          OVERRIDE_CXX: ${{ matrix.cxx }}
+          ARCHOPTS: "-fuse-ld=lld"
+          SUBTARGET: mame
+          SOURCES: src/mame/philips/cdi.cpp,src/mame/philips/cdidvc_plmpeg.cpp
+          TOOLS: 0
+          USE_SDL3: 1
+        run: make -j"$(nproc)"
+      - name: Validate CD-i target
+        run: ./mame.exe -validate
+      - uses: actions/upload-artifact@main
+        with:
+          name: mame-cdi-windows-${{ matrix.compiler }}-${{ github.sha }}
+          path: mame.exe
+          if-no-files-found: error
+
+  # Full-tree Windows builds remain available as an explicit integration gate.
+  # They are intentionally manual because a clean full MAME build can consume
+  # hours on the Windows GCC runner and is not useful as per-commit feedback.
+  build-windows-full:
+    if: github.event_name == 'workflow_dispatch'
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [gcc-x64, clang-x64, clang-arm64]
+        include:
+          - compiler: gcc-x64
+            os: windows-latest
+            msys: UCRT64
+            slug: mingw-w64-ucrt-x86_64
+            cc: gcc
+            cxx: g++
+          - compiler: clang-x64
+            os: windows-latest
+            msys: CLANG64
+            slug: mingw-w64-clang-x86_64
+            extrapkg: mingw-w64-clang-x86_64-gcc-compat
+            cc: clang
+            cxx: clang++
+          - compiler: clang-arm64
+            os: windows-11-arm
+            msys: CLANGARM64
+            slug: mingw-w64-clang-aarch64
+            extrapkg: mingw-w64-clang-aarch64-gcc-compat
+            cc: clang
+            cxx: clang++
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: msys2/setup-msys2@e9898307ac31d1a803454791be09ab9973336e1c # v2.31.1
+        with:
+          msystem: ${{ matrix.msys }}
+          install: git make ${{ matrix.slug }}-${{ matrix.cc }} ${{ matrix.slug }}-python ${{ matrix.slug }}-lld ${{ matrix.slug }}-llvm ${{ matrix.slug }}-libc++ ${{ matrix.slug }}-sdl3 ${{ matrix.extrapkg }}
+      - uses: actions/checkout@v4
+      - name: Build full MAME
+        env:
+          OVERRIDE_AR: "llvm-ar"
+          OVERRIDE_CC: ${{ matrix.cc }}
+          OVERRIDE_CXX: ${{ matrix.cxx }}
+          ARCHOPTS: "-fuse-ld=lld"
+          SUBTARGET: mame
+          TOOLS: 1
+          USE_SDL3: 1
+        run: make -j"$(nproc)"
+      - name: Validate full MAME
+        run: ./mame.exe -validate
+      - uses: actions/upload-artifact@main
+        with:
+          name: mame-windows-${{ matrix.compiler }}-${{ github.sha }}
+          path: |
+            mame.exe
+            chdman.exe
+            unidasm.exe
+          if-no-files-found: error
