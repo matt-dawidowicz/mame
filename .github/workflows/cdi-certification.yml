@@ -2,6 +2,17 @@ name: CD-i certification
 
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/cdi-certification.yml'
+      - 'scripts/cdi_generate_av_reference.py'
+      - 'scripts/cdi_generate_motion_reference.py'
+      - 'scripts/cdi_generate_certification_fixtures.py'
+      - 'scripts/src/tests.lua'
+      - 'tests/emu/philips/cdi_dvc_fixture_io.h'
+      - 'tests/emu/philips/cdi_dvc_av_integration.cpp'
+      - 'tests/emu/philips/cdi_dvc_motion_integration.cpp'
+      - 'tests/emu/philips/cdi_dvc_dma_test_support.cpp'
 
 concurrency:
   group: cdi-certification-${{ github.ref }}
