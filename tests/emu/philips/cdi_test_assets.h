@@ -2,6 +2,7 @@
 // copyright-holders:Matt Jordan
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
