@@ -37,7 +37,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install build and reference dependencies
+      - name: Install build dependencies
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends \
@@ -51,8 +51,7 @@ jobs:
             qt6-base-dev \
             qt6-base-dev-tools
 
-      - name: Generate external DVC reference fixtures
-        run: python3 scripts/cdi_generate_certification_fixtures.py
+      - name: Extract external DVC reference fixtures\n        run: python3 scripts/cdi_generate_certification_fixtures.py
 
       - name: Generate CD-i build
         run: |
