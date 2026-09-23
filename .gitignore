@@ -51,4 +51,6 @@ regtests/jedutil/output
 /samples
 
 # Generated CD-i DVC certification fixtures (run scripts/cdi_generate_certification_fixtures.py)
-tests/emu/philips/fixtures/
+tests/emu/philips/fixtures/av/
+tests/emu/philips/fixtures/motion/
+tests/emu/philips/fixtures/full/
