@@ -3,11 +3,9 @@
 # copyright-holders:Matt Jordan
 """Generate original moving MPEG-1 scenes and independent FFmpeg references."""
 import argparse
-import base64
 import hashlib
 import json
 import pathlib
-import re
 import subprocess
 import struct
 import tempfile
@@ -56,9 +54,7 @@ with tempfile.TemporaryDirectory(prefix='cdi-original-motion-') as tmp:
         assets[f'VIDEO_{scene}'] = video.read_bytes() + b'\0\0\1\xb7'
         assets[f'RGB_{scene}_Z'] = zlib.compress(rgb.read_bytes(),9)
         assets[f'TYPES_{scene}'] = ''.join(t['pict_type'] for t in types).encode()
-    old = (root/'tests/emu/philips/cdi_dvc_av_reference_data.h').read_text()
-    body = old.split(' AUDIO {{',1)[1].split('}};',1)[0]
-    audio = bytes(int(x,16) for x in re.findall(r'0x([0-9a-f]{2})',body))
+    audio = (root/'tests/emu/philips/fixtures/av/AUDIO.bin').read_bytes()
     (tmp/'audio.mp2').write_bytes(audio*3)
     ff('-c:a','mp2','-i',tmp/'audio.mp2','-c:a','pcm_s16le','-f','s16le',tmp/'audio.pcm')
     pcm = (tmp/'audio.pcm').read_bytes()
@@ -72,23 +68,12 @@ with tempfile.TemporaryDirectory(prefix='cdi-original-motion-') as tmp:
 if args.full_size:
     del assets['PCM_STEADY_Z'] # Shared unchanged audio reference lives in the small fixture.
 
-namespace = 'cdi_full_reference' if args.full_size else 'cdi_motion_reference'
-header = '// license:BSD-3-Clause\n// copyright-holders:Matt Jordan\n\n'
-header += f'// Generated original moving video and FFmpeg {version} reference pixels/PCM.\n'
-header += '// Regenerate with scripts/cdi_generate_motion_reference.py'+(' --full-size' if args.full_size else '')+'.\n#pragma once\n#include <array>\n#include <cstdint>\nnamespace '+namespace+'\n{\n'
-if args.full_size: header += '// All byte arrays below are base64 encoded, excluding the terminating NUL.\n'
-header += 'struct profile { unsigned width, height, rate_num, rate_den, frames; };\n'
-header += 'constexpr profile PROFILES[] = { '+', '.join('{'+', '.join(map(str,p))+'}' for p in profiles)+' };\n'
-for name,data in assets.items():
-    if args.full_size:
-        # Base64 keeps independently decoded full-frame references compact in source.
-        encoded = base64.b64encode(data).decode('ascii')
-        header += f'// SHA-256 {hashlib.sha256(data).hexdigest()}\nconstexpr char {name}[] =\n'
-        header += ''.join('\t"'+encoded[i:i+120]+'"\n' for i in range(0,len(encoded),120))+';\n'
-    else:
-        header += f'// SHA-256 {hashlib.sha256(data).hexdigest()}\nconstexpr std::array<uint8_t, {len(data)}> {name} {{{{\n'
-        header += ''.join('\t'+', '.join(f'0x{x:02x}' for x in data[i:i+16])+',\n' for i in range(0,len(data),16))+'}};\n'
-header += '} // namespace '+namespace+'\n'
-target = 'cdi_dvc_full_reference_data.h' if args.full_size else 'cdi_dvc_motion_reference_data.h'
-(root/'tests/emu/philips'/target).write_text(header)
-print(json.dumps({k:{'bytes':len(v),'sha256':hashlib.sha256(v).hexdigest()} for k,v in assets.items()},indent=2))
+dest = root/'tests/emu/philips/fixtures'/('full' if args.full_size else 'motion')
+dest.mkdir(parents=True, exist_ok=True)
+manifest = {'ffmpeg': version, 'profiles': profiles, 'assets': {}}
+for name, data in assets.items():
+    filename = (name[:-2] + '.z') if name.endswith('_Z') else (name + '.bin')
+    (dest/filename).write_bytes(data)
+    manifest['assets'][filename] = {'bytes': len(data), 'sha256': hashlib.sha256(data).hexdigest()}
+(dest/'manifest.json').write_text(json.dumps(manifest, indent=2) + '\\n')
+print(json.dumps(manifest, indent=2))
