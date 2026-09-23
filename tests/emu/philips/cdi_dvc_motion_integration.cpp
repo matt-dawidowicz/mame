@@ -11,7 +11,7 @@
 namespace
 {
 struct cdi_motion_profile { unsigned width, height, rate_num, rate_den, frames; };
-constexpr std::array<cdi_motion_profile, 3> CDI_MOTION_PROFILES{{{{64, 48, 25, 1, 50}, {80, 64, 30000, 1001, 60}, {96, 48, 24000, 1001, 48}}}};
+constexpr std::array<cdi_motion_profile, 3> CDI_MOTION_PROFILES{{ {64, 48, 25, 1, 50}, {80, 64, 30000, 1001, 60}, {96, 48, 24000, 1001, 48} }};
 
 class cdi_motion_state;
 cdi_motion_state *cdi_motion_capture = nullptr;
