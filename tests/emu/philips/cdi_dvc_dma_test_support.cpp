@@ -16,24 +16,34 @@
 #include "cdi_q_integration.cpp"
 #include "cdi_transport_integration.cpp"
 #include "cdi_cdda_save_integration.cpp"
+#if defined(CDI_CERTIFICATION_TESTS)
 #include "cdi_dvc_av_integration.cpp"
 #include "cdi_dvc_motion_integration.cpp"
+#endif
 
 #include "drivenum.h"
 
+#if defined(CDI_CERTIFICATION_TESTS)
 std::size_t const driver_list::s_driver_count = 14;
+#else
+std::size_t const driver_list::s_driver_count = 12;
+#endif
 game_driver const * const driver_list::s_drivers_sorted[] =
 {
 	&GAME_NAME(cdiaudma),
 	&GAME_NAME(cdiavsave),
 	&GAME_NAME(cdicdasave),
 	&GAME_NAME(cdicdmab),
+#if defined(CDI_CERTIFICATION_TESTS)
 	&GAME_NAME(cdidecav),
+#endif
 	&GAME_NAME(cdidmaedge),
 	&GAME_NAME(cdidmaint),
 	&GAME_NAME(cdihasdvct),
 	&GAME_NAME(cdimmaint),
+#if defined(CDI_CERTIFICATION_TESTS)
 	&GAME_NAME(cdimotion),
+#endif
 	&GAME_NAME(cdinodvct),
 	&GAME_NAME(cdiqtest),
 	&GAME_NAME(cdiramap),
@@ -53,6 +63,14 @@ int emulator_info::start_frontend(emu_options &options, osd_interface &osd, int 
 bool emulator_info::draw_user_interface(running_machine &machine) { return false; }
 void emulator_info::periodic_check() { }
 bool emulator_info::frame_hook() { return false; }
-void emulator_info::sound_hook(const std::map<std::string, std::vector<std::pair<const float *, int>>> &sound) { cdi_transport_sound_hook(sound); cdi_cdda_save_sound_hook(sound); cdi_decoded_av_sound_hook(sound); cdi_motion_sound_hook(sound); }
+void emulator_info::sound_hook(const std::map<std::string, std::vector<std::pair<const float *, int>>> &sound)
+{
+	cdi_transport_sound_hook(sound);
+	cdi_cdda_save_sound_hook(sound);
+#if defined(CDI_CERTIFICATION_TESTS)
+	cdi_decoded_av_sound_hook(sound);
+	cdi_motion_sound_hook(sound);
+#endif
+}
 void emulator_info::layout_script_cb(layout_file &file, const char *script) { }
 bool emulator_info::standalone() { return true; }
