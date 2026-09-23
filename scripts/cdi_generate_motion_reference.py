@@ -7,7 +7,6 @@ import base64
 import hashlib
 import json
 import pathlib
-import re
 import subprocess
 import struct
 import tempfile
@@ -56,9 +55,7 @@ with tempfile.TemporaryDirectory(prefix='cdi-original-motion-') as tmp:
         assets[f'VIDEO_{scene}'] = video.read_bytes() + b'\0\0\1\xb7'
         assets[f'RGB_{scene}_Z'] = zlib.compress(rgb.read_bytes(),9)
         assets[f'TYPES_{scene}'] = ''.join(t['pict_type'] for t in types).encode()
-    old = (root/'tests/emu/philips/cdi_dvc_av_reference_data.h').read_text()
-    body = old.split(' AUDIO {{',1)[1].split('}};',1)[0]
-    audio = bytes(int(x,16) for x in re.findall(r'0x([0-9a-f]{2})',body))
+    audio = (root/'tests/emu/philips/data/cdi_av_audio.mp2').read_bytes()
     (tmp/'audio.mp2').write_bytes(audio*3)
     ff('-c:a','mp2','-i',tmp/'audio.mp2','-c:a','pcm_s16le','-f','s16le',tmp/'audio.pcm')
     pcm = (tmp/'audio.pcm').read_bytes()
@@ -72,23 +69,36 @@ with tempfile.TemporaryDirectory(prefix='cdi-original-motion-') as tmp:
 if args.full_size:
     del assets['PCM_STEADY_Z'] # Shared unchanged audio reference lives in the small fixture.
 
-namespace = 'cdi_full_reference' if args.full_size else 'cdi_motion_reference'
-header = '// license:BSD-3-Clause\n// copyright-holders:Matt Jordan\n\n'
-header += f'// Generated original moving video and FFmpeg {version} reference pixels/PCM.\n'
-header += '// Regenerate with scripts/cdi_generate_motion_reference.py'+(' --full-size' if args.full_size else '')+'.\n#pragma once\n#include <array>\n#include <cstdint>\nnamespace '+namespace+'\n{\n'
-if args.full_size: header += '// All byte arrays below are base64 encoded, excluding the terminating NUL.\n'
-header += 'struct profile { unsigned width, height, rate_num, rate_den, frames; };\n'
-header += 'constexpr profile PROFILES[] = { '+', '.join('{'+', '.join(map(str,p))+'}' for p in profiles)+' };\n'
-for name,data in assets.items():
-    if args.full_size:
-        # Base64 keeps independently decoded full-frame references compact in source.
+if args.full_size:
+    namespace = 'cdi_full_reference'
+    header = '// license:BSD-3-Clause\n// copyright-holders:Matt Jordan\n\n'
+    header += f'// Generated original moving video and FFmpeg {version} reference pixels/PCM.\n'
+    header += '// Regenerate with scripts/cdi_generate_motion_reference.py --full-size.\n#pragma once\n#include <array>\n#include <cstdint>\nnamespace '+namespace+'\n{\n'
+    header += '// All byte arrays below are base64 encoded, excluding the terminating NUL.\n'
+    header += 'struct profile { unsigned width, height, rate_num, rate_den, frames; };\n'
+    header += 'constexpr profile PROFILES[] = { '+', '.join('{'+', '.join(map(str,p))+'}' for p in profiles)+' };\n'
+    for name,data in assets.items():
         encoded = base64.b64encode(data).decode('ascii')
         header += f'// SHA-256 {hashlib.sha256(data).hexdigest()}\nconstexpr char {name}[] =\n'
         header += ''.join('\t"'+encoded[i:i+120]+'"\n' for i in range(0,len(encoded),120))+';\n'
-    else:
-        header += f'// SHA-256 {hashlib.sha256(data).hexdigest()}\nconstexpr std::array<uint8_t, {len(data)}> {name} {{{{\n'
-        header += ''.join('\t'+', '.join(f'0x{x:02x}' for x in data[i:i+16])+',\n' for i in range(0,len(data),16))+'}};\n'
-header += '} // namespace '+namespace+'\n'
-target = 'cdi_dvc_full_reference_data.h' if args.full_size else 'cdi_dvc_motion_reference_data.h'
-(root/'tests/emu/philips'/target).write_text(header)
-print(json.dumps({k:{'bytes':len(v),'sha256':hashlib.sha256(v).hexdigest()} for k,v in assets.items()},indent=2))
+    header += '} // namespace '+namespace+'\n'
+    (root/'tests/emu/philips/cdi_dvc_full_reference_data.h').write_text(header)
+else:
+    dest = root/'tests/emu/philips/data'
+    dest.mkdir(parents=True, exist_ok=True)
+    filenames = {
+        'VIDEO_0': 'cdi_motion_video_0.m1v',
+        'RGB_0_Z': 'cdi_motion_rgb_0.zlib',
+        'TYPES_0': 'cdi_motion_types_0.bin',
+        'VIDEO_1': 'cdi_motion_video_1.m1v',
+        'RGB_1_Z': 'cdi_motion_rgb_1.zlib',
+        'TYPES_1': 'cdi_motion_types_1.bin',
+        'VIDEO_2': 'cdi_motion_video_2.m1v',
+        'RGB_2_Z': 'cdi_motion_rgb_2.zlib',
+        'TYPES_2': 'cdi_motion_types_2.bin',
+        'PCM_STEADY_Z': 'cdi_motion_pcm_steady.zlib',
+    }
+    for name, data in assets.items():
+        (dest/filenames[name]).write_bytes(data)
+    print(json.dumps({k:{'file':filenames[k],'bytes':len(v),'sha256':hashlib.sha256(v).hexdigest()}
+                      for k,v in assets.items()}, indent=2))
