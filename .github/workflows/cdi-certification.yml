@@ -1,0 +1,78 @@
+name: CD-i certification
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/cdi-certification.yml'
+      - 'scripts/cdi_generate_av_reference.py'
+      - 'scripts/cdi_generate_motion_reference.py'
+      - 'scripts/cdi_generate_certification_fixtures.py'
+      - 'scripts/src/tests.lua'
+      - 'tests/emu/philips/cdi_dvc_fixture_io.h'
+      - 'tests/emu/philips/cdi_dvc_av_integration.cpp'
+      - 'tests/emu/philips/cdi_dvc_motion_integration.cpp'
+      - 'tests/emu/philips/cdi_dvc_dma_test_support.cpp'
+      - 'tests/emu/philips/fixtures/source/**'
+
+concurrency:
+  group: cdi-certification-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  certify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      OVERRIDE_CC: gcc
+      OVERRIDE_CXX: g++
+      ARCHOPTS: -U_FORTIFY_SOURCE
+      SOURCES: src/mame/philips/cdi.cpp,src/mame/philips/cdidvc_plmpeg.cpp
+      TESTS: 1
+      TOOLS: 0
+      OPTIMIZE: 0
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            libsdl2-dev \
+            libsdl2-ttf-dev \
+            libfontconfig-dev \
+            libasound2-dev \
+            libxinerama-dev \
+            libxi-dev \
+            qt6-base-dev \
+            qt6-base-dev-tools
+
+      - name: Extract external DVC reference fixtures
+        run: python3 scripts/cdi_generate_certification_fixtures.py
+
+      - name: Generate CD-i build
+        run: |
+          make -j"$(nproc)" \
+            generate \
+            build/projects/sdl/mame/gmake-linux/Makefile
+
+      - name: Build precompiled header
+        run: |
+          make -j"$(nproc)" \
+            -C build/projects/sdl/mame/gmake-linux \
+            config=release64 \
+            precompile
+
+      - name: Build certification tests
+        run: |
+          make -j"$(nproc)" \
+            -C build/projects/sdl/mame/gmake-linux \
+            config=release64 \
+            cdicertificationtests
+
+      - name: Run certification tests
+        run: ./cdicertificationtests

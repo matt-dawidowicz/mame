@@ -2,14 +2,16 @@
 // copyright-holders:Matt Jordan
 
 // Included after the existing decoded A/V and full-machine test support.
-#include "cdi_dvc_motion_reference_data.h"
-#include "cdi_dvc_full_reference_data.h"
-#include "cdi_full_reference_decode.h"
+#include "cdi_dvc_fixture_io.h"
 #include "screen.h"
 #include <cstdlib>
 
 namespace
 {
+struct cdi_motion_profile { unsigned width, height, rate_num, rate_den, frames; };
+constexpr std::array<cdi_motion_profile, 3> cdi_motion_profiles = {{{64, 48, 25, 1, 50}, {80, 64, 30000, 1001, 60}, {96, 48, 24000, 1001, 48}}};
+constexpr std::array<cdi_motion_profile, 3> cdi_full_profiles = {{{352, 288, 25, 1, 36}, {352, 240, 30000, 1001, 45}, {384, 288, 25, 1, 36}}};
+
 class cdi_motion_state;
 cdi_motion_state *cdi_motion_capture = nullptr;
 
@@ -110,15 +112,15 @@ class cdi_motion_state : public cdi_state
 		unsigned offset = 0;
 		for (unsigned i = 0; i < 98; ++i)
 		{
-			unsigned const size = 144 * 192000 / 44100 + ((cdi_av_reference::AUDIO[offset + 2] >> 1) & 1);
+			unsigned const size = 144 * 192000 / 44100 + ((cdi_fixture("av/AUDIO.bin")[offset + 2] >> 1) & 1);
 			// A timestamped partial first frame must keep its 300 ms start after refill.
 			if (!i)
 			{
-				pes(true, cdi_av_reference::AUDIO.data(), 200, 27000, 0, false);
-				pes(true, cdi_av_reference::AUDIO.data() + 200, size - 200, -1, 100, false);
+				pes(true, cdi_fixture("av/AUDIO.bin").data(), 200, 27000, 0, false);
+				pes(true, cdi_fixture("av/AUDIO.bin").data() + 200, size - 200, -1, 100, false);
 			}
 			else
-				pes(true, cdi_av_reference::AUDIO.data() + offset, size,
+				pes(true, cdi_fixture("av/AUDIO.bin").data() + offset, size,
 					i == 49 ? (ingress_mode == 1   ? -1
 							   : ingress_mode == 2 ? 171000
 												   : 216000)
@@ -133,7 +135,7 @@ class cdi_motion_state : public cdi_state
 						 [](auto const &a, auto const &b) { return a.ms < b.ms; });
 	}
 
-	std::array<cdi_motion_reference::profile, 3> formats;
+	std::array<cdi_motion_profile, 3> formats;
 	std::vector<unsigned> branch_times;
 	std::string directory;
 	std::vector<unsigned> snapshots;
@@ -375,8 +377,8 @@ class cdi_motion_state : public cdi_state
 		unsigned offset = 0;
 		for (unsigned i = 0; i < 98; ++i)
 		{
-			unsigned const size = 144 * 192000 / 44100 + ((cdi_av_reference::AUDIO[offset + 2] >> 1) & 1);
-			packet(true, cdi_av_reference::AUDIO.data() + offset, size, i == 0 ? pts : -1, stream);
+			unsigned const size = 144 * 192000 / 44100 + ((cdi_fixture("av/AUDIO.bin")[offset + 2] >> 1) & 1);
+			packet(true, cdi_fixture("av/AUDIO.bin").data() + offset, size, i == 0 ? pts : -1, stream);
 			offset += size;
 		}
 	}
@@ -411,7 +413,7 @@ class cdi_motion_state : public cdi_state
 		{
 			// Deliberately deliver old IDs before the requested streams.
 			video_chunk(initial_profile, -1, stream ^ 1);
-			packet(true, cdi_av_reference::AUDIO.data(), 626, -1, stream ^ 1);
+			packet(true, cdi_fixture("av/AUDIO.bin").data(), 626, -1, stream ^ 1);
 			expect(space.read_word(0xe0300a) != stream,
 				   "current audio stream changed before requested header current=" +
 					   std::to_string(space.read_word(0xe0300a)) + " requested=" + std::to_string(stream));
@@ -699,36 +701,26 @@ void run_cdi_motion(unsigned profile, unsigned seconds, bool capacity = false, b
 	state.synchronized_branches = synchronized;
 	state.deferred_video = deferred;
 	state.ingress_mode = ingress;
-	std::copy(std::begin(cdi_motion_reference::PROFILES), std::end(cdi_motion_reference::PROFILES),
-			  state.formats.begin());
+	std::copy(cdi_motion_profiles.begin(), cdi_motion_profiles.end(), state.formats.begin());
 	state.directory = std::filesystem::path(temp.path()).parent_path().string();
 	state.snapshots =
 		profile == 0 ? std::vector<unsigned>{340, 380, 460, 900, 1600, 3620} : std::vector<unsigned>{900, 1600};
 	if (capacity)
 		state.snapshots = {347900, 348650, 1333750, 1334500};
-	state.video = {std::vector<uint8_t>(cdi_motion_reference::VIDEO_0.begin(), cdi_motion_reference::VIDEO_0.end()),
-				   std::vector<uint8_t>(cdi_motion_reference::VIDEO_1.begin(), cdi_motion_reference::VIDEO_1.end()),
-				   std::vector<uint8_t>(cdi_motion_reference::VIDEO_2.begin(), cdi_motion_reference::VIDEO_2.end())};
-	state.types = {std::vector<uint8_t>(cdi_motion_reference::TYPES_0.begin(), cdi_motion_reference::TYPES_0.end()),
-				   std::vector<uint8_t>(cdi_motion_reference::TYPES_1.begin(), cdi_motion_reference::TYPES_1.end()),
-				   std::vector<uint8_t>(cdi_motion_reference::TYPES_2.begin(), cdi_motion_reference::TYPES_2.end())};
-	state.rgb = {cdi_av_inflate(cdi_motion_reference::RGB_0_Z, 64 * 48 * 50 * 3),
-				 cdi_av_inflate(cdi_motion_reference::RGB_1_Z, 80 * 64 * 60 * 3),
-				 cdi_av_inflate(cdi_motion_reference::RGB_2_Z, 96 * 48 * 48 * 3)};
+	state.video = {cdi_fixture("motion/VIDEO_0.bin"), cdi_fixture("motion/VIDEO_1.bin"), cdi_fixture("motion/VIDEO_2.bin")};
+	state.types = {cdi_fixture("motion/TYPES_0.bin"), cdi_fixture("motion/TYPES_1.bin"), cdi_fixture("motion/TYPES_2.bin")};
+	state.rgb = {cdi_fixture_inflate("motion/RGB_0.z", 64 * 48 * 50 * 3),
+				 cdi_fixture_inflate("motion/RGB_1.z", 80 * 64 * 60 * 3),
+				 cdi_fixture_inflate("motion/RGB_2.z", 96 * 48 * 48 * 3)};
 	if (full_size)
 	{
 		for (unsigned i = 0; i < 3; ++i)
-		{
-			auto const &f = cdi_full_reference::PROFILES[i];
-			state.formats[i] = {f.width, f.height, f.rate_num, f.rate_den, f.frames};
-		}
-		state.video = {cdi_full_bytes(cdi_full_reference::VIDEO_0), cdi_full_bytes(cdi_full_reference::VIDEO_1),
-					   cdi_full_bytes(cdi_full_reference::VIDEO_2)};
-		state.types = {cdi_full_bytes(cdi_full_reference::TYPES_0), cdi_full_bytes(cdi_full_reference::TYPES_1),
-					   cdi_full_bytes(cdi_full_reference::TYPES_2)};
-		state.rgb = {cdi_full_rgb(cdi_full_reference::RGB_0_Z, 352 * 288 * 36 * 3),
-					 cdi_full_rgb(cdi_full_reference::RGB_1_Z, 352 * 240 * 45 * 3),
-					 cdi_full_rgb(cdi_full_reference::RGB_2_Z, 384 * 288 * 36 * 3)};
+			state.formats[i] = cdi_full_profiles[i];
+		state.video = {cdi_fixture("full/VIDEO_0.bin"), cdi_fixture("full/VIDEO_1.bin"), cdi_fixture("full/VIDEO_2.bin")};
+		state.types = {cdi_fixture("full/TYPES_0.bin"), cdi_fixture("full/TYPES_1.bin"), cdi_fixture("full/TYPES_2.bin")};
+		state.rgb = {cdi_fixture_inflate("full/RGB_0.z", 352 * 288 * 36 * 3),
+				 cdi_fixture_inflate("full/RGB_1.z", 352 * 240 * 45 * 3),
+				 cdi_fixture_inflate("full/RGB_2.z", 384 * 288 * 36 * 3)};
 		state.snapshots =
 			synchronized ? std::vector<unsigned>{340, 900, 1600, 1700, 3200, 3320} : std::vector<unsigned>{900, 1600};
 	}
@@ -739,8 +731,8 @@ void run_cdi_motion(unsigned profile, unsigned seconds, bool capacity = false, b
 		state.snapshots = {50, 150, 1800, 1950, 2300};
 		state.prepare_ingress();
 	}
-	state.pcm = cdi_av_inflate(cdi_av_reference::PCM_Z, 112896 * 4);
-	state.steady_pcm = cdi_av_inflate(cdi_motion_reference::PCM_STEADY_Z, 112896 * 4);
+	state.pcm = cdi_fixture_inflate("av/PCM.z", 112896 * 4);
+	state.steady_pcm = cdi_fixture_inflate("motion/PCM_STEADY.z", 112896 * 4);
 	cdi_motion_capture = &state;
 	int const error = machine.run(true);
 	cdi_motion_capture = nullptr;

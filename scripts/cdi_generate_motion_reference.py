@@ -56,7 +56,7 @@ with tempfile.TemporaryDirectory(prefix='cdi-original-motion-') as tmp:
         assets[f'VIDEO_{scene}'] = video.read_bytes() + b'\0\0\1\xb7'
         assets[f'RGB_{scene}_Z'] = zlib.compress(rgb.read_bytes(),9)
         assets[f'TYPES_{scene}'] = ''.join(t['pict_type'] for t in types).encode()
-    old = (root/'tests/emu/philips/cdi_dvc_av_reference_data.h').read_text()
+    old = (root/'tests/emu/philips/fixtures/source/cdi_dvc_av_reference_data.txt').read_text()
     body = old.split(' AUDIO {{',1)[1].split('}};',1)[0]
     audio = bytes(int(x,16) for x in re.findall(r'0x([0-9a-f]{2})',body))
     (tmp/'audio.mp2').write_bytes(audio*3)
@@ -89,6 +89,6 @@ for name,data in assets.items():
         header += f'// SHA-256 {hashlib.sha256(data).hexdigest()}\nconstexpr std::array<uint8_t, {len(data)}> {name} {{{{\n'
         header += ''.join('\t'+', '.join(f'0x{x:02x}' for x in data[i:i+16])+',\n' for i in range(0,len(data),16))+'}};\n'
 header += '} // namespace '+namespace+'\n'
-target = 'cdi_dvc_full_reference_data.h' if args.full_size else 'cdi_dvc_motion_reference_data.h'
-(root/'tests/emu/philips'/target).write_text(header)
+target = 'cdi_dvc_full_reference_data.txt' if args.full_size else 'cdi_dvc_motion_reference_data.txt'
+(root/'tests/emu/philips/fixtures/source'/target).write_text(header)
 print(json.dumps({k:{'bytes':len(v),'sha256':hashlib.sha256(v).hexdigest()} for k,v in assets.items()},indent=2))

@@ -2,23 +2,12 @@
 // copyright-holders:Matt Jordan
 
 // Included after the full-machine, disc and sound-hook test support.
-#include "cdi_dvc_av_reference_data.h"
-#include <zlib.h>
+#include "cdi_dvc_fixture_io.h"
 
 namespace
 {
 class cdi_decoded_av_state;
 cdi_decoded_av_state *cdi_decoded_av_capture = nullptr;
-
-template <std::size_t N>
-std::vector<uint8_t> cdi_av_inflate(std::array<uint8_t, N> const &data, unsigned size)
-{
-	std::vector<uint8_t> result(size);
-	uLongf length = size;
-	REQUIRE(uncompress(result.data(), &length, data.data(), data.size()) == Z_OK);
-	REQUIRE(length == size);
-	return result;
-}
 
 class cdi_decoded_av_state : public cdi_state
 {
@@ -167,18 +156,25 @@ private:
 		space.write_word(0xe0407a, 32);
 		space.write_word(0xe040c2, 0x0228); // video on, show, latch geometry
 		if (m_scene & 1)
-			packet(false, cdi_av_reference::VIDEO_1.data(), cdi_av_reference::VIDEO_1.size(), true);
+			{
+			auto const &video = cdi_fixture("av/VIDEO_1.bin");
+			packet(false, video.data(), video.size(), true);
+		}
 		else
-			packet(false, cdi_av_reference::VIDEO_0.data(), cdi_av_reference::VIDEO_0.size(), true);
+			{
+			auto const &video = cdi_fixture("av/VIDEO_0.bin");
+			packet(false, video.data(), video.size(), true);
+		}
 		unsigned offset = 0;
 		for (unsigned i = 0; i < 98; ++i)
 		{
 			// Fixed fixture profile: MPEG-1 Layer II, 192 kbit/s, 44.1 kHz.
-			unsigned const size = 144 * 192000 / 44100 + ((cdi_av_reference::AUDIO[offset + 2] >> 1) & 1);
-			packet(true, cdi_av_reference::AUDIO.data() + offset, size, i == 0);
+			auto const &audio = cdi_fixture("av/AUDIO.bin");
+			unsigned const size = 144 * 192000 / 44100 + ((audio[offset + 2] >> 1) & 1);
+			packet(true, audio.data() + offset, size, i == 0);
 			offset += size;
 		}
-		expect(offset == cdi_av_reference::AUDIO.size(), "audio fixture frame count differs");
+		expect(offset == cdi_fixture("av/AUDIO.bin").size(), "audio fixture frame count differs");
 		feed(true, {0, 0, 1, 0xb9});
 		m_picture = 0;
 	}
@@ -273,9 +269,9 @@ TEST_CASE("DVC decoded I P B frames and stereo PCM survive sustained scenes and 
 	manager.set_machine(&machine);
 	auto &state = downcast<cdi_decoded_av_state &>(machine.root_device());
 	state.snapshot_path = (std::filesystem::path(temp.path()).parent_path() / "continuity.sta").string();
-	state.rgb[0] = cdi_av_inflate(cdi_av_reference::RGB_0_Z, 64 * 1024 * 3);
-	state.rgb[1] = cdi_av_inflate(cdi_av_reference::RGB_1_Z, 64 * 1024 * 3);
-	state.reference_pcm = cdi_av_inflate(cdi_av_reference::PCM_Z, 98 * 1152 * 4);
+	state.rgb[0] = cdi_fixture_inflate("av/RGB_0.z", 64 * 1024 * 3);
+	state.rgb[1] = cdi_fixture_inflate("av/RGB_1.z", 64 * 1024 * 3);
+	state.reference_pcm = cdi_fixture_inflate("av/PCM.z", 98 * 1152 * 4);
 	cdi_decoded_av_capture = &state;
 	int const error = machine.run(true);
 	cdi_decoded_av_capture = nullptr;

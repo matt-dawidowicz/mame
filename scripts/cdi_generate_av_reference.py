@@ -9,7 +9,7 @@ parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--root', type=pathlib.Path, default=pathlib.Path(__file__).resolve().parents[1])
 args = parser.parse_args()
 root = args.root
-dest = root / 'tests/emu/philips/cdi_dvc_av_reference_data.h'
+dest = root / 'tests/emu/philips/fixtures/source/cdi_dvc_av_reference_data.txt'
 assets = {}
 version = subprocess.check_output(['ffmpeg', '-version'], text=True).splitlines()[0].split()[2]
 commands = []

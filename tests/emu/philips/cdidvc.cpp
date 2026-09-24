@@ -6,7 +6,7 @@
 
 #include "catch.hpp"
 
-#include "cdi_dvc_av_reference_data.h"
+#include "cdi_dvc_fixture_io.h"
 #include "cdidvc_mpeg_format.h"
 #include "cdidvc_save_state.h"
 #include "cdidvc_utils.h"
@@ -749,7 +749,7 @@ TEST_CASE("PL_MPEG returns the final reference after trailing B pictures and rin
 	for (bool split : {false, true})
 	{
 		CAPTURE(split);
-		auto bytes = cdi_av_reference::VIDEO_0;
+		auto bytes = cdi_fixture("av/VIDEO_0.bin");
 		plm_buffer_t *buffer = plm_buffer_create_with_capacity(4096);
 		REQUIRE(buffer != nullptr);
 		plm_video_t *decoder = plm_video_create_with_buffer(buffer, 1);
