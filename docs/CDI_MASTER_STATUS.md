@@ -296,3 +296,9 @@ the user's Windows checkout. Default-branch setup and obsolete-branch deletion a
 merged commits remain reachable on unified and staging recovery is documented
 in the branch cleanup record. Historical zero-count/abort and absent-interpreter statements
 are superseded by the current unified worksheets, not silently applied to this code.
+
+## Repository hygiene
+
+This file is the authoritative current engineering-status document for the CD-i modernization branch. Dated checkpoint, audit, consolidation, and generated verified-status snapshots were removed from the live tree on 2026-09-23 after their conclusions were incorporated here; Git history remains the archive for those records.
+
+Keep standalone documents only when they are durable evidence/specification rather than a transient progress snapshot. Current durable companions are `cdi_audio_fidelity.md`, `cdi_audio_fidelity_campaign.md`, `cdi_audio_attenuation_capture.md`, and `cdi_audio_hardware_evidence_blockers_20260906.md`.
