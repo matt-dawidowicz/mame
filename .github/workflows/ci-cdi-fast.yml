@@ -137,6 +137,9 @@ jobs:
             config=release64 \
             precompile
 
+      - name: Extract external DVC reference fixtures
+        run: python3 scripts/cdi_generate_certification_fixtures.py
+
       - name: Build CD-i helper tests
         run: |
           make -j"$(nproc)" \
