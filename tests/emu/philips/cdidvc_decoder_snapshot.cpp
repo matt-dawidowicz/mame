@@ -1,8 +1,7 @@
 // license:BSD-3-Clause
 // copyright-holders:Matt Dawidowicz
 // Included in the PL_MPEG implementation test translation unit.
-#include "cdi_dvc_av_reference_data.h"
-#include "cdi_dvc_motion_reference_data.h"
+#include "cdi_dvc_fixture_io.h"
 #include <memory>
 
 namespace cdi_decoder_snapshot_test
@@ -42,9 +41,10 @@ std::pair<double, uint64_t> snapshot_samples(plm_samples_t const *samples)
 TEST_CASE("DVC backend snapshots preserve every moving I P B reference permutation", "[philips][dvc][decoder-snapshot]")
 {
 	std::array<std::vector<uint8_t>, 3> const streams = {
-		std::vector<uint8_t>(cdi_motion_reference::VIDEO_0.begin(), cdi_motion_reference::VIDEO_0.end()),
-		std::vector<uint8_t>(cdi_motion_reference::VIDEO_1.begin(), cdi_motion_reference::VIDEO_1.end()),
-		std::vector<uint8_t>(cdi_motion_reference::VIDEO_2.begin(), cdi_motion_reference::VIDEO_2.end())};
+		cdi_fixture("motion/VIDEO_0.bin"),
+		cdi_fixture("motion/VIDEO_1.bin"),
+		cdi_fixture("motion/VIDEO_2.bin")};
+	constexpr std::array<unsigned, 3> frames = {50, 60, 48};
 	for (unsigned profile = 0; profile < streams.size(); ++profile)
 	{
 		CAPTURE(profile);
@@ -54,7 +54,7 @@ TEST_CASE("DVC backend snapshots preserve every moving I P B reference permutati
 		std::vector<std::pair<double, uint64_t>> expected;
 		while (auto const *frame = plm_video_decode(reference.get()))
 			expected.push_back(snapshot_picture(frame));
-		REQUIRE(expected.size() == cdi_motion_reference::PROFILES[profile].frames);
+		REQUIRE(expected.size() == frames[profile]);
 		auto live = fresh_snapshot_video();
 		plm_buffer_write(live->buffer, const_cast<uint8_t *>(streams[profile].data()), streams[profile].size());
 		plm_buffer_signal_end(live->buffer);
@@ -86,8 +86,8 @@ TEST_CASE("DVC backend snapshots preserve audio synthesis history and partial in
 		  "[philips][dvc][decoder-snapshot]")
 {
 	auto live = fresh_snapshot_audio();
-	plm_buffer_write(live->buffer, const_cast<uint8_t *>(cdi_av_reference::AUDIO.data()),
-					 cdi_av_reference::AUDIO.size());
+	plm_buffer_write(live->buffer, const_cast<uint8_t *>(cdi_fixture("av/AUDIO.bin").data()),
+					 cdi_fixture("av/AUDIO.bin").size());
 	plm_buffer_signal_end(live->buffer);
 	std::vector<std::pair<double, uint64_t>> expected;
 	while (auto const *samples = plm_audio_decode(live.get()))
@@ -97,7 +97,7 @@ TEST_CASE("DVC backend snapshots preserve audio synthesis history and partial in
 	{
 		CAPTURE(boundary);
 		live = fresh_snapshot_audio();
-		plm_buffer_write(live->buffer, const_cast<uint8_t *>(cdi_av_reference::AUDIO.data()), boundary);
+		plm_buffer_write(live->buffer, const_cast<uint8_t *>(cdi_fixture("av/AUDIO.bin").data()), boundary);
 		unsigned decoded = 0;
 		while (plm_audio_decode(live.get()))
 			++decoded;
@@ -108,8 +108,8 @@ TEST_CASE("DVC backend snapshots preserve audio synthesis history and partial in
 		REQUIRE(cdi_dvc::plmpeg_audio_snapshot_read(restored.get(), image.data(), length));
 		REQUIRE(cdi_dvc::plmpeg_audio_snapshot_write(restored.get(), roundtrip.data(), roundtrip.size()) == length);
 		CHECK(std::equal(image.begin(), image.begin() + length, roundtrip.begin()));
-		plm_buffer_write(restored->buffer, const_cast<uint8_t *>(cdi_av_reference::AUDIO.data() + boundary),
-						 cdi_av_reference::AUDIO.size() - boundary);
+		plm_buffer_write(restored->buffer, const_cast<uint8_t *>(cdi_fixture("av/AUDIO.bin").data() + boundary),
+						 cdi_fixture("av/AUDIO.bin").size() - boundary);
 		plm_buffer_signal_end(restored->buffer);
 		while (auto const *samples = plm_audio_decode(restored.get()))
 		{
@@ -155,8 +155,8 @@ TEST_CASE("DVC decoder snapshot images reject truncation wrong version and short
 TEST_CASE("DVC snapshots reject invalid audio sample rates and video geometry", "[philips][dvc][decoder-snapshot]")
 {
 	auto audio = fresh_snapshot_audio();
-	plm_buffer_write(audio->buffer, const_cast<uint8_t *>(cdi_av_reference::AUDIO.data()),
-					 cdi_av_reference::AUDIO.size());
+	plm_buffer_write(audio->buffer, const_cast<uint8_t *>(cdi_fixture("av/AUDIO.bin").data()),
+					 cdi_fixture("av/AUDIO.bin").size());
 	REQUIRE(plm_audio_decode(audio.get()));
 	std::vector<uint8_t> image(1024 * 1024);
 	auto length = cdi_dvc::plmpeg_audio_snapshot_write(audio.get(), image.data(), image.size());
@@ -166,8 +166,8 @@ TEST_CASE("DVC snapshots reject invalid audio sample rates and video geometry", 
 	auto restored_audio = fresh_snapshot_audio();
 	CHECK_FALSE(cdi_dvc::plmpeg_audio_snapshot_read(restored_audio.get(), image.data(), length));
 	auto video = fresh_snapshot_video();
-	plm_buffer_write(video->buffer, const_cast<uint8_t *>(cdi_motion_reference::VIDEO_0.data()),
-					 cdi_motion_reference::VIDEO_0.size());
+	plm_buffer_write(video->buffer, const_cast<uint8_t *>(cdi_fixture("motion/VIDEO_0.bin").data()),
+					 cdi_fixture("motion/VIDEO_0.bin").size());
 	REQUIRE(plm_video_decode(video.get()));
 	length = cdi_dvc::plmpeg_video_snapshot_write(video.get(), image.data(), image.size());
 	REQUIRE(length > 0);
