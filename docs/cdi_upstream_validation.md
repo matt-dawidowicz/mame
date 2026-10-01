@@ -82,3 +82,42 @@ Where the old branch and upstream disagree, evidence priority remains:
 A test that upstream already passes is still useful if it protects a subtle hardware
 contract.  A historical implementation detail that has no hardware-facing contract
 should not be preserved merely because it existed in `cdi-unified`.
+
+
+## Finding: VMPEG FMA attenuation quantization
+
+Current upstream `gsc38gg307_device::atten_gain()` models each unmuted attenuation
+value as the ideal floating-point curve:
+
+```text
+10^(-dB/20)
+```
+
+The historical fidelity campaign retained a genuine VMPEG DSP data image whose
+complete 0..127 dB coefficient run matched:
+
+```text
+round(2^22 * 10^(-dB/20))
+```
+
+with zero mismatches. Representative recovered coefficients were:
+
+| Attenuation | Q22 coefficient |
+| ---: | ---: |
+| 0 dB | `0x400000` |
+| 20 dB | `0x066666` |
+| 80 dB | `0x0001a3` |
+| 127 dB | `0x000002` |
+
+This is a real model difference, but it should not be patched merely because the old
+branch differs.  Before proposing an upstream change:
+
+1. preserve the coefficient provenance and extraction procedure;
+2. verify the recovered table against the retained source image again;
+3. measure whether current upstream output differs at observable PCM boundaries;
+4. distinguish coefficient quantization from the still-unresolved DSP56001
+   instruction/rounding path;
+5. submit a minimal GSC38GG307/FMA-only fix if the evidence remains conclusive.
+
+The evidence is scoped to VMPEG FMA.  It must not be generalized to Mono-I CDIC
+attenuation, which is a separate implementation.
