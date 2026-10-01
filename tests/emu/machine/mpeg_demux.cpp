@@ -49,3 +49,76 @@ TEST_CASE("MPEG 33-bit timestamp delta reconstructs endpoints", "[emu][machine][
 			REQUIRE(reverse == -delta);
 	}
 }
+
+
+namespace
+{
+
+void feed_start_code(mpeg_demux &demux, u8 code, u8 stream_filter)
+{
+	demux.byte(0x00, stream_filter);
+	demux.byte(0x00, stream_filter);
+	demux.byte(0x01, stream_filter);
+	demux.byte(code, stream_filter);
+}
+
+} // anonymous namespace
+
+TEST_CASE("MPEG demux selects the requested low-nibble audio/video stream", "[emu][machine][mpeg][demux]")
+{
+	for (u8 base : { u8(0xc0), u8(0xe0) })
+	{
+		for (u8 selected = 0; selected < 16; ++selected)
+		{
+			for (u8 candidate = 0; candidate < 16; ++candidate)
+			{
+				mpeg_demux demux;
+				demux.reset();
+
+				feed_start_code(demux, base | candidate, selected);
+				demux.byte(0x00, selected); // PES length high
+				demux.byte(0x02, selected); // PES length low
+				demux.byte(0x0f, selected); // MPEG-1 PES: no timestamp
+
+				INFO("base=" << unsigned(base) << " selected=" << unsigned(selected)
+					<< " candidate=" << unsigned(candidate));
+				REQUIRE(demux.packet_body == (selected == candidate));
+
+				demux.byte(0x5a, selected); // single payload byte
+				REQUIRE_FALSE(demux.packet_body);
+			}
+		}
+	}
+}
+
+TEST_CASE("MPEG demux ignores non-selected PES packets without leaking payload state", "[emu][machine][mpeg][demux]")
+{
+	mpeg_demux demux;
+	demux.reset();
+
+	feed_start_code(demux, 0xc3, 7);
+	demux.byte(0x00, 7);
+	demux.byte(0x04, 7);
+	demux.byte(0x0f, 7);
+	REQUIRE_FALSE(demux.packet_body);
+
+	for (u8 data : { u8(0x00), u8(0x00), u8(0x01), u8(0xb9) })
+	{
+		demux.byte(data, 7);
+		REQUIRE_FALSE(demux.packet_body);
+	}
+}
+
+TEST_CASE("MPEG demux emits a one-byte program-end pulse", "[emu][machine][mpeg][demux]")
+{
+	mpeg_demux demux;
+	demux.reset();
+
+	feed_start_code(demux, 0xb9, 0);
+	REQUIRE(demux.program_end);
+	REQUIRE_FALSE(demux.packet_body);
+
+	demux.byte(0x12, 0);
+	REQUIRE_FALSE(demux.program_end);
+	REQUIRE_FALSE(demux.packet_body);
+}
