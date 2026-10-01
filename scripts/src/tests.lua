@@ -67,6 +67,7 @@ project("mametests")
 		MAME_DIR .. "tests/lib/util/options.cpp",
 		MAME_DIR .. "tests/emu/attotime.cpp",
 		MAME_DIR .. "tests/emu/machine/mpeg_demux.cpp",
+		MAME_DIR .. "src/devices/machine/mpeg_demux.cpp",
 		MAME_DIR .. "tests/emu/video/rgbutil.cpp",
 	}
 
