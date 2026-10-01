@@ -1,0 +1,56 @@
+name: CD-i upstream validation
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - validation/upstream-cdi-20260930
+    paths:
+      - '.github/workflows/cdi-upstream-validation.yml'
+      - 'scripts/src/tests.lua'
+      - 'tests/emu/machine/mpeg_demux.cpp'
+      - 'src/devices/machine/mpeg_demux.*'
+
+permissions:
+  contents: read
+
+jobs:
+  timestamp-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      TESTS: 1
+      TOOLS: 0
+      EMULATOR: 0
+      OVERRIDE_CC: gcc
+      OVERRIDE_CXX: g++
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            libsdl2-dev \
+            libsdl2-ttf-dev \
+            libfontconfig-dev \
+            libasound2-dev \
+            libxinerama-dev \
+            libxi-dev
+
+      - name: Generate test project
+        run: |
+          make -j"$(nproc)" \
+            generate \
+            build/projects/sdl/mame/gmake-linux/Makefile
+
+      - name: Build mametests
+        run: |
+          make -j"$(nproc)" \
+            -C build/projects/sdl/mame/gmake-linux \
+            config=release64 \
+            mametests
+
+      - name: Run MPEG timestamp validation
+        run: ./mametests "[emu][machine][mpeg][timestamp]"
