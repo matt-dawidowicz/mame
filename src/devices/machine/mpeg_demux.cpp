@@ -261,10 +261,12 @@ void mpeg_demux::byte(u8 data, u8 stream_filter)
 		{
 			state = DEMUX_PACK0;
 		}
-		else if ((data & 0xf0) == 0xc0 || (data & 0xf0) == 0xe0)
+		else if ((data & 0xe0) == 0xc0 || (data & 0xf0) == 0xe0)
 		{
-			// audio (0xc0) or video (0xe0) elementary stream
-			state = ((data & 0x0f) == stream_filter) ? DEMUX_PES0 : DEMUX_IDLE;
+			// MPEG-1 audio stream IDs span c0-df (five-bit stream number);
+			// video IDs span e0-ef (four-bit stream number).
+			const u8 stream_number = ((data & 0xe0) == 0xc0) ? (data & 0x1f) : (data & 0x0f);
+			state = (stream_number == stream_filter) ? DEMUX_PES0 : DEMUX_IDLE;
 		}
 		else if (data == 0xb9)
 		{
