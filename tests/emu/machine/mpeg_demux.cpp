@@ -122,3 +122,27 @@ TEST_CASE("MPEG demux emits a one-byte program-end pulse", "[emu][machine][mpeg]
 	REQUIRE_FALSE(demux.program_end);
 	REQUIRE_FALSE(demux.packet_body);
 }
+
+
+TEST_CASE("MPEG demux keeps the fifth MPEG audio stream-number bit", "[emu][machine][mpeg][demux][audio]")
+{
+	for (u8 selected = 0; selected < 32; ++selected)
+	{
+		for (u8 candidate = 0; candidate < 32; ++candidate)
+		{
+			mpeg_demux demux;
+			demux.reset();
+
+			feed_start_code(demux, u8(0xc0 | candidate), selected);
+			demux.byte(0x00, selected);
+			demux.byte(0x02, selected);
+			demux.byte(0x0f, selected);
+
+			INFO("selected=" << unsigned(selected) << " candidate=" << unsigned(candidate));
+			REQUIRE(demux.packet_body == (selected == candidate));
+
+			demux.byte(0x5a, selected);
+			REQUIRE_FALSE(demux.packet_body);
+		}
+	}
+}
