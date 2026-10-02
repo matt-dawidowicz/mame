@@ -121,3 +121,37 @@ branch differs.  Before proposing an upstream change:
 
 The evidence is scoped to VMPEG FMA.  It must not be generalized to Mono-I CDIC
 attenuation, which is a separate implementation.
+
+
+## Confirmed standards discrepancy: MPEG audio stream selector width
+
+The May 1994 Green Book resolves the earlier uncertainty.
+
+- IX.5.3.1.5 says all MPEG-standard audio Stream ID numbers can be used.
+- IX.8.2.4.3.1 defines `MD_Stream` as the selected MPEG stream `0..31`.
+
+Current upstream `gsc38gg307_device` masked the selected stream to four bits
+(`0x0f`) and `mpeg_demux` recognized audio packet IDs only in `c0-cf`.
+That aliases or excludes the fifth MPEG-audio stream-number bit.
+
+The validation branch now:
+
+- retains five bits in the FMA stream selector (`0x1f`);
+- recognizes MPEG audio packet IDs `c0-df`;
+- keeps the existing four-bit `e0-ef` video selector;
+- exhaustively tests all 32 selected audio streams against all 32 candidate IDs.
+
+This is a candidate functional upstream fix, not merely a fidelity preference.
+
+## Q22 attenuation impact
+
+The retained VMPEG DSP coefficient table differs slightly from the ideal floating-point
+curve used by current upstream.  Across all attenuation values and all signed 16-bit
+single-channel PCM inputs, the coefficient quantization changes nearest-rounded PCM
+by at most one output LSB.  This confirms a real implementation difference, but its
+impact is substantially smaller than the stream-selector issue.
+
+Priority therefore remains:
+
+1. upstream the five-bit MPEG-audio selector fix after CI passes;
+2. preserve the Q22 evidence and only propose that change as a separate fidelity patch.
