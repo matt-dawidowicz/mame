@@ -493,9 +493,9 @@ void gsc38gg307_device::regs_w(offs_t offset, uint16_t data, uint16_t mem_mask)
 		// immediate 7 written by the VMPEG ROM right after the stream number
 		break;
 
-	case 0x04: // stream number, 0-15 per mv_selstrm()
+	case 0x04: // MPEG audio stream number, 0-31
 		LOGMASKED(LOG_FMA, "FMA stream %04x\n", data);
-		m_fma_stream = data & 0x0f;
+		m_fma_stream = data & 0x1f;
 		m_pending_fma_stream_change = true;
 		break;
 
